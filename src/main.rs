@@ -67,7 +67,9 @@ where
         let egui::InnerResponse { inner, response } = add_contents(ui);
         // do something w/ inner state, i.e. move items
         if let (Some(from), Some(to)) = inner {
-            tracing::info!("moving item {:?} -> container {:?}", from, to);
+            if ui.input().pointer.any_released() {
+                tracing::info!("moving item {:?} -> container {:?}", from, to);
+            }
         }
         response
     }

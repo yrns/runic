@@ -11,11 +11,13 @@ fn main() {
             // this should pull from a data source only when it changes,
             // and only for open containers?
             Box::new(Runic {
-                container: Container {
-                    id: 0,
-                    // remove?
-                    drag_item: None,
-                    items: vec![Item::new(1), Item::new(2)],
+                container1: Container {
+                    id: 1,
+                    items: vec![Item::new(2), Item::new(3)],
+                },
+                container2: Container {
+                    id: 4,
+                    items: vec![Item::new(5), Item::new(6)],
                 },
             })
         }),
@@ -23,8 +25,8 @@ fn main() {
 }
 
 struct Runic {
-    // nothing yet
-    container: Container,
+    container1: Container,
+    container2: Container,
 }
 
 // item/container + widget id? tuple
@@ -32,53 +34,74 @@ type ItemData = egui::Id;
 type ContainerData = usize; //egui::Id;
 
 /// source item -> target container
-type State = (Option<ItemData>, Option<ContainerData>);
+struct MoveData {
+    item: Option<ItemData>,
+    container: Option<ContainerData>,
+}
+
+impl MoveData {
+    fn merge(self, other: Self) -> Self {
+        if self.item.and(other.item).is_some() {
+            tracing::error!("multiple items! ({:?} and {:?})", self.item, other.item);
+        }
+        if self.container.and(other.container).is_some() {
+            tracing::error!(
+                "multiple containers! ({:?} and {:?})",
+                self.container,
+                other.container
+            );
+        }
+        Self {
+            item: self.item.or(other.item),
+            container: self.container.or(other.container),
+        }
+    }
+}
 
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // mult containers?
-            ui.add(ContainerSpace::new(|ui| self.container.ui(ui)))
+            ContainerSpace::default().show(ui, |ui| {
+                // need to resolve how these results are merged with a
+                // hierarchy of containers and items
+                self.container1
+                    .ui(ui)
+                    .inner
+                    .merge(self.container2.ui(ui).inner)
+            })
         });
     }
 }
 
-struct ContainerSpace<F> {
-    add_contents: Box<F>,
+#[derive(Default)]
+struct ContainerSpace {
+    // nothing yet
 }
 
-impl<F> ContainerSpace<F>
-where
-    F: FnOnce(&mut egui::Ui) -> egui::InnerResponse<State>,
-{
-    fn new(add_contents: F) -> Self {
-        Self {
-            add_contents: add_contents.into(),
-        }
-    }
-}
-
-impl<F> egui::widgets::Widget for ContainerSpace<F>
-where
-    F: FnOnce(&mut egui::Ui) -> egui::InnerResponse<State>,
-{
-    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        let Self { add_contents } = self;
-        let egui::InnerResponse { inner, response } = add_contents(ui);
+impl ContainerSpace {
+    // not a widget since it doesn't return a Response
+    fn show(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> MoveData) {
+        // what about a handler for the container that had an item
+        // removed?
+        // include old container id?
         // do something w/ inner state, i.e. move items
-        if let (Some(from), Some(to)) = inner {
+        if let MoveData {
+            item: Some(item),
+            container: Some(container),
+        } = add_contents(ui)
+        {
             if ui.input().pointer.any_released() {
-                tracing::info!("moving item {:?} -> container {:?}", from, to);
+                tracing::info!("moving item {:?} -> container {:?}", item, container);
             }
         }
-        response
     }
 }
 
 // this is a struct because it'll eventually be a trait
 struct Container {
     id: usize,
-    drag_item: Option<ItemData>,
+    // returned from item
+    //drag_item: Option<ItemData>,
     items: Vec<Item>,
     //size: ?
     //mask: ?
@@ -100,7 +123,7 @@ impl Container {
     }
 
     // this is drop_target
-    fn ui(&self, ui: &mut egui::Ui) -> egui::InnerResponse<State> {
+    fn ui(&self, ui: &mut egui::Ui) -> egui::InnerResponse<MoveData> {
         let can_accept_what_is_being_dragged = true;
 
         let dragging = ui.memory().is_anything_being_dragged();
@@ -144,7 +167,13 @@ impl Container {
             },
         );
 
-        InnerResponse::new((inner, accept_move.then_some(self.id)), response)
+        InnerResponse::new(
+            MoveData {
+                item: inner,
+                container: (accept_move && response.hovered()).then_some(self.id),
+            },
+            response,
+        )
     }
 }
 
@@ -162,7 +191,7 @@ impl Item {
         Self {
             id,
             rotation: Default::default(),
-            size: (1, 1),
+            size: (0, 0),
         }
     }
 

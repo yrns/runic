@@ -30,8 +30,10 @@ struct Runic {
 }
 
 // item/container + widget id? tuple
-type ItemData = egui::Id;
-type ContainerData = usize; //egui::Id;
+type ItemId = usize;
+type ContainerId = usize;
+type ItemData = (ItemId, ContainerId);
+type ContainerData = ContainerId; //egui::Id;
 
 /// source item -> target container
 struct MoveData {
@@ -56,19 +58,45 @@ impl MoveData {
             container: self.container.or(other.container),
         }
     }
+
+    fn data(&self) -> Option<(ItemData, ContainerData)> {
+        match self {
+            Self {
+                item: Some(item),
+                container: Some(container),
+            } => Some((*item, *container)),
+            _ => None,
+        }
+    }
 }
 
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ContainerSpace::default().show(ui, |ui| {
+            if let Some((item, container)) = ContainerSpace::default().show(ui, |ui| {
                 // need to resolve how these results are merged with a
                 // hierarchy of containers and items
                 self.container1
                     .ui(ui)
                     .inner
                     .merge(self.container2.ui(ui).inner)
-            })
+            }) {
+                tracing::info!("moving item {:?} -> container {:?}", item, container);
+
+                let (id, prev) = item;
+
+                if let Some(item) = match prev {
+                    1 => self.container1.remove(id),
+                    4 => self.container2.remove(id),
+                    _ => None,
+                } {
+                    match container {
+                        1 => self.container1.items.push(item),
+                        4 => self.container2.items.push(item),
+                        _ => (),
+                    }
+                }
+            }
         });
     }
 }
@@ -80,19 +108,19 @@ struct ContainerSpace {
 
 impl ContainerSpace {
     // not a widget since it doesn't return a Response
-    fn show(self, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui) -> MoveData) {
+    fn show(
+        self,
+        ui: &mut egui::Ui,
+        add_contents: impl FnOnce(&mut egui::Ui) -> MoveData,
+    ) -> Option<(ItemData, ContainerData)> {
         // what about a handler for the container that had an item
         // removed?
         // include old container id?
         // do something w/ inner state, i.e. move items
-        if let MoveData {
-            item: Some(item),
-            container: Some(container),
-        } = add_contents(ui)
-        {
-            if ui.input().pointer.any_released() {
-                tracing::info!("moving item {:?} -> container {:?}", item, container);
-            }
+        let data = add_contents(ui).data();
+        match ui.input().pointer.any_released() {
+            true => data,
+            _ => None,
         }
     }
 }
@@ -109,13 +137,18 @@ struct Container {
 }
 
 impl Container {
+    fn remove(&mut self, id: ItemId) -> Option<Item> {
+        let idx = self.items.iter().position(|item| item.id == id);
+        idx.map(|i| self.items.remove(i))
+    }
+
     fn body(&self, ui: &mut egui::Ui) -> egui::InnerResponse<Option<ItemData>> {
         // make a grid, use ui.put for manual layout
         ui.horizontal(|ui| {
             let mut drag_item = None;
             for item in self.items.iter() {
                 if let Some(id) = item.ui(ui) {
-                    drag_item = Some(id)
+                    drag_item = Some((id, self.id))
                 }
             }
             drag_item
@@ -202,7 +235,7 @@ impl Item {
     }
 
     // this combines drag_source and the body, need to separate again
-    fn ui(&self, ui: &mut egui::Ui) -> Option<ItemData> {
+    fn ui(&self, ui: &mut egui::Ui) -> Option<ItemId> {
         // egui::InnerResponse<ItemData> {
         let id = egui::Id::new(self.id);
         let drag = ui.memory().is_being_dragged(id);
@@ -223,7 +256,7 @@ impl Item {
                 let delta = pointer_pos - response.rect.center();
                 ui.ctx().translate_layer(layer_id, delta);
             }
-            Some(id)
+            Some(self.id)
         }
     }
 }

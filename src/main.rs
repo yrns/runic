@@ -226,7 +226,7 @@ impl Item {
         Self {
             id,
             rotation: Default::default(),
-            shape: shape::Shape::new((1, 1)),
+            shape: shape::Shape::new((1, 1), true),
         }
     }
 

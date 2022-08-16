@@ -47,21 +47,21 @@ impl From<(usize, usize)> for Vec2 {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
     size: Vec2,
     fill: BitVec,
 }
 
 impl Shape {
-    pub fn new(size: impl Into<Vec2>) -> Self {
+    pub fn new(size: impl Into<Vec2>, fill: bool) -> Self {
         let size = size.into();
         assert!(size.x > 0, "width greater than zero");
         assert!(size.y > 0, "height greater than zero");
         let len = size.len();
         Self {
             size,
-            fill: BitVec::repeat(true, len),
+            fill: BitVec::repeat(fill, len),
         }
     }
 
@@ -91,8 +91,23 @@ impl Shape {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
-    pub fn paint(&mut self, _other: &Shape, _pt: impl Into<Vec2>) {
-        todo!()
+    pub fn paint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
+        let pt = pt.into();
+        let pt2 = pt + other.size;
+        if self.contains(pt) && self.contains(pt2) {
+            let start = self.slot(pt);
+            let end = self.slot(pt2 - (1, 1).into());
+            let w = self.width();
+            self.fill[start..=end]
+                .chunks_mut(w)
+                .map(|row| &mut row[..(other.width())])
+                .zip(other.fill.chunks(other.width()))
+                .for_each(|(r1, r2)| {
+                    r1.iter_mut()
+                        .zip(r2.iter())
+                        .for_each(|(mut a, b)| *a = *a || *b)
+                })
+        }
     }
 
     pub fn fits(&self, other: &Shape, pt: impl Into<Vec2>) -> bool {
@@ -142,5 +157,13 @@ mod tests {
         assert!(a.fits(&b, (1, 0)) == false);
         assert!(a.fits(&b, (2, 0)) == true);
         assert!(a.fits(&b, (3, 0)) == false); // outside
+    }
+
+    #[test]
+    fn paint() {
+        let mut a = Shape::from_bits(4, bits![0, 0, 0, 0]);
+        let b = Shape::from_bits(2, bits![1, 1]);
+        a.paint(&b, (0, 0));
+        assert_eq!(a, Shape::from_bits(4, bits![1, 1, 0, 0]));
     }
 }

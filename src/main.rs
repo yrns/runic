@@ -1,6 +1,8 @@
 use eframe::egui;
 use egui::InnerResponse;
 
+mod shape;
+
 fn main() {
     tracing_subscriber::fmt::init();
     let options = eframe::NativeOptions::default();
@@ -216,7 +218,7 @@ struct Item {
     // lieu of size?
     //mask: ItemMask,
     // width/height in units
-    size: (u8, u8),
+    shape: shape::Shape,
 }
 
 impl Item {
@@ -224,7 +226,7 @@ impl Item {
         Self {
             id,
             rotation: Default::default(),
-            size: (0, 0),
+            shape: shape::Shape::new((1, 1)),
         }
     }
 
@@ -265,7 +267,7 @@ impl Item {
 enum ItemRotation {
     #[default]
     Up,
-    Left,
-    Down,
-    Right,
+    //Left,
+    //Down,
+    //Right,
 }

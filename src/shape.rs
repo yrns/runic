@@ -91,12 +91,14 @@ impl Shape {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
-    pub fn paint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
-        let pt = pt.into();
-        let pt2 = pt + other.size;
-        if self.contains(pt) && self.contains(pt2) {
-            let start = self.slot(pt);
-            let end = self.slot(pt2 - (1, 1).into());
+    fn overlay_range(&self, other: &Shape, p1: Vec2) -> Option<(usize, usize)> {
+        let p2 = p1 + other.size;
+        (self.contains(p1) && self.contains(p2))
+            .then(|| (self.slot(p1), self.slot(p2 - (1, 1).into())))
+    }
+
+    pub fn overlay_mut(&mut self, other: &Shape, pt: Vec2, f: impl Fn(&mut bool, &bool)) {
+        if let Some((start, end)) = self.overlay_range(other, pt) {
             let w = self.width();
             self.fill[start..=end]
                 .chunks_mut(w)
@@ -105,36 +107,21 @@ impl Shape {
                 .for_each(|(r1, r2)| {
                     r1.iter_mut()
                         .zip(r2.iter())
-                        .for_each(|(mut a, b)| *a = *a || *b)
+                        .for_each(|(mut a, b)| f(&mut *a, &*b))
                 })
         }
+    }
+
+    pub fn paint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
+        self.overlay_mut(other, pt.into(), |a, b| *a = *a || *b)
     }
 
     pub fn unpaint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
-        let pt = pt.into();
-        let pt2 = pt + other.size;
-        if self.contains(pt) && self.contains(pt2) {
-            let start = self.slot(pt);
-            let end = self.slot(pt2 - (1, 1).into());
-            let w = self.width();
-            self.fill[start..=end]
-                .chunks_mut(w)
-                .map(|row| &mut row[..(other.width())])
-                .zip(other.fill.chunks(other.width()))
-                .for_each(|(r1, r2)| {
-                    r1.iter_mut()
-                        .zip(r2.iter())
-                        .for_each(|(mut a, b)| *a = *a && !*b)
-                })
-        }
+        self.overlay_mut(other, pt.into(), |a, b| *a = *a && !*b)
     }
 
     pub fn fits(&self, other: &Shape, pt: impl Into<Vec2>) -> bool {
-        let pt = pt.into();
-        let pt2 = pt + other.size;
-        if self.contains(pt) && self.contains(pt2) {
-            let start = self.slot(pt);
-            let end = self.slot(pt2 - (1, 1).into());
+        if let Some((start, end)) = self.overlay_range(other, pt.into()) {
             self.fill[start..=end]
                 .chunks(self.width())
                 .map(|row| &row[..(other.width())])

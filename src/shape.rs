@@ -110,6 +110,25 @@ impl Shape {
         }
     }
 
+    pub fn unpaint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
+        let pt = pt.into();
+        let pt2 = pt + other.size;
+        if self.contains(pt) && self.contains(pt2) {
+            let start = self.slot(pt);
+            let end = self.slot(pt2 - (1, 1).into());
+            let w = self.width();
+            self.fill[start..=end]
+                .chunks_mut(w)
+                .map(|row| &mut row[..(other.width())])
+                .zip(other.fill.chunks(other.width()))
+                .for_each(|(r1, r2)| {
+                    r1.iter_mut()
+                        .zip(r2.iter())
+                        .for_each(|(mut a, b)| *a = *a && !*b)
+                })
+        }
+    }
+
     pub fn fits(&self, other: &Shape, pt: impl Into<Vec2>) -> bool {
         let pt = pt.into();
         let pt2 = pt + other.size;
@@ -165,5 +184,16 @@ mod tests {
         let b = Shape::from_bits(2, bits![1, 1]);
         a.paint(&b, (0, 0));
         assert_eq!(a, Shape::from_bits(4, bits![1, 1, 0, 0]));
+    }
+
+    #[test]
+    fn unpaint() {
+        let mut a = Shape::from_bits(4, bits![0, 1, 1, 1]);
+        let b = Shape::from_bits(2, bits![1, 1]);
+        let res = Shape::from_bits(4, bits![0, 0, 1, 1]);
+        a.unpaint(&b, (0, 0));
+        assert_eq!(a, res);
+        a.unpaint(&b, (0, 0));
+        assert_eq!(a, res);
     }
 }

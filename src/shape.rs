@@ -137,6 +137,10 @@ impl Shape {
     pub fn slot(&self, pt: Vec2) -> usize {
         pt.x as usize + pt.y as usize * self.width()
     }
+
+    pub fn pos(&self, slot: usize) -> Vec2 {
+        (slot / self.width() as usize, slot % self.width() as usize).into()
+    }
 }
 
 #[cfg(test)]

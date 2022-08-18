@@ -1,7 +1,10 @@
 use eframe::egui;
-use egui::InnerResponse;
+use egui::{InnerResponse, TextureId};
+use egui_extras::RetainedImage;
 
 mod shape;
+
+const ITEM_SIZE: f32 = 32.0;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -9,24 +12,35 @@ fn main() {
     eframe::run_native(
         "runic",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
+            let icon = RetainedImage::from_image_bytes(
+                "potion-icon-24.png",
+                include_bytes!("../potion-icon-24.png",),
+            )
+            .unwrap();
+
+            //let icon = RetainedImage::from_color_image("example", egui::ColorImage::example());
+
             // this should pull from a data source only when it changes,
             // and only for open containers?
+
+            let mut container1 = Container::new(1, 4, 4);
+            container1.add((0, 0).into(), Item::new(2, icon.texture_id(&cc.egui_ctx)));
+
+            let mut container2 = Container::new(3, 2, 2);
+            container2.add((0, 0).into(), Item::new(4, icon.texture_id(&cc.egui_ctx)));
+
             Box::new(Runic {
-                container1: Container {
-                    id: 1,
-                    items: vec![Item::new(2), Item::new(3)],
-                },
-                container2: Container {
-                    id: 4,
-                    items: vec![Item::new(5), Item::new(6)],
-                },
+                icon,
+                container1,
+                container2,
             })
         }),
     )
 }
 
 struct Runic {
+    icon: RetainedImage,
     container1: Container,
     container2: Container,
 }
@@ -89,15 +103,18 @@ impl eframe::App for Runic {
 
                 if let Some(item) = match prev {
                     1 => self.container1.remove(id),
-                    4 => self.container2.remove(id),
+                    3 => self.container2.remove(id),
                     _ => None,
                 } {
                     match container {
-                        1 => self.container1.items.push(item),
-                        4 => self.container2.items.push(item),
+                        1 => self.container1.add((0, 0).into(), item), // FIX
+                        3 => self.container2.add((0, 0).into(), item),
                         _ => (),
                     }
                 }
+
+                tracing::info!("container1 items: {:?}", self.container1.items);
+                tracing::info!("container2 items: {:?}", self.container2.items);
             }
         });
     }
@@ -132,23 +149,36 @@ struct Container {
     id: usize,
     // returned from item
     //drag_item: Option<ItemData>,
-    items: Vec<Item>,
-    //size: ?
-    //mask: ?
+    items: Vec<(usize, Item)>,
+    shape: shape::Shape,
     //slot/type: ?
 }
 
 impl Container {
+    fn new(id: usize, width: usize, height: usize) -> Self {
+        Self {
+            id,
+            items: Vec::new(),
+            shape: shape::Shape::new((width, height), false),
+        }
+    }
+
+    fn add(&mut self, pt: shape::Vec2, item: Item) {
+        self.shape.paint(&item.shape, pt);
+        let slot = self.shape.slot(pt); // FIX
+        self.items.push((slot, item));
+    }
+
     fn remove(&mut self, id: ItemId) -> Option<Item> {
-        let idx = self.items.iter().position(|item| item.id == id);
-        idx.map(|i| self.items.remove(i))
+        let idx = self.items.iter().position(|(_, item)| item.id == id);
+        idx.map(|i| self.items.remove(i)).map(|(_, item)| item)
     }
 
     fn body(&self, ui: &mut egui::Ui) -> egui::InnerResponse<Option<ItemData>> {
         // make a grid, use ui.put for manual layout
         ui.horizontal(|ui| {
             let mut drag_item = None;
-            for item in self.items.iter() {
+            for (_slot, item) in self.items.iter() {
                 if let Some(id) = item.ui(ui) {
                     drag_item = Some((id, self.id))
                 }
@@ -212,6 +242,7 @@ impl Container {
     }
 }
 
+#[derive(Debug)]
 struct Item {
     id: usize,
     rotation: ItemRotation,
@@ -219,21 +250,25 @@ struct Item {
     //mask: ItemMask,
     // width/height in units
     shape: shape::Shape,
+    icon: TextureId,
 }
 
 impl Item {
-    fn new(id: usize) -> Self {
+    fn new(id: usize, icon: TextureId) -> Self {
         Self {
             id,
             rotation: Default::default(),
             shape: shape::Shape::new((1, 1), true),
+            icon,
         }
     }
 
     fn body(&self, ui: &mut egui::Ui) -> egui::Response {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
-        ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
+        //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
+
+        ui.add(egui::Image::new(self.icon, (ITEM_SIZE, ITEM_SIZE)).sense(egui::Sense::click()))
     }
 
     // this combines drag_source and the body, need to separate again
@@ -263,7 +298,7 @@ impl Item {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 enum ItemRotation {
     #[default]
     Up,

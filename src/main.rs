@@ -265,20 +265,24 @@ impl Container {
 
             // check if the shape fits here
             // TODO unpaint shape if same container move
+
             if let Some(slot) = slot {
                 fits = self.shape.fits(&item.shape, self.shape.pos(dbg!(slot)));
+
+                let color = if fits {
+                    egui::color::Color32::GREEN
+                } else {
+                    egui::color::Color32::RED
+                };
+                let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
                 // paint slot
                 let slot_rect = egui::Rect::from_min_size(
                     grid_rect.min + self.pos(slot),
                     egui::Vec2::new(ITEM_SIZE, ITEM_SIZE),
                 );
-                ui.painter().rect(
-                    slot_rect,
-                    0.,
-                    egui::color::Color32::BLUE,
-                    egui::Stroke::none(),
-                )
+                ui.painter()
+                    .rect(slot_rect, 0., color, egui::Stroke::none())
             }
         }
 

@@ -25,13 +25,14 @@ fn main() {
             // and only for open containers?
 
             let mut container1 = Container::new(1, 4, 4);
-            container1.add((0, 0).into(), Item::new(2, icon.texture_id(&cc.egui_ctx)));
+            container1.add(0, Item::new(2, icon.texture_id(&cc.egui_ctx)));
 
             let mut container2 = Container::new(3, 2, 2);
-            container2.add((0, 0).into(), Item::new(4, icon.texture_id(&cc.egui_ctx)));
+            container2.add(0, Item::new(4, icon.texture_id(&cc.egui_ctx)));
 
             Box::new(Runic {
                 icon,
+                drag_item: None,
                 container1,
                 container2,
             })
@@ -41,28 +42,31 @@ fn main() {
 
 struct Runic {
     icon: RetainedImage,
+    drag_item: Option<DragItem>,
     container1: Container,
     container2: Container,
 }
 
-// item/container + widget id? tuple
-type ItemId = usize;
 type ContainerId = usize;
-type ItemData = (ItemId, ContainerId);
-type ContainerData = ContainerId; //egui::Id;
+// item -> old container
+type DragItem = (Item, ContainerId);
+// new container -> new slot
+type ContainerData = (ContainerId, usize);
 
 /// source item -> target container
+#[derive(Debug)]
 struct MoveData {
-    item: Option<ItemData>,
+    item: Option<DragItem>,
     container: Option<ContainerData>,
 }
 
 impl MoveData {
+    // we could just use zip
     fn merge(self, other: Self) -> Self {
-        if self.item.and(other.item).is_some() {
-            tracing::error!("multiple items! ({:?} and {:?})", self.item, other.item);
+        if self.item.is_some() && other.item.is_some() {
+            tracing::error!("multiple items! ({:?} and {:?})", &self.item, &other.item);
         }
-        if self.container.and(other.container).is_some() {
+        if self.container.is_some() && other.container.is_some() {
             tracing::error!(
                 "multiple containers! ({:?} and {:?})",
                 self.container,
@@ -74,81 +78,83 @@ impl MoveData {
             container: self.container.or(other.container),
         }
     }
-
-    fn data(&self) -> Option<(ItemData, ContainerData)> {
-        match self {
-            Self {
-                item: Some(item),
-                container: Some(container),
-            } => Some((*item, *container)),
-            _ => None,
-        }
-    }
 }
 
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some((item, container)) = ContainerSpace::default().show(ui, |ui| {
-                // need to resolve how these results are merged with a
-                // hierarchy of containers and items
-                self.container1
-                    .ui(ui)
-                    .inner
-                    .merge(self.container2.ui(ui).inner)
-            }) {
+            if let Some((item, container)) =
+                ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
+                    // need to resolve how these results are merged with a
+                    // hierarchy of containers and items
+                    self.container1
+                        .ui(drag_item, ui)
+                        .inner
+                        .merge(self.container2.ui(drag_item, ui).inner)
+                })
+            {
                 tracing::info!("moving item {:?} -> container {:?}", item, container);
 
-                let (id, prev) = item;
+                let (item, prev) = item;
 
                 if let Some(item) = match prev {
-                    1 => self.container1.remove(id),
-                    3 => self.container2.remove(id),
+                    1 => self.container1.remove(item.id),
+                    3 => self.container2.remove(item.id),
                     _ => None,
                 } {
                     match container {
-                        1 => self.container1.add((0, 0).into(), item), // FIX
-                        3 => self.container2.add((0, 0).into(), item),
+                        (1, slot) => self.container1.add(slot, item), // FIX,
+                        (3, slot) => self.container2.add(slot, item),
                         _ => (),
                     }
                 }
 
-                tracing::info!("container1 items: {:?}", self.container1.items);
-                tracing::info!("container2 items: {:?}", self.container2.items);
+                tracing::info!("container1 items: {:?}", self.container1.items.len());
+                tracing::info!("container2 items: {:?}", self.container2.items.len());
             }
         });
     }
 }
 
-#[derive(Default)]
-struct ContainerSpace {
-    // nothing yet
-}
+struct ContainerSpace;
 
 impl ContainerSpace {
     // not a widget since it doesn't return a Response
     fn show(
-        self,
+        drag_item: &mut Option<DragItem>,
         ui: &mut egui::Ui,
-        add_contents: impl FnOnce(&mut egui::Ui) -> MoveData,
-    ) -> Option<(ItemData, ContainerData)> {
+        add_contents: impl FnOnce(&Option<DragItem>, &mut egui::Ui) -> MoveData,
+    ) -> Option<(DragItem, ContainerData)> {
         // what about a handler for the container that had an item
         // removed?
-        // include old container id?
         // do something w/ inner state, i.e. move items
-        let data = add_contents(ui).data();
-        match ui.input().pointer.any_released() {
-            true => data,
-            _ => None,
+        let MoveData { item, container } = add_contents(drag_item, ui);
+        if let Some(item) = item {
+            // assert!(drag_item.is_none());
+            //*drag_item = Some(item);
+            assert!(drag_item.replace(item).is_none());
         }
+        //let dragged = ui.memory().is_anything_being_dragged();
+        // tracing::info!(
+        //     "dragging: {} pointer released: {} drag_item: {} container: {}",
+        //     dragged,
+        //     ui.input().pointer.any_released(),
+        //     drag_item.is_some(),
+        //     container.is_some()
+        // );
+        ui.input()
+            .pointer
+            .any_released()
+            .then(|| drag_item.take().zip(container))
+            .flatten()
     }
 }
 
-// this is a struct because it'll eventually be a trait
+// this is a struct because it'll eventually be a trait?
 struct Container {
     id: usize,
     // returned from item
-    //drag_item: Option<ItemData>,
+    //drag_item: Option<DragItem>,
     items: Vec<(usize, Item)>,
     shape: shape::Shape,
     //slot/type: ?
@@ -163,37 +169,64 @@ impl Container {
         }
     }
 
-    fn add(&mut self, pt: shape::Vec2, item: Item) {
-        self.shape.paint(&item.shape, pt);
-        let slot = self.shape.slot(pt); // FIX
+    fn pos(&self, slot: usize) -> egui::Vec2 {
+        egui::Vec2::new(
+            (slot % self.shape.width()) as f32 * ITEM_SIZE,
+            (slot / self.shape.width()) as f32 * ITEM_SIZE,
+        )
+    }
+
+    fn slot(&self, p: egui::Vec2) -> usize {
+        let p = p / ITEM_SIZE;
+        p.x as usize + p.y as usize * self.shape.width()
+    }
+
+    fn add(&mut self, slot: usize, item: Item) {
+        self.shape.paint(&item.shape, self.shape.pos(slot));
         self.items.push((slot, item));
     }
 
-    fn remove(&mut self, id: ItemId) -> Option<Item> {
+    fn remove(&mut self, id: usize) -> Option<Item> {
         let idx = self.items.iter().position(|(_, item)| item.id == id);
         idx.map(|i| self.items.remove(i)).map(|(_, item)| item)
     }
 
-    fn body(&self, ui: &mut egui::Ui) -> egui::InnerResponse<Option<ItemData>> {
-        // make a grid, use ui.put for manual layout
-        ui.horizontal(|ui| {
-            let mut drag_item = None;
-            for (_slot, item) in self.items.iter() {
-                if let Some(id) = item.ui(ui) {
-                    drag_item = Some((id, self.id))
+    fn body(
+        &self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>> {
+        // allocate the full container size
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(
+                self.shape.width() as f32 * ITEM_SIZE,
+                self.shape.height() as f32 * ITEM_SIZE,
+            ),
+            egui::Sense::hover(),
+        );
+
+        let mut new_drag = None;
+
+        if ui.is_rect_visible(rect) {
+            let item_size = egui::vec2(ITEM_SIZE, ITEM_SIZE);
+            for (slot, item) in self.items.iter() {
+                let item_rect =
+                    egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
+                // item returns its id if it's being dragged
+                if let Some(id) = ui
+                    .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
+                    .inner
+                {
+                    // add the container id
+                    new_drag = Some((id, self.id))
                 }
             }
-            drag_item
-        })
+        }
+        InnerResponse::new(new_drag, response)
     }
 
     // this is drop_target
-    fn ui(&self, ui: &mut egui::Ui) -> egui::InnerResponse<MoveData> {
-        let can_accept_what_is_being_dragged = true;
-
-        let dragging = ui.memory().is_anything_being_dragged();
-        let accept_move = dragging && can_accept_what_is_being_dragged;
-
+    fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::InnerResponse<MoveData> {
         let margin = egui::Vec2::splat(4.0);
 
         let outer_rect_bounds = ui.available_rect_before_wrap();
@@ -201,13 +234,59 @@ impl Container {
         let where_to_put_background = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        let egui::InnerResponse { inner, response: _ } = self.body(&mut content_ui);
+        let egui::InnerResponse { inner, response } = self.body(drag_item, &mut content_ui);
+        let mut dragging = false;
+        let mut accepts = false;
+        let mut slot = None;
+        let mut fits = false;
+
+        // need to remove this if anything else utilizes drag (e.g. a slider)
+        if ui.memory().is_anything_being_dragged() != drag_item.is_some() {
+            tracing::error!(
+                "container: {} dragging: {} drag_item: {:?}",
+                self.id,
+                ui.memory().is_anything_being_dragged(),
+                drag_item
+            );
+        }
+
+        // we need to pass back the full data from items since they
+        // can be containers too, container is a super type of item?
+
+        //if let Some((item, _container)) = &inner {
+        if let Some((item, _container)) = drag_item {
+            dragging = true;
+            // tarkov also checks if containers are full, even if not
+            // hovering -- maybe track min size free?
+            accepts = true; // check item type TODO
+
+            let grid_rect = content_ui.min_rect();
+            slot = response.hover_pos().map(|p| self.slot(p - grid_rect.min));
+
+            // check if the shape fits here
+            // TODO unpaint shape if same container move
+            if let Some(slot) = slot {
+                fits = self.shape.fits(&item.shape, self.shape.pos(dbg!(slot)));
+
+                // paint slot
+                let slot_rect = egui::Rect::from_min_size(
+                    grid_rect.min + self.pos(slot),
+                    egui::Vec2::new(ITEM_SIZE, ITEM_SIZE),
+                );
+                ui.painter().rect(
+                    slot_rect,
+                    0.,
+                    egui::color::Color32::BLUE,
+                    egui::Stroke::none(),
+                )
+            }
+        }
 
         let outer_rect =
             egui::Rect::from_min_max(outer_rect_bounds.min, content_ui.min_rect().max + margin);
         let (rect, response) = ui.allocate_at_least(outer_rect.size(), egui::Sense::hover());
 
-        let style = if accept_move && response.hovered() {
+        let style = if dragging && accepts && response.hovered() {
             ui.visuals().widgets.active
         } else {
             ui.visuals().widgets.inactive
@@ -215,7 +294,7 @@ impl Container {
 
         let mut fill = style.bg_fill;
         let mut stroke = style.bg_stroke;
-        if accept_move {
+        if dragging && accepts {
             // gray out:
             fill = egui::color::tint_color_towards(fill, ui.visuals().window_fill());
             stroke.color =
@@ -235,14 +314,14 @@ impl Container {
         InnerResponse::new(
             MoveData {
                 item: inner,
-                container: (accept_move && response.hovered()).then_some(self.id),
+                container: (dragging && accepts && fits).then(|| (self.id, slot.unwrap())),
             },
             response,
         )
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Item {
     id: usize,
     rotation: ItemRotation,
@@ -272,8 +351,8 @@ impl Item {
     }
 
     // this combines drag_source and the body, need to separate again
-    fn ui(&self, ui: &mut egui::Ui) -> Option<ItemId> {
-        // egui::InnerResponse<ItemData> {
+    fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
+        // egui::InnerResponse<DragItem> {
         let id = egui::Id::new(self.id);
         let drag = ui.memory().is_being_dragged(id);
         if !drag {
@@ -293,12 +372,25 @@ impl Item {
                 let delta = pointer_pos - response.rect.center();
                 ui.ctx().translate_layer(layer_id, delta);
             }
-            Some(self.id)
+
+            // make sure there is no existing drag_item or it matches
+            // our id
+            assert!(
+                drag_item.is_none() || drag_item.as_ref().map(|(item, _)| item.id) == Some(self.id)
+            );
+
+            // only send back a clone if this is a new drag (drag_item
+            // is empty)
+            if drag_item.is_none() {
+                Some(self.clone())
+            } else {
+                None
+            }
         }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 enum ItemRotation {
     #[default]
     Up,

@@ -140,6 +140,14 @@ impl Shape {
 
     pub fn pos(&self, slot: usize) -> Vec2 {
         (slot / self.width() as usize, slot % self.width() as usize).into()
+    /// Returns an iterator over filled slots.
+    pub fn slots(&self) -> impl Iterator<Item = usize> + '_ {
+        self.fill
+            .iter()
+            .enumerate()
+            .filter_map(|(i, b)| b.then_some(i))
+    }
+}
 
 impl std::fmt::Display for Shape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -200,5 +208,11 @@ mod tests {
         assert_eq!(a, res);
         a.unpaint(&b, (0, 0));
         assert_eq!(a, res);
+    }
+
+    #[test]
+    fn slots_iter() {
+        let a = Shape::from_bits(2, bits![1, 1, 1, 1]);
+        assert_eq!(a.slots().collect::<Vec<_>>(), vec![0, 1, 2, 3]);
     }
 }

@@ -176,6 +176,8 @@ impl Container {
         )
     }
 
+    /// Returns container slot given a point inside the container's
+    /// shape. Returns invalid results if outside.
     fn slot(&self, p: egui::Vec2) -> usize {
         let p = p / ITEM_SIZE;
         p.x as usize + p.y as usize * self.shape.width()
@@ -188,7 +190,10 @@ impl Container {
 
     fn remove(&mut self, id: usize) -> Option<Item> {
         let idx = self.items.iter().position(|(_, item)| item.id == id);
-        idx.map(|i| self.items.remove(i)).map(|(_, item)| item)
+        idx.map(|i| self.items.remove(i)).map(|(slot, item)| {
+            self.shape.unpaint(&item.shape, self.shape.pos(slot));
+            item
+        })
     }
 
     fn body(
@@ -261,7 +266,11 @@ impl Container {
             accepts = true; // check item type TODO
 
             let grid_rect = content_ui.min_rect();
-            slot = response.hover_pos().map(|p| self.slot(p - grid_rect.min));
+            slot = response
+                .hover_pos()
+                // the hover includes the outer_rect?
+                .filter(|p| grid_rect.contains(*p))
+                .map(|p| self.slot(p - grid_rect.min));
 
             // check if the shape fits here
             // TODO unpaint shape if same container move

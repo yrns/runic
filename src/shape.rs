@@ -140,6 +140,20 @@ impl Shape {
 
     pub fn pos(&self, slot: usize) -> Vec2 {
         (slot / self.width() as usize, slot % self.width() as usize).into()
+
+impl std::fmt::Display for Shape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.fill
+            .as_bitslice()
+            .chunks(self.width())
+            .map(|r| {
+                r.iter()
+                    .map(|b| if *b { "\u{25A0}" } else { "\u{25A1}" })
+                    .chain(std::iter::once("\n"))
+                    .map(|x| write!(f, "{}", x))
+                    .collect()
+            })
+            .collect()
     }
 }
 

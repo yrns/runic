@@ -259,7 +259,7 @@ impl Container {
         // can be containers too, container is a super type of item?
 
         //if let Some((item, _container)) = &inner {
-        if let Some((item, _container)) = drag_item {
+        if let Some((item, container)) = drag_item {
             dragging = true;
             // tarkov also checks if containers are full, even if not
             // hovering -- maybe track min size free?
@@ -276,7 +276,16 @@ impl Container {
             // TODO unpaint shape if same container move
 
             if let Some(slot) = slot {
-                fits = self.shape.fits(&item.shape, self.shape.pos(dbg!(slot)));
+                // When moving within one container, unpaint the shape
+                // first.
+                fits = if *container == self.id {
+                    let mut shape = self.shape.clone();
+                    let p = shape.pos(slot);
+                    shape.unpaint(&item.shape, p);
+                    shape.fits(&item.shape, p)
+                } else {
+                    self.shape.fits(&item.shape, self.shape.pos(slot))
+                };
 
                 let color = if fits {
                     egui::color::Color32::GREEN

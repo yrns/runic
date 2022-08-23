@@ -25,10 +25,24 @@ fn main() {
             // and only for open containers?
 
             let mut container1 = Container::new(1, 4, 4);
-            container1.add(0, Item::new(2, icon.texture_id(&cc.egui_ctx)));
+            container1.add(
+                0,
+                Item::new(
+                    2,
+                    icon.texture_id(&cc.egui_ctx),
+                    shape::Shape::new((2, 2), true),
+                ),
+            );
 
             let mut container2 = Container::new(3, 2, 2);
-            container2.add(0, Item::new(4, icon.texture_id(&cc.egui_ctx)));
+            container2.add(
+                0,
+                Item::new(
+                    4,
+                    icon.texture_id(&cc.egui_ctx),
+                    shape::Shape::new((1, 1), true),
+                ),
+            );
 
             Box::new(Runic {
                 icon,
@@ -48,8 +62,8 @@ struct Runic {
 }
 
 type ContainerId = usize;
-// item -> old container
-type DragItem = (Item, ContainerId);
+// item -> old container -> old slot
+type DragItem = (Item, ContainerId, usize);
 // new container -> new slot
 type ContainerData = (ContainerId, usize);
 
@@ -95,7 +109,7 @@ impl eframe::App for Runic {
             {
                 tracing::info!("moving item {:?} -> container {:?}", item, container);
 
-                let (item, prev) = item;
+                let (item, prev, _slot) = item;
 
                 if let Some(item) = match prev {
                     1 => self.container1.remove(item.id),
@@ -170,10 +184,7 @@ impl Container {
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
-        egui::Vec2::new(
-            (slot % self.shape.width()) as f32 * ITEM_SIZE,
-            (slot / self.shape.width()) as f32 * ITEM_SIZE,
-        )
+        self.shape.pos_f32(slot, ITEM_SIZE).into()
     }
 
     /// Returns container slot given a point inside the container's
@@ -222,8 +233,8 @@ impl Container {
                     .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
                     .inner
                 {
-                    // add the container id
-                    new_drag = Some((id, self.id))
+                    // add the container id and current slot
+                    new_drag = Some((id, self.id, *slot))
                 }
             }
         }
@@ -259,7 +270,7 @@ impl Container {
         // can be containers too, container is a super type of item?
 
         //if let Some((item, _container)) = &inner {
-        if let Some((item, container)) = drag_item {
+        if let Some((item, container, curr_slot)) = drag_item {
             dragging = true;
             // tarkov also checks if containers are full, even if not
             // hovering -- maybe track min size free?
@@ -272,16 +283,14 @@ impl Container {
                 .filter(|p| grid_rect.contains(*p))
                 .map(|p| self.slot(p - grid_rect.min));
 
-            // check if the shape fits here
-            // TODO unpaint shape if same container move
-
             if let Some(slot) = slot {
-                // When moving within one container, unpaint the shape
-                // first.
+                // Check if the shape fits here. When moving within
+                // one container, unpaint the shape first.
                 fits = if *container == self.id {
                     let mut shape = self.shape.clone();
                     let p = shape.pos(slot);
-                    shape.unpaint(&item.shape, p);
+                    shape.unpaint(&item.shape, shape.pos(*curr_slot));
+                    //println!("{}", &shape);
                     shape.fits(&item.shape, p)
                 } else {
                     self.shape.fits(&item.shape, self.shape.pos(slot))
@@ -294,13 +303,18 @@ impl Container {
                 };
                 let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
-                // paint slot
-                let slot_rect = egui::Rect::from_min_size(
-                    grid_rect.min + self.pos(slot),
-                    egui::Vec2::new(ITEM_SIZE, ITEM_SIZE),
-                );
-                ui.painter()
-                    .rect(slot_rect, 0., color, egui::Stroke::none())
+                // paint item slots
+                let p = grid_rect.min + self.pos(slot);
+                item.shape
+                    .slots()
+                    .map(|slot| p + item.shape.pos_f32(slot, ITEM_SIZE).into())
+                    .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+                    .for_each(|p| {
+                        let slot_rect =
+                            egui::Rect::from_min_size(p, egui::Vec2::new(ITEM_SIZE, ITEM_SIZE));
+                        ui.painter()
+                            .rect(slot_rect, 0., color, egui::Stroke::none())
+                    })
             }
         }
 
@@ -355,11 +369,11 @@ struct Item {
 }
 
 impl Item {
-    fn new(id: usize, icon: TextureId) -> Self {
+    fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
         Self {
             id,
             rotation: Default::default(),
-            shape: shape::Shape::new((1, 1), true),
+            shape,
             icon,
         }
     }
@@ -369,7 +383,16 @@ impl Item {
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
 
-        ui.add(egui::Image::new(self.icon, (ITEM_SIZE, ITEM_SIZE)).sense(egui::Sense::click()))
+        ui.add(
+            egui::Image::new(
+                self.icon,
+                (
+                    ITEM_SIZE * self.shape.width() as f32,
+                    ITEM_SIZE * self.shape.height() as f32,
+                ),
+            )
+            .sense(egui::Sense::click()),
+        )
     }
 
     // this combines drag_source and the body, need to separate again
@@ -398,7 +421,7 @@ impl Item {
             // make sure there is no existing drag_item or it matches
             // our id
             assert!(
-                drag_item.is_none() || drag_item.as_ref().map(|(item, _)| item.id) == Some(self.id)
+                drag_item.is_none() || drag_item.as_ref().map(|item| item.0.id) == Some(self.id)
             );
 
             // only send back a clone if this is a new drag (drag_item

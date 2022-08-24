@@ -134,14 +134,17 @@ impl Shape {
         }
     }
 
+    #[inline]
     pub fn slot(&self, pt: Vec2) -> usize {
         pt.x as usize + pt.y as usize * self.width()
     }
 
+    #[inline]
     pub fn pos(&self, slot: usize) -> Vec2 {
         (slot % self.width(), slot / self.width()).into()
     }
 
+    #[inline]
     pub fn pos_f32(&self, slot: usize, scale: f32) -> (f32, f32) {
         (
             (slot % self.width()) as f32 * scale,
@@ -156,13 +159,73 @@ impl Shape {
             .enumerate()
             .filter_map(|(i, b)| b.then_some(i))
     }
+
+    pub fn rows(&self) -> impl Iterator<Item = &BitSlice> + '_ {
+        self.fill.as_bitslice().chunks(self.width())
+    }
+
+    // These are adapted from the image crate: https://github.com/image-rs/image/blob/master/src/imageops/affine.rs.
+
+    pub fn rotate90(&self) -> Self {
+        let (w, h) = (self.width(), self.height());
+        let mut dest = Self {
+            size: (h, w).into(),
+            fill: BitVec::repeat(false, self.fill.len()),
+        };
+        let slice = dest.fill.as_mut_bitslice();
+        for y in 0..h {
+            for x in 0..w {
+                let b = self.fill[self.slot((x, y).into())];
+                // dest.slot(h - y - 1, x)
+                let slot = h - y - 1 + x * h;
+                slice.set(slot, b);
+            }
+        }
+        dest
+    }
+
+    #[allow(dead_code)]
+    pub fn rotate180(&self) -> Self {
+        let (w, h) = (self.width(), self.height());
+        let mut dest = Self {
+            size: (w, h).into(),
+            fill: BitVec::repeat(false, self.fill.len()),
+        };
+        let slice = dest.fill.as_mut_bitslice();
+        for y in 0..h {
+            for x in 0..w {
+                let b = self.fill[self.slot((x, y).into())];
+                // dest.slot(w - x - 1, h - y - 1)
+                let slot = w - x - 1 + (h - y - 1) * w;
+                slice.set(slot, b);
+            }
+        }
+        dest
+    }
+
+    #[allow(dead_code)]
+    pub fn rotate270(&self) -> Self {
+        let (w, h) = (self.width(), self.height());
+        let mut dest = Self {
+            size: (h, w).into(),
+            fill: BitVec::repeat(false, self.fill.len()),
+        };
+        let slice = dest.fill.as_mut_bitslice();
+        for y in 0..h {
+            for x in 0..w {
+                let b = self.fill[self.slot((x, y).into())];
+                // dest.slot(y, w - x - 1)
+                let slot = y + (w - x - 1) * h;
+                slice.set(slot, b);
+            }
+        }
+        dest
+    }
 }
 
 impl std::fmt::Display for Shape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.fill
-            .as_bitslice()
-            .chunks(self.width())
+        self.rows()
             .map(|r| {
                 r.iter()
                     .map(|b| if *b { "\u{25A0}" } else { "\u{25A1}" })
@@ -223,5 +286,18 @@ mod tests {
     fn slots_iter() {
         let a = Shape::from_bits(2, bits![1, 1, 1, 1]);
         assert_eq!(a.slots().collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn rotate() {
+        let a = Shape::from_bits(2, bits![1, 0, 0, 0]);
+        assert_eq!(a.rotate90(), Shape::from_bits(2, bits![0, 1, 0, 0]));
+        assert_eq!(a.rotate180(), Shape::from_bits(2, bits![0, 0, 0, 1]));
+        assert_eq!(a.rotate270(), Shape::from_bits(2, bits![0, 0, 1, 0]));
+
+        let a = Shape::from_bits(3, bits![1, 0, 0]);
+        assert_eq!(a.rotate90(), Shape::from_bits(1, bits![1, 0, 0]));
+        assert_eq!(a.rotate180(), Shape::from_bits(3, bits![0, 0, 1]));
+        assert_eq!(a.rotate270(), Shape::from_bits(1, bits![0, 0, 1]));
     }
 }

@@ -55,6 +55,7 @@ fn main() {
 }
 
 struct Runic {
+    #[allow(dead_code)]
     icon: RetainedImage,
     drag_item: Option<DragItem>,
     container1: Container,
@@ -97,7 +98,7 @@ impl MoveData {
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some((item, container)) =
+            if let Some(((drag_item, prev, _slot), container)) =
                 ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                     // need to resolve how these results are merged with a
                     // hierarchy of containers and items
@@ -107,15 +108,15 @@ impl eframe::App for Runic {
                         .merge(self.container2.ui(drag_item, ui).inner)
                 })
             {
-                tracing::info!("moving item {:?} -> container {:?}", item, container);
+                tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
 
-                let (item, prev, _slot) = item;
-
-                if let Some(item) = match prev {
-                    1 => self.container1.remove(item.id),
-                    3 => self.container2.remove(item.id),
+                if let Some(mut item) = match prev {
+                    1 => self.container1.remove(drag_item.id),
+                    3 => self.container2.remove(drag_item.id),
                     _ => None,
                 } {
+                    // Copy the rotation.
+                    item.rotation = drag_item.rotation;
                     match container {
                         (1, slot) => self.container1.add(slot, item), // FIX,
                         (3, slot) => self.container2.add(slot, item),
@@ -148,6 +149,15 @@ impl ContainerSpace {
             //*drag_item = Some(item);
             assert!(drag_item.replace(item).is_none());
         }
+
+        // Rotate the dragged item.
+        if ui.input().key_pressed(egui::Key::R) {
+            if let Some((item, _, _)) = drag_item.as_mut() {
+                item.rotation = item.rotation.increment();
+                item.shape = item.shape.rotate90();
+            }
+        }
+
         //let dragged = ui.memory().is_anything_being_dragged();
         // tracing::info!(
         //     "dragging: {} pointer released: {} drag_item: {} container: {}",
@@ -361,9 +371,6 @@ impl Container {
 struct Item {
     id: usize,
     rotation: ItemRotation,
-    // lieu of size?
-    //mask: ItemMask,
-    // width/height in units
     shape: shape::Shape,
     icon: TextureId,
 }
@@ -378,7 +385,7 @@ impl Item {
         }
     }
 
-    fn body(&self, ui: &mut egui::Ui) -> egui::Response {
+    fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
@@ -391,6 +398,14 @@ impl Item {
                     ITEM_SIZE * self.shape.height() as f32,
                 ),
             )
+            .rotate(
+                drag_item
+                    .as_ref()
+                    .filter(|item| item.0.id == self.id)
+                    .map_or(self.rotation, |item| item.0.rotation)
+                    .angle(),
+                egui::Vec2::splat(0.5),
+            )
             .sense(egui::Sense::click()),
         )
     }
@@ -401,7 +416,7 @@ impl Item {
         let id = egui::Id::new(self.id);
         let drag = ui.memory().is_being_dragged(id);
         if !drag {
-            let response = ui.scope(|ui| self.body(ui)).response;
+            let response = ui.scope(|ui| self.body(drag_item, ui)).response;
             let response = ui.interact(response.rect, id, egui::Sense::drag());
             if response.hovered() {
                 ui.output().cursor_icon = egui::CursorIcon::Grab;
@@ -411,7 +426,9 @@ impl Item {
             ui.output().cursor_icon = egui::CursorIcon::Grabbing;
 
             let layer_id = egui::LayerId::new(egui::Order::Tooltip, id);
-            let response = ui.with_layer_id(layer_id, |ui| self.body(ui)).response;
+            let response = ui
+                .with_layer_id(layer_id, |ui| self.body(drag_item, ui))
+                .response;
 
             if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
                 let delta = pointer_pos - response.rect.center();
@@ -435,11 +452,31 @@ impl Item {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 enum ItemRotation {
     #[default]
-    Up,
-    //Left,
-    //Down,
-    //Right,
+    None,
+    R90,
+    R180,
+    R270,
+}
+
+impl ItemRotation {
+    fn increment(&self) -> Self {
+        match self {
+            Self::None => Self::R90,
+            Self::R90 => Self::R180,
+            Self::R180 => Self::R270,
+            _ => Self::None,
+        }
+    }
+
+    fn angle(&self) -> f32 {
+        match *self {
+            Self::None => 0.0,
+            Self::R90 => 90.0_f32.to_radians(),
+            Self::R180 => 180.0_f32.to_radians(),
+            Self::R270 => 270.0_f32.to_radians(),
+        }
+    }
 }

@@ -1,83 +1,25 @@
-use eframe::egui;
 use egui::{InnerResponse, TextureId};
-use egui_extras::RetainedImage;
 
-mod shape;
+pub mod shape;
 
-const ITEM_SIZE: f32 = 32.0;
+pub const ITEM_SIZE: f32 = 32.0;
 
-fn main() {
-    tracing_subscriber::fmt::init();
-    let options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "runic",
-        options,
-        Box::new(|cc| {
-            let icon = RetainedImage::from_image_bytes(
-                "potion-icon-24.png",
-                include_bytes!("../potion-icon-24.png",),
-            )
-            .unwrap();
-
-            //let icon = RetainedImage::from_color_image("example", egui::ColorImage::example());
-
-            // this should pull from a data source only when it changes,
-            // and only for open containers?
-
-            let mut container1 = Container::new(1, 4, 4);
-            container1.add(
-                0,
-                Item::new(
-                    2,
-                    icon.texture_id(&cc.egui_ctx),
-                    shape::Shape::new((2, 2), true),
-                ),
-            );
-
-            let mut container2 = Container::new(3, 2, 2);
-            container2.add(
-                0,
-                Item::new(
-                    4,
-                    icon.texture_id(&cc.egui_ctx),
-                    shape::Shape::new((1, 1), true),
-                ),
-            );
-
-            Box::new(Runic {
-                icon,
-                drag_item: None,
-                container1,
-                container2,
-            })
-        }),
-    )
-}
-
-struct Runic {
-    #[allow(dead_code)]
-    icon: RetainedImage,
-    drag_item: Option<DragItem>,
-    container1: Container,
-    container2: Container,
-}
-
-type ContainerId = usize;
+pub type ContainerId = usize;
 // item -> old container -> old slot
-type DragItem = (Item, ContainerId, usize);
+pub type DragItem = (Item, ContainerId, usize);
 // new container -> new slot
-type ContainerData = (ContainerId, usize);
+pub type ContainerData = (ContainerId, usize);
 
 /// source item -> target container
 #[derive(Debug)]
-struct MoveData {
-    item: Option<DragItem>,
-    container: Option<ContainerData>,
+pub struct MoveData {
+    pub item: Option<DragItem>,
+    pub container: Option<ContainerData>,
 }
 
 impl MoveData {
     // we could just use zip
-    fn merge(self, other: Self) -> Self {
+    pub fn merge(self, other: Self) -> Self {
         if self.item.is_some() && other.item.is_some() {
             tracing::error!("multiple items! ({:?} and {:?})", &self.item, &other.item);
         }
@@ -95,47 +37,11 @@ impl MoveData {
     }
 }
 
-impl eframe::App for Runic {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(((drag_item, prev, _slot), container)) =
-                ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
-                    // need to resolve how these results are merged with a
-                    // hierarchy of containers and items
-                    self.container1
-                        .ui(drag_item, ui)
-                        .inner
-                        .merge(self.container2.ui(drag_item, ui).inner)
-                })
-            {
-                tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
-
-                if let Some(mut item) = match prev {
-                    1 => self.container1.remove(drag_item.id),
-                    3 => self.container2.remove(drag_item.id),
-                    _ => None,
-                } {
-                    // Copy the rotation.
-                    item.rotation = drag_item.rotation;
-                    match container {
-                        (1, slot) => self.container1.add(slot, item), // FIX,
-                        (3, slot) => self.container2.add(slot, item),
-                        _ => (),
-                    }
-                }
-
-                tracing::info!("container1 items: {:?}", self.container1.items.len());
-                tracing::info!("container2 items: {:?}", self.container2.items.len());
-            }
-        });
-    }
-}
-
-struct ContainerSpace;
+pub struct ContainerSpace;
 
 impl ContainerSpace {
     // not a widget since it doesn't return a Response
-    fn show(
+    pub fn show(
         drag_item: &mut Option<DragItem>,
         ui: &mut egui::Ui,
         add_contents: impl FnOnce(&Option<DragItem>, &mut egui::Ui) -> MoveData,
@@ -175,17 +81,17 @@ impl ContainerSpace {
 }
 
 // this is a struct because it'll eventually be a trait?
-struct Container {
-    id: usize,
+pub struct Container {
+    pub id: usize,
     // returned from item
     //drag_item: Option<DragItem>,
-    items: Vec<(usize, Item)>,
-    shape: shape::Shape,
+    pub items: Vec<(usize, Item)>,
+    pub shape: shape::Shape,
     //slot/type: ?
 }
 
 impl Container {
-    fn new(id: usize, width: usize, height: usize) -> Self {
+    pub fn new(id: usize, width: usize, height: usize) -> Self {
         Self {
             id,
             items: Vec::new(),
@@ -193,23 +99,23 @@ impl Container {
         }
     }
 
-    fn pos(&self, slot: usize) -> egui::Vec2 {
+    pub fn pos(&self, slot: usize) -> egui::Vec2 {
         self.shape.pos_f32(slot, ITEM_SIZE).into()
     }
 
     /// Returns container slot given a point inside the container's
     /// shape. Returns invalid results if outside.
-    fn slot(&self, p: egui::Vec2) -> usize {
+    pub fn slot(&self, p: egui::Vec2) -> usize {
         let p = p / ITEM_SIZE;
         p.x as usize + p.y as usize * self.shape.width()
     }
 
-    fn add(&mut self, slot: usize, item: Item) {
+    pub fn add(&mut self, slot: usize, item: Item) {
         self.shape.paint(&item.shape, self.shape.pos(slot));
         self.items.push((slot, item));
     }
 
-    fn remove(&mut self, id: usize) -> Option<Item> {
+    pub fn remove(&mut self, id: usize) -> Option<Item> {
         let idx = self.items.iter().position(|(_, item)| item.id == id);
         idx.map(|i| self.items.remove(i)).map(|(slot, item)| {
             self.shape.unpaint(&item.shape, self.shape.pos(slot));
@@ -217,7 +123,7 @@ impl Container {
         })
     }
 
-    fn body(
+    pub fn body(
         &self,
         drag_item: &Option<DragItem>,
         ui: &mut egui::Ui,
@@ -252,7 +158,11 @@ impl Container {
     }
 
     // this is drop_target
-    fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::InnerResponse<MoveData> {
+    pub fn ui(
+        &self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<MoveData> {
         let margin = egui::Vec2::splat(4.0);
 
         let outer_rect_bounds = ui.available_rect_before_wrap();
@@ -349,7 +259,7 @@ impl Container {
 
         ui.painter().set(
             where_to_put_background,
-            eframe::epaint::RectShape {
+            egui::epaint::RectShape {
                 rounding: style.rounding,
                 fill,
                 stroke,
@@ -368,15 +278,15 @@ impl Container {
 }
 
 #[derive(Clone, Debug)]
-struct Item {
-    id: usize,
-    rotation: ItemRotation,
-    shape: shape::Shape,
-    icon: TextureId,
+pub struct Item {
+    pub id: usize,
+    pub rotation: ItemRotation,
+    pub shape: shape::Shape,
+    pub icon: TextureId,
 }
 
 impl Item {
-    fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
+    pub fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
         Self {
             id,
             rotation: Default::default(),
@@ -385,7 +295,7 @@ impl Item {
         }
     }
 
-    fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
+    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
@@ -411,7 +321,7 @@ impl Item {
     }
 
     // this combines drag_source and the body, need to separate again
-    fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
+    pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
         // egui::InnerResponse<DragItem> {
         let id = egui::Id::new(self.id);
         let drag = ui.memory().is_being_dragged(id);
@@ -453,7 +363,7 @@ impl Item {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-enum ItemRotation {
+pub enum ItemRotation {
     #[default]
     None,
     R90,
@@ -462,7 +372,7 @@ enum ItemRotation {
 }
 
 impl ItemRotation {
-    fn increment(&self) -> Self {
+    pub fn increment(&self) -> Self {
         match self {
             Self::None => Self::R90,
             Self::R90 => Self::R180,
@@ -471,7 +381,7 @@ impl ItemRotation {
         }
     }
 
-    fn angle(&self) -> f32 {
+    pub fn angle(&self) -> f32 {
         match *self {
             Self::None => 0.0,
             Self::R90 => 90.0_f32.to_radians(),

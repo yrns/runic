@@ -5,13 +5,14 @@ pub mod shape;
 pub const ITEM_SIZE: f32 = 32.0;
 
 pub type ContainerId = usize;
-// item -> old container -> old slot
-pub type DragItem = (Item, ContainerId, usize);
+// item -> old container -> old slot -> old container shape minus the
+// drag shape
+pub type DragItem = (Item, ContainerId, usize, shape::Shape);
 // new container -> new slot
 pub type ContainerData = (ContainerId, usize);
 
 /// source item -> target container
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MoveData {
     pub item: Option<DragItem>,
     pub container: Option<ContainerData>,
@@ -58,7 +59,7 @@ impl ContainerSpace {
 
         // Rotate the dragged item.
         if ui.input().key_pressed(egui::Key::R) {
-            if let Some((item, _, _)) = drag_item.as_mut() {
+            if let Some((item, _, _, _)) = drag_item.as_mut() {
                 item.rotation = item.rotation.increment();
                 item.shape = item.shape.rotate90();
             }
@@ -78,6 +79,25 @@ impl ContainerSpace {
             .then(|| drag_item.take().zip(container))
             .flatten()
     }
+}
+
+pub fn paint_shape(
+    shape: &shape::Shape,
+    grid_rect: egui::Rect,
+    offset: egui::Vec2,
+    color: egui::Color32,
+    ui: &mut egui::Ui,
+) {
+    let offset = grid_rect.min + offset;
+    shape
+        .slots()
+        .map(|slot| offset + shape.pos_f32(slot, ITEM_SIZE).into())
+        .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+        .for_each(|p| {
+            let slot_rect = egui::Rect::from_min_size(p, egui::Vec2::new(ITEM_SIZE, ITEM_SIZE));
+            ui.painter()
+                .rect(slot_rect, 0., color, egui::Stroke::none())
+        })
 }
 
 // this is a struct because it'll eventually be a trait?
@@ -111,14 +131,14 @@ impl Container {
     }
 
     pub fn add(&mut self, slot: usize, item: Item) {
-        self.shape.paint(&item.shape, self.shape.pos(slot));
+        self.shape.paint(&item.shape(), self.shape.pos(slot));
         self.items.push((slot, item));
     }
 
     pub fn remove(&mut self, id: usize) -> Option<Item> {
         let idx = self.items.iter().position(|(_, item)| item.id == id);
         idx.map(|i| self.items.remove(i)).map(|(slot, item)| {
-            self.shape.unpaint(&item.shape, self.shape.pos(slot));
+            self.shape.unpaint(&item.shape(), self.shape.pos(slot));
             item
         })
     }
@@ -149,8 +169,11 @@ impl Container {
                     .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
                     .inner
                 {
-                    // add the container id and current slot
-                    new_drag = Some((id, self.id, *slot))
+                    // add the container id and current slot and
+                    // container shape w/ the item unpainted
+                    let mut shape = self.shape.clone();
+                    shape.unpaint(&item.shape(), self.shape.pos(*slot));
+                    new_drag = Some((id, self.id, *slot, shape))
                 }
             }
         }
@@ -190,7 +213,7 @@ impl Container {
         // can be containers too, container is a super type of item?
 
         //if let Some((item, _container)) = &inner {
-        if let Some((item, container, curr_slot)) = drag_item {
+        if let Some((item, container, _curr_slot, cshape)) = drag_item {
             dragging = true;
             // tarkov also checks if containers are full, even if not
             // hovering -- maybe track min size free?
@@ -205,16 +228,24 @@ impl Container {
 
             if let Some(slot) = slot {
                 // Check if the shape fits here. When moving within
-                // one container, unpaint the shape first.
-                fits = if *container == self.id {
-                    let mut shape = self.shape.clone();
-                    let p = shape.pos(slot);
-                    shape.unpaint(&item.shape, shape.pos(*curr_slot));
-                    //println!("{}", &shape);
-                    shape.fits(&item.shape, p)
+                // one container, use the cached shape with the
+                // dragged item (and original rotation) unpainted.
+                let shape = if *container == self.id {
+                    cshape
                 } else {
-                    self.shape.fits(&item.shape, self.shape.pos(slot))
+                    &self.shape
                 };
+
+                // debug paint the container "shape" (filled slots)
+                paint_shape(
+                    shape,
+                    grid_rect,
+                    egui::Vec2::ZERO,
+                    egui::color::Color32::DARK_BLUE,
+                    ui,
+                );
+
+                fits = shape.fits(&item.shape, self.shape.pos(slot));
 
                 let color = if fits {
                     egui::color::Color32::GREEN
@@ -224,17 +255,7 @@ impl Container {
                 let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
                 // paint item slots
-                let p = grid_rect.min + self.pos(slot);
-                item.shape
-                    .slots()
-                    .map(|slot| p + item.shape.pos_f32(slot, ITEM_SIZE).into())
-                    .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
-                    .for_each(|p| {
-                        let slot_rect =
-                            egui::Rect::from_min_size(p, egui::Vec2::new(ITEM_SIZE, ITEM_SIZE));
-                        ui.painter()
-                            .rect(slot_rect, 0., color, egui::Stroke::none())
-                    })
+                paint_shape(&item.shape, grid_rect, self.pos(slot), color, ui);
             }
         }
 
@@ -354,11 +375,28 @@ impl Item {
             // only send back a clone if this is a new drag (drag_item
             // is empty)
             if drag_item.is_none() {
-                Some(self.clone())
+                // This clones the shape twice...
+                Some(self.clone().rotate())
             } else {
                 None
             }
         }
+    }
+
+    // This returns a clone every time, even if not rotated.
+    fn shape(&self) -> shape::Shape {
+        match self.rotation {
+            ItemRotation::None => self.shape.clone(),
+            ItemRotation::R90 => self.shape.rotate90(),
+            ItemRotation::R180 => self.shape.rotate180(),
+            ItemRotation::R270 => self.shape.rotate270(),
+        }
+    }
+
+    // Rotate the (dragged) shape to match the item's rotation.
+    fn rotate(mut self) -> Self {
+        self.shape = self.shape();
+        self
     }
 }
 

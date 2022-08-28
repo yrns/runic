@@ -1,6 +1,10 @@
+use std::{collections::HashMap, path::PathBuf};
+
 use eframe::egui;
 use egui_extras::RetainedImage;
 use runic::*;
+
+use bitvec::prelude::*;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -9,86 +13,90 @@ fn main() {
         "runic",
         options,
         Box::new(|cc| {
-            let icon = RetainedImage::from_image_bytes(
-                "potion-icon-24.png",
-                include_bytes!("../potion-icon-24.png",),
-            )
-            .unwrap();
-
-            //let icon = RetainedImage::from_color_image("example", egui::ColorImage::example());
+            let mut runic = Runic::default();
 
             // this should pull from a data source only when it changes,
             // and only for open containers?
 
-            let mut container1 = Container::new(1, 4, 4);
-            container1.add(
+            let mut container = Container::new(1, 4, 4);
+            container.add(
                 0,
                 Item::new(
                     2,
-                    icon.texture_id(&cc.egui_ctx),
-                    shape::Shape::new((2, 2), true),
+                    runic.load_image("pipe").texture_id(&cc.egui_ctx),
+                    shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
                 ),
             );
+            runic.containers.push(container);
 
-            let mut container2 = Container::new(3, 2, 2);
-            container2.add(
+            let mut container = Container::new(3, 2, 2);
+            container.add(
                 0,
                 Item::new(
                     4,
-                    icon.texture_id(&cc.egui_ctx),
+                    runic.load_image("potion-icon-24").texture_id(&cc.egui_ctx),
                     shape::Shape::new((1, 1), true),
                 ),
             );
+            runic.containers.push(container);
 
-            Box::new(Runic {
-                icon,
-                drag_item: None,
-                container1,
-                container2,
-            })
+            Box::new(runic)
         }),
     )
 }
 
+#[derive(Default)]
 struct Runic {
-    #[allow(dead_code)]
-    icon: RetainedImage,
+    images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
-    container1: Container,
-    container2: Container,
+    containers: Vec<Container>,
+}
+
+impl Runic {
+    fn load_image(&mut self, name: &'static str) -> &RetainedImage {
+        self.images.entry(name).or_insert_with(|| {
+            let mut path = PathBuf::from(name);
+            path.set_extension("png");
+            std::fs::read(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|buf| RetainedImage::from_image_bytes(name, &buf))
+                .unwrap_or_else(|e| {
+                    tracing::error!("failed to load image at: {} ({})", path.display(), e);
+                    RetainedImage::from_color_image(name, egui::ColorImage::example())
+                })
+        })
+    }
 }
 
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(((drag_item, prev, _slot), container)) =
+            if let Some(((drag_item, prev, _slot, _), (container, slot))) =
                 ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                     // need to resolve how these results are merged with a
                     // hierarchy of containers and items
-                    self.container1
-                        .ui(drag_item, ui)
-                        .inner
-                        .merge(self.container2.ui(drag_item, ui).inner)
+                    self.containers.iter().fold(MoveData::default(), |data, c| {
+                        // we are ignoring all but the last response...
+                        data.merge(c.ui(drag_item, ui).inner)
+                    })
                 })
             {
                 tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
 
-                if let Some(mut item) = match prev {
-                    1 => self.container1.remove(drag_item.id),
-                    3 => self.container2.remove(drag_item.id),
-                    _ => None,
-                } {
+                if let Some(mut item) = self
+                    .containers
+                    .iter_mut()
+                    .find(|c| c.id == prev)
+                    .and_then(|c| c.remove(drag_item.id))
+                {
+                    tracing::info!("new rot {:?} --> {:?}", item.rotation, drag_item.rotation);
                     // Copy the rotation.
                     item.rotation = drag_item.rotation;
-                    match container {
-                        (1, slot) => self.container1.add(slot, item), // FIX,
-                        (3, slot) => self.container2.add(slot, item),
-                        _ => (),
+
+                    if let Some(c) = self.containers.iter_mut().find(|c| c.id == container) {
+                        c.add(slot, item);
                     }
                 }
-
-                tracing::info!("container1 items: {:?}", self.container1.items.len());
-                tracing::info!("container2 items: {:?}", self.container2.items.len());
             }
         });
     }

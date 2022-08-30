@@ -237,13 +237,13 @@ impl Container {
                 };
 
                 // debug paint the container "shape" (filled slots)
-                paint_shape(
-                    shape,
-                    grid_rect,
-                    egui::Vec2::ZERO,
-                    egui::color::Color32::DARK_BLUE,
-                    ui,
-                );
+                // paint_shape(
+                //     shape,
+                //     grid_rect,
+                //     egui::Vec2::ZERO,
+                //     egui::color::Color32::DARK_BLUE,
+                //     ui,
+                // );
 
                 fits = shape.fits(&item.shape, self.shape.pos(slot));
 
@@ -425,6 +425,47 @@ impl ItemRotation {
             Self::R90 => 90.0_f32.to_radians(),
             Self::R180 => 180.0_f32.to_radians(),
             Self::R270 => 270.0_f32.to_radians(),
+        }
+    }
+}
+
+// A sectioned container is a set of smaller containers displayed as
+// one. Like pouches on a belt or different pockets in a jacket. It's
+// one item than holds many fixed containers. This should have the
+// same interface as [Container].
+pub struct SectionContainer {
+    pub id: usize,
+    pub layout: SectionLayout,
+    pub sections: Vec<Container>,
+}
+
+pub enum SectionLayout {
+    Grid(usize),
+}
+
+impl SectionContainer {
+    pub fn ui(
+        &self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<MoveData> {
+        match self.layout {
+            SectionLayout::Grid(width) => {
+                egui::Grid::new(self.id).num_columns(width).show(ui, |ui| {
+                    self.sections
+                        .iter()
+                        .enumerate()
+                        .map(|(i, section)| {
+                            let data = section.ui(drag_item, ui).inner;
+                            if (i + 1) % width == 0 {
+                                ui.end_row();
+                            }
+                            data
+                        })
+                        .reduce(|acc, a| acc.merge(a))
+                        .unwrap_or_default()
+                })
+            }
         }
     }
 }

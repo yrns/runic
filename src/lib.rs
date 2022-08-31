@@ -469,3 +469,28 @@ impl SectionContainer {
         }
     }
 }
+
+// An expanding container fits only one item but it can be any size up
+// to a maximum size. This is useful for equipment slots where only
+// one item can go and the size varies.
+pub struct ExpandingContainer {
+    pub max_size: shape::Vec2,
+    pub item: Option<Item>,
+}
+
+impl ExpandingContainer {
+    pub fn ui(
+        &self,
+        _drag_item: &Option<DragItem>,
+        _ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<MoveData> {
+        todo!()
+    }
+}
+
+// An expanding container that contains another container, the
+// contents of which are displayed inline when present.
+pub struct InlineContainer {
+    pub container: ExpandingContainer,
+    pub contents: Container,
+}

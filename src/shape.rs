@@ -49,8 +49,8 @@ impl From<(usize, usize)> for Vec2 {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
-    size: Vec2,
-    fill: BitVec,
+    pub size: Vec2,
+    pub fill: BitVec,
 }
 
 impl Shape {

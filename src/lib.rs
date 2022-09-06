@@ -1,4 +1,5 @@
 use egui::{InnerResponse, TextureId};
+use itertools::Itertools;
 
 pub mod shape;
 
@@ -34,6 +35,23 @@ impl MoveData {
         Self {
             item: self.item.or(other.item),
             container: self.container.or(other.container),
+        }
+    }
+
+    pub fn map_slots<F>(self, f: F) -> Self
+    where
+        F: Fn(usize) -> usize,
+    {
+        let Self { item, container } = self;
+        Self {
+            item: item.map(|mut item| {
+                item.2 = f(item.2);
+                item
+            }),
+            container: container.map(|mut c| {
+                c.1 = f(c.1);
+                c
+            }),
         }
     }
 }
@@ -100,153 +118,102 @@ pub fn paint_shape(
         })
 }
 
-// this is a struct because it'll eventually be a trait?
-pub struct Container {
-    pub id: usize,
-    // returned from item
-    //drag_item: Option<DragItem>,
-    pub items: Vec<(usize, Item)>,
-    pub shape: shape::Shape,
-    //slot/type: ?
-}
+// Is this a trait or generic struct?
+// pub trait Item {
+//     type Id;
+// }
 
-impl Container {
-    pub fn new(id: usize, width: usize, height: usize) -> Self {
-        Self {
-            id,
-            items: Vec::new(),
-            shape: shape::Shape::new((width, height), false),
-        }
+// Are slots intrinsic to contents?
+/// A widget to display the contents of a container.
+pub trait Contents {
+    //type Item;
+    //type Items: for<'a> Iterator<Item = &'a (usize, Item)>;
+
+    fn id(&self) -> usize;
+
+    /// Number of slots this container holds.
+    fn len(&self) -> usize;
+
+    // Maybe these would be more generally useful if they were passed
+    // an egui context?
+
+    /// Notifies the contents when an item is added.
+    fn add(&mut self, slot: usize, item: &Item);
+
+    /// Notifies the contents when an item is removed.
+    //fn remove(&mut self, id: <Self::Item as Item>::Id, item: Self::Item)
+    fn remove(&mut self, slot: usize, item: &Item);
+
+    /// Returns a position for a given slot relative to the contents' origin.
+    fn pos(&self, slot: usize) -> egui::Vec2;
+
+    /// Returns a container slot for a given offset. May return
+    /// invalid results if the offset is outside the container.
+    fn slot(&self, offset: egui::Vec2) -> usize;
+
+    fn accepts(&self, _item: &Item) -> bool {
+        true
     }
 
-    pub fn pos(&self, slot: usize) -> egui::Vec2 {
-        self.shape.pos_f32(slot, ITEM_SIZE).into()
+    // What about fits anywhere/any slot?
+    fn fits(&self, _item: &DragItem, _slot: usize) -> bool {
+        true
     }
 
-    /// Returns container slot given a point inside the container's
-    /// shape. Returns invalid results if outside.
-    pub fn slot(&self, p: egui::Vec2) -> usize {
-        let p = p / ITEM_SIZE;
-        p.x as usize + p.y as usize * self.shape.width()
-    }
-
-    pub fn add(&mut self, slot: usize, item: Item) {
-        self.shape.paint(&item.shape(), self.shape.pos(slot));
-        self.items.push((slot, item));
-    }
-
-    pub fn remove(&mut self, id: usize) -> Option<Item> {
-        let idx = self.items.iter().position(|(_, item)| item.id == id);
-        idx.map(|i| self.items.remove(i)).map(|(slot, item)| {
-            self.shape.unpaint(&item.shape(), self.shape.pos(slot));
-            item
-        })
-    }
-
-    pub fn body(
+    // Draw contents.
+    fn body(
         &self,
         drag_item: &Option<DragItem>,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>> {
-        // allocate the full container size
-        let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(
-                self.shape.width() as f32 * ITEM_SIZE,
-                self.shape.height() as f32 * ITEM_SIZE,
-            ),
-            egui::Sense::hover(),
-        );
+    ) -> egui::InnerResponse<Option<DragItem>>;
 
-        let mut new_drag = None;
-
-        if ui.is_rect_visible(rect) {
-            let item_size = egui::vec2(ITEM_SIZE, ITEM_SIZE);
-            for (slot, item) in self.items.iter() {
-                let item_rect =
-                    egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
-                // item returns its id if it's being dragged
-                if let Some(id) = ui
-                    .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
-                    .inner
-                {
-                    // add the container id and current slot and
-                    // container shape w/ the item unpainted
-                    let mut shape = self.shape.clone();
-                    shape.unpaint(&item.shape(), self.shape.pos(*slot));
-                    new_drag = Some((id, self.id, *slot, shape))
-                }
-            }
-        }
-        InnerResponse::new(new_drag, response)
-    }
-
-    // this is drop_target
-    pub fn ui(
+    // Default impl should handle everything including grid/sectioned/expanding containers.
+    fn ui(
         &self,
         drag_item: &Option<DragItem>,
+        items: &[(usize, Item)], //impl Iterator<Item = &'a (usize, Item)>,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
         let margin = egui::Vec2::splat(4.0);
-
         let outer_rect_bounds = ui.available_rect_before_wrap();
         let inner_rect = outer_rect_bounds.shrink2(margin);
-        let where_to_put_background = ui.painter().add(egui::Shape::Noop);
+        // reserve a shape for the background so it draws first
+        let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        let egui::InnerResponse { inner, response } = self.body(drag_item, &mut content_ui);
-        let mut dragging = false;
-        let mut accepts = false;
-        let mut slot = None;
-        let mut fits = false;
+        let egui::InnerResponse { inner, response } = self.body(drag_item, items, &mut content_ui);
 
-        // need to remove this if anything else utilizes drag (e.g. a slider)
-        if ui.memory().is_anything_being_dragged() != drag_item.is_some() {
-            tracing::error!(
-                "container: {} dragging: {} drag_item: {:?}",
-                self.id,
-                ui.memory().is_anything_being_dragged(),
-                drag_item
-            );
-        }
+        // tarkov also checks if containers are full, even if not
+        // hovering -- maybe track min size free?
+        let dragging = drag_item.is_some();
+        let accepts = drag_item
+            .as_ref()
+            .map(|item| self.accepts(&item.0))
+            .unwrap_or_default();
 
-        // we need to pass back the full data from items since they
-        // can be containers too, container is a super type of item?
+        let r = content_ui.min_rect();
+        let slot = response
+            .hover_pos()
+            // the hover includes the outer_rect?
+            .filter(|p| r.contains(*p))
+            .map(|p| self.slot(p - r.min));
 
-        //if let Some((item, _container)) = &inner {
-        if let Some((item, container, _curr_slot, cshape)) = drag_item {
-            dragging = true;
-            // tarkov also checks if containers are full, even if not
-            // hovering -- maybe track min size free?
-            accepts = true; // check item type TODO
+        let fits = drag_item
+            .as_ref()
+            .zip(slot)
+            .map(|(item, slot)| self.fits(item, slot))
+            .unwrap_or_default();
 
-            let grid_rect = content_ui.min_rect();
-            slot = response
-                .hover_pos()
-                // the hover includes the outer_rect?
-                .filter(|p| grid_rect.contains(*p))
-                .map(|p| self.slot(p - grid_rect.min));
+        assert!(match drag_item {
+            Some(item) => ui.memory().is_being_dragged(item.0.eid()),
+            _ => true, // we could be dragging something else
+        });
 
+        //self.drag(drag_item, slot, fits, content_ui);
+
+        if let Some((item, _container, _curr_slot, _shape)) = drag_item {
             if let Some(slot) = slot {
-                // Check if the shape fits here. When moving within
-                // one container, use the cached shape with the
-                // dragged item (and original rotation) unpainted.
-                let shape = if *container == self.id {
-                    cshape
-                } else {
-                    &self.shape
-                };
-
-                // debug paint the container "shape" (filled slots)
-                // paint_shape(
-                //     shape,
-                //     grid_rect,
-                //     egui::Vec2::ZERO,
-                //     egui::color::Color32::DARK_BLUE,
-                //     ui,
-                // );
-
-                fits = shape.fits(&item.shape, self.shape.pos(slot));
-
                 let color = if fits {
                     egui::color::Color32::GREEN
                 } else {
@@ -254,8 +221,9 @@ impl Container {
                 };
                 let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
-                // paint item slots
-                paint_shape(&item.shape, grid_rect, self.pos(slot), color, ui);
+                // paint item slots, need to reserve shapes so this
+                // draws w/ the background
+                paint_shape(&item.shape, r, self.pos(slot), color, ui);
             }
         }
 
@@ -279,7 +247,7 @@ impl Container {
         }
 
         ui.painter().set(
-            where_to_put_background,
+            bg,
             egui::epaint::RectShape {
                 rounding: style.rounding,
                 fill,
@@ -291,10 +259,129 @@ impl Container {
         InnerResponse::new(
             MoveData {
                 item: inner,
-                container: (dragging && accepts && fits).then(|| (self.id, slot.unwrap())),
+                container: (dragging && accepts && fits).then(|| (self.id(), slot.unwrap())),
             },
             response,
         )
+    }
+}
+
+// TODO rename GridContents? Grid shares some meaning w/ egui::Grid
+// this is a struct because it'll eventually be a trait?
+pub struct Container {
+    // Does it matter if this shares an id w/ an item? item_id?
+    pub id: usize,
+    // returned from item
+    //drag_item: Option<DragItem>,
+    //pub items: Vec<(usize, Item)>,
+    pub shape: shape::Shape,
+    //slot/type: ?
+}
+
+impl Container {
+    pub fn new(id: usize, width: usize, height: usize) -> Self {
+        Self {
+            id,
+            shape: shape::Shape::new((width, height), false),
+        }
+    }
+}
+
+impl Contents for Container {
+    fn id(&self) -> usize {
+        self.id
+    }
+
+    fn len(&self) -> usize {
+        self.shape.size.len()
+    }
+
+    fn pos(&self, slot: usize) -> egui::Vec2 {
+        self.shape.pos_f32(slot, ITEM_SIZE).into()
+    }
+
+    fn slot(&self, p: egui::Vec2) -> usize {
+        let p = p / ITEM_SIZE;
+        p.x as usize + p.y as usize * self.shape.width()
+    }
+
+    fn add(&mut self, slot: usize, item: &Item) {
+        self.shape.paint(&item.shape(), self.shape.pos(slot))
+        //self.items.push((slot, item));
+    }
+
+    fn remove(&mut self, slot: usize, item: &Item) {
+        self.shape.unpaint(&item.shape(), self.shape.pos(slot))
+    }
+
+    fn fits(&self, item: &DragItem, slot: usize) -> bool {
+        // Check if the shape fits here. When moving within
+        // one container, use the cached shape with the
+        // dragged item (and original rotation) unpainted.
+        let shape = if item.1 == self.id() {
+            &item.3
+        } else {
+            &self.shape
+        };
+
+        shape.fits(&item.0.shape, self.shape.pos(slot))
+    }
+
+    fn body(
+        &self,
+        drag_item: &Option<DragItem>,
+        items: &[(usize, Item)],
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>> {
+        // allocate the full container size
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(
+                self.shape.width() as f32 * ITEM_SIZE,
+                self.shape.height() as f32 * ITEM_SIZE,
+            ),
+            egui::Sense::hover(),
+        );
+
+        // TODO make debug option
+
+        // Use the cached shape if the dragged item is ours. This
+        // rehashes what's in `fits`.
+        let shape = drag_item
+            .as_ref()
+            .filter(|item| self.id == item.1)
+            .map(|item| &item.3)
+            .unwrap_or(&self.shape);
+
+        // debug paint the container "shape" (filled slots)
+        paint_shape(
+            shape,
+            ui.min_rect(),
+            egui::Vec2::ZERO,
+            egui::color::Color32::DARK_BLUE,
+            ui,
+        );
+
+        let mut new_drag = None;
+
+        if ui.is_rect_visible(rect) {
+            let item_size = egui::vec2(ITEM_SIZE, ITEM_SIZE);
+            for (slot, item) in items {
+                let item_rect =
+                    egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
+                // item returns its id if it's being dragged
+                if let Some(id) = ui
+                    .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
+                    .inner
+                {
+                    // add the container id and current slot and
+                    // container shape w/ the item unpainted
+                    let mut shape = self.shape.clone();
+                    shape.unpaint(&item.shape(), self.shape.pos(*slot));
+                    new_drag = Some((id, self.id, *slot, shape))
+                }
+            }
+        }
+        InnerResponse::new(new_drag, response)
     }
 }
 
@@ -314,6 +401,11 @@ impl Item {
             shape,
             icon,
         }
+    }
+
+    /// Returns an egui id based on the item id.
+    pub fn eid(&self) -> egui::Id {
+        egui::Id::new(self.id)
     }
 
     pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
@@ -341,10 +433,8 @@ impl Item {
         )
     }
 
-    // this combines drag_source and the body, need to separate again
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
-        // egui::InnerResponse<DragItem> {
-        let id = egui::Id::new(self.id);
+        let id = self.eid();
         let drag = ui.memory().is_being_dragged(id);
         if !drag {
             let response = ui.scope(|ui| self.body(drag_item, ui)).response;
@@ -436,19 +526,107 @@ impl ItemRotation {
 pub struct SectionContainer {
     pub id: usize,
     pub layout: SectionLayout,
-    pub sections: Vec<Container>,
+    pub sections: Vec<Container>, // Vec<Box<dyn Contents>>?
 }
 
 pub enum SectionLayout {
     Grid(usize),
+    // Fixed(Vec<(usize, egui::Pos2))
+    // Columns?
+    // Other(Fn?)
 }
 
 impl SectionContainer {
-    pub fn ui(
+    fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
+        self.section_ranges()
+            .enumerate()
+            .find_map(|(i, (start, end))| (slot < end).then(|| (i, slot - start)))
+    }
+
+    // This is the inverse of section_slot.
+    fn remap_slot(&self, section: usize, slot: usize) -> usize {
+        self.section_ranges()
+            .nth(section)
+            .map(|(start, _)| start + slot)
+            .unwrap()
+    }
+
+    fn section_ranges(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+        let mut end = 0;
+        self.sections.iter().map(move |s| {
+            let start = end;
+            end = end + s.len();
+            (start, end)
+        })
+    }
+}
+
+impl Contents for SectionContainer {
+    fn id(&self) -> usize {
+        self.id
+    }
+
+    fn len(&self) -> usize {
+        self.sections.iter().map(|s| s.len()).sum()
+    }
+
+    fn add(&mut self, slot: usize, item: &Item) {
+        if let Some((i, slot)) = self.section_slot(slot) {
+            self.sections[i].add(slot, item)
+        }
+    }
+
+    fn remove(&mut self, slot: usize, item: &Item) {
+        if let Some((i, slot)) = self.section_slot(slot) {
+            self.sections[i].remove(slot, item)
+        }
+    }
+
+    fn pos(&self, _slot: usize) -> egui::Vec2 {
+        todo!()
+    }
+
+    fn slot(&self, _offset: egui::Vec2) -> usize {
+        todo!()
+    }
+
+    fn body(
+        &self,
+        _drag_item: &Option<DragItem>,
+        _items: &[(usize, Item)],
+        _ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>> {
+        unimplemented!()
+    }
+
+    // Since the items list is unsorted and we only work with slices,
+    // we have to sort into a new collection and take slices of
+    // it. This needs revisiting.
+    fn ui(
         &self,
         drag_item: &Option<DragItem>,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
+        // map (slot, item) -> (section, (slot, item))
+        let ranges = self.section_ranges().collect_vec();
+        let items = items
+            .iter()
+            .filter_map(|(slot, item)| {
+                ranges
+                    .iter()
+                    .enumerate()
+                    .find_map(|(section, (start, end))| {
+                        // We have to clone the item here since the
+                        // contents wants a slice of items, not a
+                        // slice of refs. Maybe change the trait?
+                        (slot < end).then(|| (section, ((slot - start), item.clone())))
+                    })
+            })
+            .into_group_map();
+
+        let empty = Vec::new();
+
         match self.layout {
             SectionLayout::Grid(width) => {
                 egui::Grid::new(self.id).num_columns(width).show(ui, |ui| {
@@ -456,7 +634,17 @@ impl SectionContainer {
                         .iter()
                         .enumerate()
                         .map(|(i, section)| {
-                            let data = section.ui(drag_item, ui).inner;
+                            let data = section
+                                .ui(
+                                    drag_item,
+                                    items.get(&i).unwrap_or_else(|| &empty).as_slice(),
+                                    ui,
+                                )
+                                .inner;
+
+                            // Remap slots.
+                            let data = data.map_slots(|slot| self.remap_slot(i, slot));
+
                             if (i + 1) % width == 0 {
                                 ui.end_row();
                             }

@@ -13,47 +13,60 @@ fn main() {
         "runic",
         options,
         Box::new(|cc| {
-            // this should pull from a data source only when it changes,
-            // and only for open containers?
-
+            let mut contents: HashMap<usize, (Box<dyn Contents>, Vec<(usize, Item)>)> =
+                HashMap::new();
             let mut images = HashMap::new();
-            let mut containers = Vec::new();
-            let mut container = Container::new(1, 4, 4);
-            container.add(
-                0,
-                Item::new(
-                    3,
-                    load_image(&mut images, "pipe").texture_id(&cc.egui_ctx),
-                    shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
-                ),
-            );
-            containers.push(container);
 
-            let mut container = Container::new(2, 2, 2);
-            container.add(
-                0,
-                Item::new(
-                    4,
-                    load_image(&mut images, "potion-icon-24").texture_id(&cc.egui_ctx),
-                    shape::Shape::new((1, 1), true),
+            contents.insert(
+                1,
+                (
+                    Box::new(Container::new(1, 4, 4)),
+                    vec![(
+                        0,
+                        Item::new(
+                            3,
+                            load_image(&mut images, "pipe").texture_id(&cc.egui_ctx),
+                            shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
+                        ),
+                    )],
                 ),
             );
-            containers.push(container);
+
+            contents.insert(
+                2,
+                (
+                    Box::new(Container::new(2, 2, 2)),
+                    vec![(
+                        0,
+                        Item::new(
+                            4,
+                            load_image(&mut images, "potion-icon-24").texture_id(&cc.egui_ctx),
+                            shape::Shape::new((1, 1), true),
+                        ),
+                    )],
+                ),
+            );
+
+            contents.insert(
+                5,
+                (
+                    Box::new(SectionContainer {
+                        id: 5,
+                        layout: SectionLayout::Grid(2),
+                        sections: vec![
+                            // uses the same id?
+                            Container::new(5, 1, 2),
+                            Container::new(5, 1, 2),
+                        ],
+                    }),
+                    Vec::new(), // empty
+                ),
+            );
 
             Box::new(Runic {
                 images,
                 drag_item: None,
-                containers,
-                section_container: SectionContainer {
-                    id: 5,
-                    layout: SectionLayout::Grid(2),
-                    sections: vec![
-                        Container::new(6, 1, 1),
-                        Container::new(7, 1, 1),
-                        Container::new(8, 1, 1),
-                        Container::new(9, 1, 1),
-                    ],
-                },
+                contents,
             })
         }),
     )
@@ -64,9 +77,7 @@ struct Runic {
     #[allow(dead_code)]
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
-    // Vec<Box<impl Container>>?
-    containers: Vec<Container>,
-    section_container: SectionContainer,
+    contents: HashMap<usize, (Box<dyn Contents>, Vec<(usize, Item)>)>,
 }
 
 fn load_image<'a>(
@@ -93,43 +104,38 @@ impl eframe::App for Runic {
                 ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                     // need to resolve how these results are merged with a
                     // hierarchy of containers and items
-                    let data = self
-                        .containers
-                        .iter()
-                        .map(|c| {
+                    self.contents
+                        .values()
+                        .map(|(c, items)| {
                             // we are ignoring all but the last
                             // response...
-                            ui.label(format!("Container {}", c.id));
-                            c.ui(drag_item, ui).inner
+                            ui.label(format!("Container {}", c.id()));
+                            c.ui(drag_item, items, ui).inner
                         })
                         .reduce(|acc, d| acc.merge(d))
-                        .unwrap_or_default();
-
-                    ui.label("Sectioned Container");
-                    data.merge(self.section_container.ui(drag_item, ui).inner)
+                        .unwrap_or_default()
                 })
             {
                 tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
 
-                match self
-                    .containers
-                    .iter_mut()
-                    .chain(self.section_container.sections.iter_mut())
-                    .find(|c| c.id == prev)
-                    .and_then(|c| c.remove(drag_item.id))
-                {
+                match self.contents.get_mut(&prev).and_then(|(c, items)| {
+                    let idx = items.iter().position(|(_, item)| item.id == drag_item.id);
+                    idx.map(|i| {
+                        let (slot, item) = items.remove(i);
+                        c.remove(slot, &item); // unpaint
+                        item
+                    })
+                }) {
                     Some(mut item) => {
                         tracing::info!("new rot {:?} --> {:?}", item.rotation, drag_item.rotation);
                         // Copy the rotation.
                         item.rotation = drag_item.rotation;
 
-                        match self
-                            .containers
-                            .iter_mut()
-                            .chain(self.section_container.sections.iter_mut())
-                            .find(|c| c.id == container)
-                        {
-                            Some(c) => c.add(slot, item),
+                        match self.contents.get_mut(&container) {
+                            Some((c, items)) => {
+                                c.add(slot, &item); // paint
+                                items.push((slot, item));
+                            }
                             None => {
                                 tracing::error!("could not find container {} to add to", container)
                             }

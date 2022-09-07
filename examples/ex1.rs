@@ -63,6 +63,17 @@ fn main() {
                 ),
             );
 
+            contents.insert(
+                6,
+                (
+                    Box::new(ExpandingContainer {
+                        id: 6,
+                        max_size: (2, 2).into(),
+                    }),
+                    Vec::new(), // empty
+                ),
+            );
+
             Box::new(Runic {
                 images,
                 drag_item: None,

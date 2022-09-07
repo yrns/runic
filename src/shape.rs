@@ -2,6 +2,16 @@ use std::ops::{Add, Sub};
 
 use bitvec::prelude::*;
 
+// If the shape is completely filled it never needs to be rotated...
+
+// Need to store slices or make it generic over something? Or all
+// shapes are static?
+
+// pub const SHAPE1X1: Shape = Shape {
+//     size: Vec2 { x: 1, y: 1 },
+//     fill: bits![1],
+// };
+
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Vec2 {
     pub x: u8,

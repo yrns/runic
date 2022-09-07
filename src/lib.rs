@@ -5,10 +5,14 @@ pub mod shape;
 
 pub const ITEM_SIZE: f32 = 32.0;
 
+pub fn item_size() -> egui::Vec2 {
+    egui::vec2(ITEM_SIZE, ITEM_SIZE)
+}
+
 pub type ContainerId = usize;
 // item -> old container -> old slot -> old container shape minus the
 // drag shape
-pub type DragItem = (Item, ContainerId, usize, shape::Shape);
+pub type DragItem = (Item, ContainerId, usize, Option<shape::Shape>);
 // new container -> new slot
 pub type ContainerData = (ContainerId, usize);
 
@@ -112,7 +116,7 @@ pub fn paint_shape(
         .map(|slot| offset + shape.pos_f32(slot, ITEM_SIZE).into())
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
         .for_each(|p| {
-            let slot_rect = egui::Rect::from_min_size(p, egui::Vec2::new(ITEM_SIZE, ITEM_SIZE));
+            let slot_rect = egui::Rect::from_min_size(p, item_size());
             ui.painter()
                 .rect(slot_rect, 0., color, egui::Stroke::none())
         })
@@ -138,11 +142,11 @@ pub trait Contents {
     // an egui context?
 
     /// Notifies the contents when an item is added.
-    fn add(&mut self, slot: usize, item: &Item);
+    fn add(&mut self, _slot: usize, _item: &Item) {}
 
     /// Notifies the contents when an item is removed.
     //fn remove(&mut self, id: <Self::Item as Item>::Id, item: Self::Item)
-    fn remove(&mut self, slot: usize, item: &Item);
+    fn remove(&mut self, _slot: usize, _item: &Item) {}
 
     /// Returns a position for a given slot relative to the contents' origin.
     fn pos(&self, slot: usize) -> egui::Vec2;
@@ -318,10 +322,10 @@ impl Contents for Container {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
-        let shape = if item.1 == self.id() {
-            &item.3
-        } else {
-            &self.shape
+        let shape = match (item.1 == self.id(), &item.3) {
+            // (true, None) should never happen...
+            (true, Some(shape)) => &shape,
+            _ => &self.shape,
         };
 
         shape.fits(&item.0.shape, self.shape.pos(slot))
@@ -349,7 +353,7 @@ impl Contents for Container {
         let shape = drag_item
             .as_ref()
             .filter(|item| self.id == item.1)
-            .map(|item| &item.3)
+            .and_then(|item| item.3.as_ref())
             .unwrap_or(&self.shape);
 
         // debug paint the container "shape" (filled slots)
@@ -364,20 +368,22 @@ impl Contents for Container {
         let mut new_drag = None;
 
         if ui.is_rect_visible(rect) {
-            let item_size = egui::vec2(ITEM_SIZE, ITEM_SIZE);
+            let item_size = item_size();
             for (slot, item) in items {
                 let item_rect =
                     egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
-                // item returns its id if it's being dragged
-                if let Some(id) = ui
+                // item returns a clone if it's being dragged
+                if let Some(item) = ui
                     .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
                     .inner
                 {
                     // add the container id and current slot and
                     // container shape w/ the item unpainted
                     let mut shape = self.shape.clone();
+                    // We've already cloned the item and we're cloning
+                    // the shape again to rotate? Isn't it already rotated?
                     shape.unpaint(&item.shape(), self.shape.pos(*slot));
-                    new_drag = Some((id, self.id, *slot, shape))
+                    new_drag = Some((item, self.id, *slot, Some(shape)))
                 }
             }
         }
@@ -408,28 +414,30 @@ impl Item {
         egui::Id::new(self.id)
     }
 
+    /// Size of the item in pixels.
+    pub fn size(&self) -> egui::Vec2 {
+        egui::Vec2::new(
+            self.shape.width() as f32 * ITEM_SIZE,
+            self.shape.height() as f32 * ITEM_SIZE,
+        )
+    }
+
     pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
 
         ui.add(
-            egui::Image::new(
-                self.icon,
-                (
-                    ITEM_SIZE * self.shape.width() as f32,
-                    ITEM_SIZE * self.shape.height() as f32,
-                ),
-            )
-            .rotate(
-                drag_item
-                    .as_ref()
-                    .filter(|item| item.0.id == self.id)
-                    .map_or(self.rotation, |item| item.0.rotation)
-                    .angle(),
-                egui::Vec2::splat(0.5),
-            )
-            .sense(egui::Sense::click()),
+            egui::Image::new(self.icon, self.size())
+                .rotate(
+                    drag_item
+                        .as_ref()
+                        .filter(|item| item.0.id == self.id)
+                        .map_or(self.rotation, |item| item.0.rotation)
+                        .angle(),
+                    egui::Vec2::splat(0.5),
+                )
+                .sense(egui::Sense::click()),
         )
     }
 
@@ -582,6 +590,11 @@ impl Contents for SectionContainer {
         }
     }
 
+    // Why is this not used?
+    fn fits(&self, _item: &DragItem, _slot: usize) -> bool {
+        todo!()
+    }
+
     fn pos(&self, _slot: usize) -> egui::Vec2 {
         todo!()
     }
@@ -662,17 +675,65 @@ impl Contents for SectionContainer {
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
 pub struct ExpandingContainer {
+    pub id: usize,
     pub max_size: shape::Vec2,
-    pub item: Option<Item>,
+    //pub item: Option<Item>,
 }
 
-impl ExpandingContainer {
-    pub fn ui(
+impl Contents for ExpandingContainer {
+    fn id(&self) -> usize {
+        self.id
+    }
+
+    fn len(&self) -> usize {
+        1
+    }
+
+    fn pos(&self, _slot: usize) -> egui::Vec2 {
+        egui::Vec2::ZERO
+    }
+
+    fn slot(&self, _offset: egui::Vec2) -> usize {
+        0
+    }
+
+    // FIX check max size
+    fn fits(&self, _item: &DragItem, slot: usize) -> bool {
+        // FIX we can't tell if these is no container shape, so we
+        // need a boolean flag?
+        slot == 0
+    }
+
+    fn body(
         &self,
-        _drag_item: &Option<DragItem>,
-        _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData> {
-        todo!()
+        drag_item: &Option<DragItem>,
+        items: &[(usize, Item)],
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>> {
+        assert!(items.len() <= 1);
+
+        let item = items.iter().next();
+
+        // Should the empty size be some minimum value? Or the max?
+        let size = item
+            //.as_ref()
+            .map(|(_, item)| item.size())
+            .unwrap_or_else(|| item_size());
+
+        let (rect, response) = ui.allocate_exact_size(dbg!(size), egui::Sense::hover());
+
+        let new_drag = ui
+            .is_rect_visible(rect)
+            .then(|| {
+                item.and_then(|(slot, item)| {
+                    assert!(*slot == 0);
+                    item.ui(drag_item, ui)
+                        .map(|item| (item, self.id, *slot, None))
+                })
+            })
+            .flatten();
+
+        InnerResponse::new(new_drag, response)
     }
 }
 

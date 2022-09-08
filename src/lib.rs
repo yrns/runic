@@ -712,26 +712,19 @@ impl Contents for ExpandingContainer {
     ) -> egui::InnerResponse<Option<DragItem>> {
         assert!(items.len() <= 1);
 
-        let item = items.iter().next();
-
-        // Should the empty size be some minimum value? Or the max?
-        let size = item
-            //.as_ref()
-            .map(|(_, item)| item.size())
-            .unwrap_or_else(|| item_size());
-
-        let (rect, response) = ui.allocate_exact_size(dbg!(size), egui::Sense::hover());
-
-        let new_drag = ui
-            .is_rect_visible(rect)
-            .then(|| {
-                item.and_then(|(slot, item)| {
-                    assert!(*slot == 0);
-                    item.ui(drag_item, ui)
-                        .map(|item| (item, self.id, *slot, None))
-                })
-            })
-            .flatten();
+        let (new_drag, response) = match items.iter().next() {
+            Some((slot, item)) => {
+                assert!(*slot == 0);
+                let InnerResponse { inner, response } =
+                    ui.allocate_ui(item.size(), |ui| item.ui(drag_item, ui));
+                (inner.map(|item| (item, self.id, *slot, None)), response)
+            }
+            _ => (
+                None,
+                // Should the empty size be some minimum value? Or the max?
+                ui.allocate_exact_size(item_size(), egui::Sense::hover()).1,
+            ),
+        };
 
         InnerResponse::new(new_drag, response)
     }

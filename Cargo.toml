@@ -17,7 +17,7 @@ itertools = "0.10.3"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-eframe = { version = "0.19.0", features = ["wgpu"] }
+eframe = { version = "0.1.0", path = "eframe-dynamic", package = "eframe-dynamic" }
 egui_extras = { version = "0.19.0", features = ["image"], default-features = false }
 image = { version = "0.24.3", features = ["png"], default-features = false }
 tracing-subscriber = "0.3.15"

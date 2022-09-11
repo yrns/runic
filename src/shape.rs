@@ -22,6 +22,10 @@ impl Vec2 {
     pub fn len(&self) -> usize {
         self.x as usize * self.y as usize
     }
+
+    pub fn le(&self, other: &Self) -> bool {
+        self.x <= other.x && self.y <= other.y
+    }
 }
 
 impl Add for Vec2 {

@@ -66,10 +66,7 @@ fn main() {
             contents.insert(
                 6,
                 (
-                    Box::new(ExpandingContainer {
-                        id: 6,
-                        max_size: (2, 2).into(),
-                    }),
+                    Box::new(ExpandingContainer::new(6, (2, 2))),
                     Vec::new(), // empty
                 ),
             );
@@ -116,7 +113,7 @@ impl eframe::App for Runic {
                     // need to resolve how these results are merged with a
                     // hierarchy of containers and items
                     self.contents
-                        .values()
+                        .values_mut()
                         .map(|(c, items)| {
                             // we are ignoring all but the last
                             // response...
@@ -129,11 +126,13 @@ impl eframe::App for Runic {
             {
                 tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
 
+                // FIX add/remove makes no sense if contents are builders
+
                 match self.contents.get_mut(&prev).and_then(|(c, items)| {
                     let idx = items.iter().position(|(_, item)| item.id == drag_item.id);
                     idx.map(|i| {
                         let (slot, item) = items.remove(i);
-                        c.remove(slot, &item); // unpaint
+                        c.remove(ctx, slot, &item); // unpaint
                         item
                     })
                 }) {
@@ -144,7 +143,7 @@ impl eframe::App for Runic {
 
                         match self.contents.get_mut(&container) {
                             Some((c, items)) => {
-                                c.add(slot, &item); // paint
+                                c.add(ctx, slot, &item); // paint
                                 items.push((slot, item));
                             }
                             None => {

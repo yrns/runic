@@ -308,12 +308,12 @@ impl Contents for Container {
     }
 
     fn add(&mut self, _ctx: &egui::Context, slot: usize, item: &Item) {
-        self.shape.paint(&item.shape(), self.shape.pos(slot))
+        self.shape.paint(&item.shape(), slot)
         //self.items.push((slot, item));
     }
 
     fn remove(&mut self, _ctx: &egui::Context, slot: usize, item: &Item) {
-        self.shape.unpaint(&item.shape(), self.shape.pos(slot))
+        self.shape.unpaint(&item.shape(), slot)
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
@@ -335,7 +335,7 @@ impl Contents for Container {
             _ => &self.shape,
         };
 
-        shape.fits(&item.0.shape, self.shape.pos(slot))
+        shape.fits(&item.0.shape, slot)
     }
 
     fn body(
@@ -389,7 +389,7 @@ impl Contents for Container {
                     let mut shape = self.shape.clone();
                     // We've already cloned the item and we're cloning
                     // the shape again to rotate? Isn't it already rotated?
-                    shape.unpaint(&item.shape(), self.shape.pos(*slot));
+                    shape.unpaint(&item.shape(), *slot);
                     new_drag = Some((item, self.id, *slot, Some(shape)))
                 }
             }

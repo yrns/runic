@@ -105,14 +105,14 @@ impl Shape {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
-    fn overlay_range(&self, other: &Shape, p1: Vec2) -> Option<(usize, usize)> {
+    fn overlay_range(&self, other: &Shape, slot: usize) -> Option<(usize, usize)> {
+        let p1 = self.pos(slot);
         let p2 = p1 + other.size;
-        (self.contains(p1) && self.contains(p2))
-            .then(|| (self.slot(p1), self.slot(p2 - (1, 1).into())))
+        (self.contains(p1) && self.contains(p2)).then(|| (slot, self.slot(p2 - (1, 1).into())))
     }
 
-    pub fn overlay_mut(&mut self, other: &Shape, pt: Vec2, f: impl Fn(&mut bool, &bool)) {
-        if let Some((start, end)) = self.overlay_range(other, pt) {
+    pub fn overlay_mut(&mut self, other: &Shape, slot: usize, f: impl Fn(&mut bool, &bool)) {
+        if let Some((start, end)) = self.overlay_range(other, slot) {
             let w = self.width();
             self.fill[start..=end]
                 .chunks_mut(w)
@@ -126,16 +126,16 @@ impl Shape {
         }
     }
 
-    pub fn paint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
-        self.overlay_mut(other, pt.into(), |a, b| *a = *a || *b)
+    pub fn paint(&mut self, other: &Shape, slot: usize) {
+        self.overlay_mut(other, slot, |a, b| *a = *a || *b)
     }
 
-    pub fn unpaint(&mut self, other: &Shape, pt: impl Into<Vec2>) {
-        self.overlay_mut(other, pt.into(), |a, b| *a = *a && !*b)
+    pub fn unpaint(&mut self, other: &Shape, slot: usize) {
+        self.overlay_mut(other, slot, |a, b| *a = *a && !*b)
     }
 
-    pub fn fits(&self, other: &Shape, pt: impl Into<Vec2>) -> bool {
-        if let Some((start, end)) = self.overlay_range(other, pt.into()) {
+    pub fn fits(&self, other: &Shape, slot: usize) -> bool {
+        if let Some((start, end)) = self.overlay_range(other, slot) {
             self.fill[start..=end]
                 .chunks(self.width())
                 .map(|row| &row[..(other.width())])
@@ -149,7 +149,8 @@ impl Shape {
     }
 
     #[inline]
-    pub fn slot(&self, pt: Vec2) -> usize {
+    pub fn slot(&self, pt: impl Into<Vec2>) -> usize {
+        let pt = pt.into();
         pt.x as usize + pt.y as usize * self.width()
     }
 
@@ -189,7 +190,7 @@ impl Shape {
         let slice = dest.fill.as_mut_bitslice();
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y).into())];
+                let b = self.fill[self.slot((x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
                 slice.set(slot, b);
@@ -208,7 +209,7 @@ impl Shape {
         let slice = dest.fill.as_mut_bitslice();
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y).into())];
+                let b = self.fill[self.slot((x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
                 slice.set(slot, b);
@@ -227,7 +228,7 @@ impl Shape {
         let slice = dest.fill.as_mut_bitslice();
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y).into())];
+                let b = self.fill[self.slot((x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
                 slice.set(slot, b);
@@ -271,17 +272,17 @@ mod tests {
     fn fits() {
         let a = Shape::from_bits(4, bits![1, 1, 0, 0, 1, 1, 0, 0]);
         let b = Shape::from_bits(2, bits![1, 1, 1, 1]);
-        assert!(a.fits(&b, (0, 0)) == false);
-        assert!(a.fits(&b, (1, 0)) == false);
-        assert!(a.fits(&b, (2, 0)) == true);
-        assert!(a.fits(&b, (3, 0)) == false); // outside
+        assert!(a.fits(&b, a.slot((0, 0))) == false);
+        assert!(a.fits(&b, a.slot((1, 0))) == false);
+        assert!(a.fits(&b, a.slot((2, 0))) == true);
+        assert!(a.fits(&b, a.slot((3, 0))) == false); // outside
     }
 
     #[test]
     fn paint() {
         let mut a = Shape::from_bits(4, bits![0, 0, 0, 0]);
         let b = Shape::from_bits(2, bits![1, 1]);
-        a.paint(&b, (0, 0));
+        a.paint(&b, 0);
         assert_eq!(a, Shape::from_bits(4, bits![1, 1, 0, 0]));
     }
 
@@ -290,9 +291,9 @@ mod tests {
         let mut a = Shape::from_bits(4, bits![0, 1, 1, 1]);
         let b = Shape::from_bits(2, bits![1, 1]);
         let res = Shape::from_bits(4, bits![0, 0, 1, 1]);
-        a.unpaint(&b, (0, 0));
+        a.unpaint(&b, 0);
         assert_eq!(a, res);
-        a.unpaint(&b, (0, 0));
+        a.unpaint(&b, 0);
         assert_eq!(a, res);
     }
 

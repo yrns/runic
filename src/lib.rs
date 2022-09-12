@@ -113,7 +113,7 @@ pub fn paint_shape(
     let offset = grid_rect.min + offset;
     shape
         .slots()
-        .map(|slot| offset + shape.pos_f32(slot, ITEM_SIZE).into())
+        .map(|slot| offset + xy(slot, shape.width()) * ITEM_SIZE)
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
         .for_each(|p| {
             let slot_rect = egui::Rect::from_min_size(p, item_size());
@@ -129,7 +129,7 @@ pub fn paint_shape(
 
 // Are slots intrinsic to contents?
 /// A widget to display the contents of a container.
-pub trait Contents {
+pub trait Contents: std::fmt::Debug {
     //type Item;
     //type Items: for<'a> Iterator<Item = &'a (usize, Item)>;
 
@@ -278,14 +278,11 @@ pub trait Contents {
 }
 
 // TODO rename GridContents? Grid shares some meaning w/ egui::Grid
-// this is a struct because it'll eventually be a trait?
+#[derive(Debug)]
 pub struct Container {
-    // Does it matter if this shares an id w/ an item? item_id?
+    // This shares w/ items, but the eid is unique.
     pub id: usize,
-    // returned from item
-    //drag_item: Option<DragItem>,
-    //pub items: Vec<(usize, Item)>,
-    pub shape: shape::Shape,
+    pub size: shape::Vec2,
     //slot/type: ?
 }
 
@@ -293,9 +290,13 @@ impl Container {
     pub fn new(id: usize, width: usize, height: usize) -> Self {
         Self {
             id,
-            shape: shape::Shape::new((width, height), false),
+            size: (width, height).into(),
         }
     }
+}
+
+pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
+    egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
 }
 
 impl Contents for Container {
@@ -304,38 +305,60 @@ impl Contents for Container {
     }
 
     fn len(&self) -> usize {
-        self.shape.size.len()
+        self.size.len()
     }
 
-    fn add(&mut self, _ctx: &egui::Context, slot: usize, item: &Item) {
-        self.shape.paint(&item.shape(), slot)
-        //self.items.push((slot, item));
+    fn add(&mut self, ctx: &egui::Context, slot: usize, item: &Item) {
+        // There is no get_temp_mut... If the shape doesn't exist we
+        // don't care since it will be regenerated next time the
+        // container is shown.
+        let shape = ctx.data().get_temp::<shape::Shape>(self.eid());
+        if let Some(mut shape) = shape {
+            shape.paint(&item.shape(), slot);
+            ctx.data().insert_temp(self.eid(), shape);
+        }
     }
 
-    fn remove(&mut self, _ctx: &egui::Context, slot: usize, item: &Item) {
-        self.shape.unpaint(&item.shape(), slot)
+    fn remove(&mut self, ctx: &egui::Context, slot: usize, item: &Item) {
+        // See above.
+        let shape = ctx.data().get_temp::<shape::Shape>(self.eid());
+        if let Some(mut shape) = shape {
+            shape.unpaint(&item.shape(), slot);
+            ctx.data().insert_temp(self.eid(), shape);
+        }
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
-        self.shape.pos_f32(slot, ITEM_SIZE).into()
+        xy(slot, self.size.x as usize) * ITEM_SIZE
     }
 
     fn slot(&self, p: egui::Vec2) -> usize {
         let p = p / ITEM_SIZE;
-        p.x as usize + p.y as usize * self.shape.width()
+        p.x as usize + p.y as usize * self.size.x as usize
     }
 
-    fn fits(&self, _ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
-        // Check if the shape fits here. When moving within
-        // one container, use the cached shape with the
-        // dragged item (and original rotation) unpainted.
-        let shape = match (item.1 == self.id(), &item.3) {
-            // (true, None) should never happen...
-            (true, Some(shape)) => &shape,
-            _ => &self.shape,
-        };
+    fn fits(&self, ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+        // Must be careful with the type inference here since it will
+        // never fetch anything if it thinks it's a reference.
+        match ctx.data().get_temp(self.eid()) {
+            Some(shape) => {
+                // Check if the shape fits here. When moving within
+                // one container, use the cached shape with the
+                // dragged item (and original rotation) unpainted.
+                let shape = match (item.1 == self.id(), &item.3) {
+                    // (true, None) should never happen...
+                    (true, Some(shape)) => shape,
+                    _ => &shape,
+                };
 
-        shape.fits(&item.0.shape, slot)
+                shape.fits(&item.0.shape, slot)
+            }
+            None => {
+                // TODO remove this
+                tracing::error!("shape {:?} not found!", self.eid());
+                false
+            }
+        }
     }
 
     fn body(
@@ -347,11 +370,32 @@ impl Contents for Container {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
             egui::vec2(
-                self.shape.width() as f32 * ITEM_SIZE,
-                self.shape.height() as f32 * ITEM_SIZE,
+                self.size.x as f32 * ITEM_SIZE,
+                self.size.y as f32 * ITEM_SIZE,
             ),
             egui::Sense::hover(),
         );
+
+        // Skip this if the container is empty? Only if dragging into
+        // this container? Only if visible? What if we are dragging to
+        // a container w/o the contents visible/open? Is it possible
+        // to have an empty shape without a bitvec allocated until
+        // painted?  [`fits`] also checks the boundaries even if the
+        // container is empty...
+        let shape = ui
+            .data()
+            .get_temp_mut_or_insert_with(self.eid(), || {
+                items.iter().fold(
+                    shape::Shape::new(self.size, false),
+                    |mut shape, (slot, item)| {
+                        shape.paint(&item.shape, *slot);
+                        shape
+                    },
+                )
+            })
+            // We have to clone the shape here otherwise we're holding
+            // a reference into ui...
+            .clone();
 
         // TODO make debug option
 
@@ -361,7 +405,7 @@ impl Contents for Container {
             .as_ref()
             .filter(|item| self.id == item.1)
             .and_then(|item| item.3.as_ref())
-            .unwrap_or(&self.shape);
+            .unwrap_or(&shape);
 
         // debug paint the container "shape" (filled slots)
         paint_shape(
@@ -386,7 +430,7 @@ impl Contents for Container {
                 {
                     // add the container id and current slot and
                     // container shape w/ the item unpainted
-                    let mut shape = self.shape.clone();
+                    let mut shape = shape.clone();
                     // We've already cloned the item and we're cloning
                     // the shape again to rotate? Isn't it already rotated?
                     shape.unpaint(&item.shape(), *slot);
@@ -538,12 +582,14 @@ impl ItemRotation {
 // one. Like pouches on a belt or different pockets in a jacket. It's
 // one item than holds many fixed containers. This should have the
 // same interface as [Container].
+#[derive(Debug)]
 pub struct SectionContainer {
     pub id: usize,
     pub layout: SectionLayout,
     pub sections: Vec<Container>, // Vec<Box<dyn Contents>>?
 }
 
+#[derive(Debug)]
 pub enum SectionLayout {
     Grid(usize),
     // Fixed(Vec<(usize, egui::Pos2))
@@ -668,6 +714,7 @@ impl Contents for SectionContainer {
 // An expanding container fits only one item but it can be any size up
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
+#[derive(Debug)]
 pub struct ExpandingContainer {
     pub id: usize,
     pub max_size: shape::Vec2,
@@ -728,6 +775,7 @@ impl Contents for ExpandingContainer {
         let item = items.iter().next();
         self.filled = item.is_some();
 
+        // is_rect_visible?
         let (new_drag, response) = match item {
             Some((slot, item)) => {
                 assert!(*slot == 0);

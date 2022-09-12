@@ -159,14 +159,6 @@ impl Shape {
         (slot % self.width(), slot / self.width()).into()
     }
 
-    #[inline]
-    pub fn pos_f32(&self, slot: usize, scale: f32) -> (f32, f32) {
-        (
-            (slot % self.width()) as f32 * scale,
-            (slot / self.width()) as f32 * scale,
-        )
-    }
-
     /// Returns an iterator over filled slots.
     pub fn slots(&self) -> impl Iterator<Item = usize> + '_ {
         self.fill

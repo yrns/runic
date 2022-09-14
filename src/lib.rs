@@ -369,10 +369,7 @@ impl Contents for Container {
     ) -> egui::InnerResponse<Option<DragItem>> {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(
-                self.size.x as f32 * ITEM_SIZE,
-                self.size.y as f32 * ITEM_SIZE,
-            ),
+            egui::Vec2::from(self.size) * ITEM_SIZE,
             egui::Sense::hover(),
         );
 

@@ -61,6 +61,15 @@ impl From<(usize, usize)> for Vec2 {
     }
 }
 
+impl From<Vec2> for egui::Vec2 {
+    fn from(v: Vec2) -> Self {
+        egui::Vec2 {
+            x: v.x as f32,
+            y: v.y as f32,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
     pub size: Vec2,

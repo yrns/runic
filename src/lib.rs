@@ -277,16 +277,15 @@ pub trait Contents: std::fmt::Debug {
     }
 }
 
-// TODO rename GridContents? Grid shares some meaning w/ egui::Grid
 #[derive(Debug)]
-pub struct Container {
+pub struct GridContents {
     // This shares w/ items, but the eid is unique.
     pub id: usize,
     pub size: shape::Vec2,
     //slot/type: ?
 }
 
-impl Container {
+impl GridContents {
     pub fn new(id: usize, width: usize, height: usize) -> Self {
         Self {
             id,
@@ -299,7 +298,7 @@ pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
     egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
 }
 
-impl Contents for Container {
+impl Contents for GridContents {
     fn id(&self) -> usize {
         self.id
     }
@@ -583,7 +582,7 @@ impl ItemRotation {
 pub struct SectionContainer {
     pub id: usize,
     pub layout: SectionLayout,
-    pub sections: Vec<Container>, // Vec<Box<dyn Contents>>?
+    pub sections: Vec<GridContents>, // Vec<Box<dyn Contents>>?
 }
 
 #[derive(Debug)]

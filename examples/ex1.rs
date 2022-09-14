@@ -20,7 +20,7 @@ fn main() {
             contents.insert(
                 1,
                 (
-                    Box::new(Container::new(1, 4, 4)),
+                    Box::new(GridContents::new(1, 4, 4)),
                     vec![(
                         0,
                         Item::new(
@@ -35,7 +35,7 @@ fn main() {
             contents.insert(
                 2,
                 (
-                    Box::new(Container::new(2, 2, 2)),
+                    Box::new(GridContents::new(2, 2, 2)),
                     vec![(
                         0,
                         Item::new(
@@ -55,8 +55,8 @@ fn main() {
                         layout: SectionLayout::Grid(2),
                         sections: vec![
                             // uses the same id?
-                            Container::new(5, 1, 2),
-                            Container::new(5, 1, 2),
+                            GridContents::new(5, 1, 2),
+                            GridContents::new(5, 1, 2),
                         ],
                     }),
                     Vec::new(), // empty

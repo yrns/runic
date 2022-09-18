@@ -5,6 +5,7 @@ pub mod shape;
 
 pub const ITEM_SIZE: f32 = 32.0;
 
+// static?
 pub fn item_size() -> egui::Vec2 {
     egui::vec2(ITEM_SIZE, ITEM_SIZE)
 }
@@ -63,7 +64,8 @@ impl MoveData {
 pub struct ContainerSpace;
 
 impl ContainerSpace {
-    // not a widget since it doesn't return a Response
+    // Not a widget since it doesn't return a Response, but we can use
+    // ui.scope just to get a response.
     pub fn show(
         drag_item: &mut Option<DragItem>,
         ui: &mut egui::Ui,
@@ -127,9 +129,8 @@ pub fn paint_shape(
 //     type Id;
 // }
 
-// Are slots intrinsic to contents?
 /// A widget to display the contents of a container.
-pub trait Contents: std::fmt::Debug {
+pub trait Contents {
     //type Item;
     //type Items: for<'a> Iterator<Item = &'a (usize, Item)>;
 
@@ -167,15 +168,12 @@ pub trait Contents: std::fmt::Debug {
     }
 
     // What about fits anywhere/any slot?
-    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
-        true
-    }
+    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool;
 
     // Draw contents.
     fn body(
         &mut self,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>>;
 
@@ -183,7 +181,6 @@ pub trait Contents: std::fmt::Debug {
     fn ui(
         &mut self,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)], //impl Iterator<Item = &'a (usize, Item)>,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
         let margin = egui::Vec2::splat(4.0);
@@ -193,7 +190,7 @@ pub trait Contents: std::fmt::Debug {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        let egui::InnerResponse { inner, response } = self.body(drag_item, items, &mut content_ui);
+        let egui::InnerResponse { inner, response } = self.body(drag_item, &mut content_ui);
 
         // tarkov also checks if containers are full, even if not
         // hovering -- maybe track min size free?
@@ -278,18 +275,23 @@ pub trait Contents: std::fmt::Debug {
 }
 
 #[derive(Debug)]
-pub struct GridContents {
+pub struct GridContents<I> {
     // This shares w/ items, but the eid is unique.
     pub id: usize,
     pub size: shape::Vec2,
+    pub items: I,
     //slot/type: ?
 }
 
-impl GridContents {
-    pub fn new(id: usize, width: usize, height: usize) -> Self {
+impl<'a, I> GridContents<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
+    pub fn new(id: usize, size: impl Into<shape::Vec2>, items: I) -> Self {
         Self {
             id,
-            size: (width, height).into(),
+            size: size.into(),
+            items,
         }
     }
 }
@@ -298,7 +300,34 @@ pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
     egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
 }
 
-impl Contents for GridContents {
+fn update_state<T: 'static + Clone + Send + Sync>(
+    ctx: &egui::Context,
+    id: egui::Id,
+    mut f: impl FnMut(T) -> T,
+) {
+    if let Some(t) = ctx.data().get_temp::<T>(id) {
+        ctx.data().insert_temp(id, f(t));
+    }
+}
+
+fn add_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::Shape) {
+    update_state(ctx, id, |mut fill: shape::Shape| {
+        fill.paint(&shape, slot);
+        fill
+    })
+}
+
+fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::Shape) {
+    update_state(ctx, id, |mut fill: shape::Shape| {
+        fill.unpaint(&shape, slot);
+        fill
+    })
+}
+
+impl<'a, I> Contents for GridContents<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
     fn id(&self) -> usize {
         self.id
     }
@@ -311,20 +340,11 @@ impl Contents for GridContents {
         // There is no get_temp_mut... If the shape doesn't exist we
         // don't care since it will be regenerated next time the
         // container is shown.
-        let shape = ctx.data().get_temp::<shape::Shape>(self.eid());
-        if let Some(mut shape) = shape {
-            shape.paint(&item.shape(), slot);
-            ctx.data().insert_temp(self.eid(), shape);
-        }
+        add_shape(ctx, self.eid(), slot, &item.shape())
     }
 
     fn remove(&mut self, ctx: &egui::Context, slot: usize, item: &Item) {
-        // See above.
-        let shape = ctx.data().get_temp::<shape::Shape>(self.eid());
-        if let Some(mut shape) = shape {
-            shape.unpaint(&item.shape(), slot);
-            ctx.data().insert_temp(self.eid(), shape);
-        }
+        remove_shape(ctx, self.eid(), slot, &item.shape())
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
@@ -363,7 +383,6 @@ impl Contents for GridContents {
     fn body(
         &mut self,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>> {
         // allocate the full container size
@@ -372,68 +391,91 @@ impl Contents for GridContents {
             egui::Sense::hover(),
         );
 
-        // Skip this if the container is empty? Only if dragging into
-        // this container? Only if visible? What if we are dragging to
-        // a container w/o the contents visible/open? Is it possible
-        // to have an empty shape without a bitvec allocated until
-        // painted?  [`fits`] also checks the boundaries even if the
-        // container is empty...
-        let shape = ui
-            .data()
-            .get_temp_mut_or_insert_with(self.eid(), || {
-                items.iter().fold(
-                    shape::Shape::new(self.size, false),
-                    |mut shape, (slot, item)| {
-                        shape.paint(&item.shape, *slot);
-                        shape
-                    },
-                )
-            })
-            // We have to clone the shape here otherwise we're holding
-            // a reference into ui...
-            .clone();
+        let new_drag = if ui.is_rect_visible(rect) {
+            // Skip this if the container is empty? Only if dragging into
+            // this container? Only if visible? What if we are dragging to
+            // a container w/o the contents visible/open? Is it possible
+            // to have an empty shape without a bitvec allocated until
+            // painted?  [`fits`] also checks the boundaries even if the
+            // container is empty...
+            let mut fill = false;
+            let eid = self.eid();
+            let mut shape = ui.data().get_temp(eid).unwrap_or_else(|| {
+                // We don't need to fill if we aren't dragging currently...
+                fill = true;
+                shape::Shape::new(self.size, false)
+            });
 
-        // TODO make debug option
+            // TODO make debug option
+            if !fill {
+                // Use the cached shape if the dragged item is ours. This
+                // rehashes what's in `fits`.
+                let shape = drag_item
+                    .as_ref()
+                    .filter(|item| self.id == item.1)
+                    .and_then(|item| item.3.as_ref())
+                    .unwrap_or(&shape);
 
-        // Use the cached shape if the dragged item is ours. This
-        // rehashes what's in `fits`.
-        let shape = drag_item
-            .as_ref()
-            .filter(|item| self.id == item.1)
-            .and_then(|item| item.3.as_ref())
-            .unwrap_or(&shape);
+                // debug paint the container "shape" (filled slots)
+                paint_shape(
+                    shape,
+                    ui.min_rect(),
+                    egui::Vec2::ZERO,
+                    egui::color::Color32::DARK_BLUE,
+                    ui,
+                );
+            }
 
-        // debug paint the container "shape" (filled slots)
-        paint_shape(
-            shape,
-            ui.min_rect(),
-            egui::Vec2::ZERO,
-            egui::color::Color32::DARK_BLUE,
-            ui,
-        );
-
-        let mut new_drag = None;
-
-        if ui.is_rect_visible(rect) {
             let item_size = item_size();
-            for (slot, item) in items {
-                let item_rect =
-                    egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
-                // item returns a clone if it's being dragged
-                if let Some(item) = ui
-                    .allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
-                    .inner
-                {
-                    // add the container id and current slot and
-                    // container shape w/ the item unpainted
+
+            // I should be movable? Make it an option? We need to be
+            // able to call self methods in the adapters. I should be
+            // Iterator<Item = (usize, &Item)? FIX:
+            let items = self.items.by_ref().cloned().collect::<Vec<_>>();
+
+            let new_drag = items
+                .iter()
+                // Paint each item and fill our shape if needed.
+                .map(|(slot, item)| {
+                    if fill {
+                        shape.paint(&item.shape, *slot);
+                    }
+
+                    let item_rect =
+                        egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
+                    // item returns a clone if it's being dragged
+                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
+                        .inner
+                        .map(|new_drag| (slot, new_drag))
+                })
+                // Reduce down to one new_drag.
+                .reduce(|a, b| {
+                    if a.is_some() && b.is_some() {
+                        // This will only happen if the items overlap?
+                        tracing::error!("multiple drag items! ({:?} and {:?})", &a, &b);
+                    }
+                    a.or(b)
+                })
+                .flatten()
+                // Add the contents id, current slot and
+                // container shape w/ the item unpainted.
+                .map(|(slot, item)| {
                     let mut shape = shape.clone();
                     // We've already cloned the item and we're cloning
                     // the shape again to rotate? Isn't it already rotated?
                     shape.unpaint(&item.shape(), *slot);
-                    new_drag = Some((item, self.id, *slot, Some(shape)))
-                }
+                    (item, self.id, *slot, Some(shape))
+                });
+
+            // Write out the new shape.
+            if fill {
+                ui.data().insert_temp(eid, shape);
             }
-        }
+            new_drag
+        } else {
+            None
+        };
+
         InnerResponse::new(new_drag, response)
     }
 }
@@ -445,6 +487,17 @@ pub struct Item {
     pub shape: shape::Shape,
     pub icon: TextureId,
 }
+
+// pub fn item(
+//     id: usize,
+//     icon: TextureId,
+//     shape: shape::Shape,
+//     drag_item: &Option<DragItem>,
+// ) -> impl egui::Widget + '_ {
+//     // Widget will never work since we need to return things other
+//     // than a response.
+//     move |ui: &mut egui::Ui| ui.horizontal(|ui| Item::new(id, icon, shape).ui(drag_item, ui))
+// }
 
 impl Item {
     pub fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
@@ -579,10 +632,11 @@ impl ItemRotation {
 // one item than holds many fixed containers. This should have the
 // same interface as [Container].
 #[derive(Debug)]
-pub struct SectionContainer {
+pub struct SectionContainer<I> {
     pub id: usize,
     pub layout: SectionLayout,
-    pub sections: Vec<GridContents>, // Vec<Box<dyn Contents>>?
+    pub sections: Vec<shape::Vec2>,
+    pub items: I,
 }
 
 #[derive(Debug)]
@@ -593,7 +647,10 @@ pub enum SectionLayout {
     // Other(Fn?)
 }
 
-impl SectionContainer {
+impl<'a, I> SectionContainer<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
     fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
         self.section_ranges()
             .enumerate()
@@ -608,9 +665,16 @@ impl SectionContainer {
             (start, end)
         })
     }
+
+    fn section_eid(&self, idx: usize) -> egui::Id {
+        egui::Id::new(self.eid().with("section").with(idx))
+    }
 }
 
-impl Contents for SectionContainer {
+impl<'a, I> Contents for SectionContainer<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
     fn id(&self) -> usize {
         self.id
     }
@@ -621,13 +685,13 @@ impl Contents for SectionContainer {
 
     fn add(&mut self, ctx: &egui::Context, slot: usize, item: &Item) {
         if let Some((i, slot)) = self.section_slot(slot) {
-            self.sections[i].add(ctx, slot, item)
+            add_shape(ctx, self.section_eid(i), slot, &item.shape());
         }
     }
 
     fn remove(&mut self, ctx: &egui::Context, slot: usize, item: &Item) {
         if let Some((i, slot)) = self.section_slot(slot) {
-            self.sections[i].remove(ctx, slot, item)
+            remove_shape(ctx, self.section_eid(i), slot, &item.shape())
         }
     }
 
@@ -639,10 +703,14 @@ impl Contents for SectionContainer {
         todo!()
     }
 
+    // Unused. We can only fit things in sections.
+    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
+        false
+    }
+
     fn body(
         &mut self,
         _drag_item: &Option<DragItem>,
-        _items: &[(usize, Item)],
         _ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>> {
         unimplemented!()
@@ -654,11 +722,12 @@ impl Contents for SectionContainer {
     fn ui(
         &mut self,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
         // map (slot, item) -> (section, (slot, item))
         let ranges = self.section_ranges().collect_vec();
+        // FIX:
+        let items = self.items.by_ref().cloned().collect::<Vec<_>>();
         let items = items
             .iter()
             .filter_map(|(slot, item)| {
@@ -680,17 +749,20 @@ impl Contents for SectionContainer {
             SectionLayout::Grid(width) => {
                 egui::Grid::new(self.id).num_columns(width).show(ui, |ui| {
                     self.sections
-                        .iter_mut()
+                        .iter()
                         .zip(ranges.iter())
                         .enumerate()
-                        .map(|(i, (section, (start, _end)))| {
-                            let data = section
-                                .ui(
-                                    drag_item,
-                                    items.get(&i).unwrap_or_else(|| &empty).as_slice(),
-                                    ui,
-                                )
-                                .inner;
+                        .map(|(i, (size, (start, _end)))| {
+                            let data = Section::new(
+                                self.section_eid(i),
+                                GridContents::new(
+                                    self.id(),
+                                    *size,
+                                    items.get(&i).unwrap_or_else(|| &empty).iter(),
+                                ),
+                            )
+                            .ui(drag_item, ui)
+                            .inner;
 
                             if (i + 1) % width == 0 {
                                 ui.end_row();
@@ -707,28 +779,85 @@ impl Contents for SectionContainer {
     }
 }
 
+/// Section wraps GridContents to provide a unique egui::Id from the
+/// actual (parent) container.
+#[derive(Debug)]
+pub struct Section<I> {
+    pub eid: egui::Id,
+    // This could be Box<dyn Contents>?
+    pub contents: GridContents<I>,
+}
+
+impl<I> Section<I> {
+    pub fn new(eid: egui::Id, contents: GridContents<I>) -> Self {
+        Self { eid, contents }
+    }
+}
+
+impl<'a, I> Contents for Section<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
+    fn id(&self) -> usize {
+        self.contents.id()
+    }
+
+    fn eid(&self) -> egui::Id {
+        self.eid
+    }
+
+    fn len(&self) -> usize {
+        self.contents.len()
+    }
+
+    fn pos(&self, slot: usize) -> egui::Vec2 {
+        self.contents.pos(slot)
+    }
+
+    fn slot(&self, offset: egui::Vec2) -> usize {
+        self.contents.slot(offset)
+    }
+
+    fn fits(&self, ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+        self.contents.fits(ctx, item, slot)
+    }
+
+    fn body(
+        &mut self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>> {
+        self.contents.body(drag_item, ui)
+    }
+}
+
 // An expanding container fits only one item but it can be any size up
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
 #[derive(Debug)]
-pub struct ExpandingContainer {
+pub struct ExpandingContainer<I> {
     pub id: usize,
     pub max_size: shape::Vec2,
     // This won't be valid until body is called.
     pub filled: bool,
+    pub items: I,
 }
 
-impl ExpandingContainer {
-    pub fn new(id: usize, max_size: impl Into<shape::Vec2>) -> Self {
+impl<I> ExpandingContainer<I> {
+    pub fn new(id: usize, max_size: impl Into<shape::Vec2>, items: I) -> Self {
         Self {
             id,
             max_size: max_size.into(),
             filled: false,
+            items,
         }
     }
 }
 
-impl Contents for ExpandingContainer {
+impl<'a, I> Contents for ExpandingContainer<I>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
     fn id(&self) -> usize {
         self.id
     }
@@ -737,14 +866,15 @@ impl Contents for ExpandingContainer {
         1
     }
 
-    fn add(&mut self, ctx: &egui::Context, slot: usize, _item: &Item) {
-        assert!(slot == 0);
-        ctx.data().insert_temp(self.eid(), true);
+    fn add(&mut self, _ctx: &egui::Context, _slot: usize, _item: &Item) {
+        // Using self.filled...
+        // assert!(slot == 0);
+        // ctx.data().insert_temp(self.eid(), true);
     }
 
-    fn remove(&mut self, ctx: &egui::Context, slot: usize, _item: &Item) {
-        assert!(slot == 0);
-        ctx.data().insert_temp(self.eid(), false);
+    fn remove(&mut self, _ctx: &egui::Context, _slot: usize, _item: &Item) {
+        // assert!(slot == 0);
+        // ctx.data().insert_temp(self.eid(), false);
     }
 
     fn pos(&self, _slot: usize) -> egui::Vec2 {
@@ -763,13 +893,12 @@ impl Contents for ExpandingContainer {
     fn body(
         &mut self,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>> {
-        assert!(items.len() <= 1);
-
-        let item = items.iter().next();
+        let item = self.items.next();
         self.filled = item.is_some();
+        // Make sure items is <= 1:
+        assert!(self.items.next().is_none());
 
         // is_rect_visible?
         let (new_drag, response) = match item {
@@ -792,7 +921,7 @@ impl Contents for ExpandingContainer {
 
 // An expanding container that contains another container, the
 // contents of which are displayed inline when present.
-pub struct InlineContainer {
-    pub container: ExpandingContainer,
-    pub contents: Container,
+pub struct InlineContainer<I> {
+    pub container: ExpandingContainer<I>,
+    pub contents: GridContents<I>,
 }

@@ -13,62 +13,41 @@ fn main() {
         "runic",
         options,
         Box::new(|cc| {
-            let mut contents: HashMap<usize, (Box<dyn Contents>, Vec<(usize, Item)>)> =
-                HashMap::new();
+            let mut contents = HashMap::new();
             let mut images = HashMap::new();
 
             contents.insert(
                 1,
-                (
-                    Box::new(GridContents::new(1, 4, 4)),
-                    vec![(
-                        0,
-                        Item::new(
-                            3,
-                            load_image(&mut images, "pipe").texture_id(&cc.egui_ctx),
-                            shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
-                        ),
-                    )],
-                ),
+                vec![(
+                    0,
+                    Item::new(
+                        3,
+                        load_image(&mut images, "pipe").texture_id(&cc.egui_ctx),
+                        shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
+                    ),
+                )],
             );
 
             contents.insert(
                 2,
-                (
-                    Box::new(GridContents::new(2, 2, 2)),
-                    vec![(
-                        0,
-                        Item::new(
-                            4,
-                            load_image(&mut images, "potion-icon-24").texture_id(&cc.egui_ctx),
-                            shape::Shape::new((1, 1), true),
-                        ),
-                    )],
-                ),
+                vec![(
+                    0,
+                    Item::new(
+                        4,
+                        load_image(&mut images, "potion-icon-24").texture_id(&cc.egui_ctx),
+                        shape::Shape::new((1, 1), true),
+                    ),
+                )],
             );
 
             contents.insert(
                 5,
-                (
-                    Box::new(SectionContainer {
-                        id: 5,
-                        layout: SectionLayout::Grid(2),
-                        sections: vec![
-                            // uses the same id?
-                            GridContents::new(5, 1, 2),
-                            GridContents::new(5, 1, 2),
-                        ],
-                    }),
-                    Vec::new(), // empty
-                ),
+                Vec::new(), // empty
             );
 
             contents.insert(
                 6,
-                (
-                    Box::new(ExpandingContainer::new(6, (2, 2))),
-                    Vec::new(), // empty
-                ),
+                Vec::new(), // empty
             );
 
             Box::new(Runic {
@@ -85,7 +64,7 @@ struct Runic {
     #[allow(dead_code)]
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
-    contents: HashMap<usize, (Box<dyn Contents>, Vec<(usize, Item)>)>,
+    contents: HashMap<usize, Vec<(usize, Item)>>,
 }
 
 fn load_image<'a>(
@@ -110,29 +89,61 @@ impl eframe::App for Runic {
         egui::CentralPanel::default().show(ctx, |ui| {
             if let Some(((drag_item, prev, _slot, _), (container, slot))) =
                 ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
-                    // need to resolve how these results are merged with a
-                    // hierarchy of containers and items
-                    self.contents
-                        .values_mut()
-                        .map(|(c, items)| {
-                            // we are ignoring all but the last
-                            // response...
-                            ui.label(format!("Container {}", c.id()));
-                            c.ui(drag_item, items, ui).inner
-                        })
-                        .reduce(|acc, d| acc.merge(d))
-                        .unwrap_or_default()
+                    ui.label("Grid contents 4x4:");
+                    let data = GridContents::new(
+                        1,
+                        (4, 4),
+                        self.contents.get(&1).unwrap_or(&Vec::new()).iter(),
+                    )
+                    .ui(drag_item, ui)
+                    .inner;
+
+                    ui.label("Grid contents 2x2:");
+                    let data = data.merge(
+                        GridContents::new(
+                            2,
+                            (2, 2),
+                            self.contents.get(&2).unwrap_or(&Vec::new()).iter(),
+                        )
+                        .ui(drag_item, ui)
+                        .inner,
+                    );
+
+                    ui.label("Section contents 2x1x2:");
+                    let data = data.merge(
+                        SectionContainer {
+                            id: 5,
+                            layout: SectionLayout::Grid(2),
+                            sections: vec![(1, 2).into(), (1, 2).into()],
+                            items: self.contents.get(&5).unwrap_or(&Vec::new()).iter(),
+                        }
+                        .ui(drag_item, ui)
+                        .inner,
+                    );
+
+                    ui.label("Expanding container 2x2:");
+                    let data = data.merge(
+                        ExpandingContainer::new(
+                            6,
+                            (2, 2),
+                            self.contents.get(&6).unwrap_or(&Vec::new()).iter(),
+                        )
+                        .ui(drag_item, ui)
+                        .inner,
+                    );
+
+                    data
                 })
             {
                 tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
 
                 // FIX add/remove makes no sense if contents are builders
 
-                match self.contents.get_mut(&prev).and_then(|(c, items)| {
+                match self.contents.get_mut(&prev).and_then(|items| {
                     let idx = items.iter().position(|(_, item)| item.id == drag_item.id);
                     idx.map(|i| {
-                        let (slot, item) = items.remove(i);
-                        c.remove(ctx, slot, &item); // unpaint
+                        let (_slot, item) = items.remove(i);
+                        //c.remove(ctx, slot, &item); // FIX!!!
                         item
                     })
                 }) {
@@ -142,8 +153,8 @@ impl eframe::App for Runic {
                         item.rotation = drag_item.rotation;
 
                         match self.contents.get_mut(&container) {
-                            Some((c, items)) => {
-                                c.add(ctx, slot, &item); // paint
+                            Some(items) => {
+                                //c.add(ctx, slot, &item); // FIX!!!
                                 items.push((slot, item));
                             }
                             None => {

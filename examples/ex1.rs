@@ -87,82 +87,87 @@ fn load_image<'a>(
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(((drag_item, prev, _slot, _), (container, slot))) =
-                ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
-                    ui.label("Grid contents 4x4:");
-                    let data = GridContents::new(
-                        1,
-                        (4, 4),
-                        self.contents.get(&1).unwrap_or(&Vec::new()).iter(),
-                    )
+            let move_data = ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
+                ui.label("Grid contents 4x4:");
+                let data = GridContents::new(1, (4, 4), self.contents.get(&1))
                     .ui(drag_item, ui)
                     .inner;
 
-                    ui.label("Grid contents 2x2:");
-                    let data = data.merge(
-                        GridContents::new(
-                            2,
-                            (2, 2),
-                            self.contents.get(&2).unwrap_or(&Vec::new()).iter(),
-                        )
+                ui.label("Grid contents 2x2:");
+                let data = data.merge(
+                    GridContents::new(2, (2, 2), self.contents.get(&2))
                         .ui(drag_item, ui)
                         .inner,
-                    );
+                );
 
-                    ui.label("Section contents 2x1x2:");
-                    let data = data.merge(
-                        SectionContainer {
-                            id: 5,
-                            layout: SectionLayout::Grid(2),
-                            sections: vec![(1, 2).into(), (1, 2).into()],
-                            items: self.contents.get(&5).unwrap_or(&Vec::new()).iter(),
-                        }
+                ui.label("Section contents 2x1x2:");
+                let data = data.merge(
+                    SectionContainer::new(
+                        5,
+                        SectionLayout::Grid(2),
+                        vec![(1, 2).into(), (1, 2).into()],
+                        self.contents.get(&5),
+                    )
+                    .ui(drag_item, ui)
+                    .inner,
+                );
+
+                ui.label("Expanding container 2x2:");
+                let data = data.merge(
+                    ExpandingContainer::new(6, (2, 2), self.contents.get(&6))
                         .ui(drag_item, ui)
                         .inner,
-                    );
+                );
 
-                    ui.label("Expanding container 2x2:");
-                    let data = data.merge(
-                        ExpandingContainer::new(
-                            6,
-                            (2, 2),
-                            self.contents.get(&6).unwrap_or(&Vec::new()).iter(),
-                        )
-                        .ui(drag_item, ui)
-                        .inner,
-                    );
+                data
+            });
 
-                    data
-                })
-            {
-                tracing::info!("moving item {:?} -> container {:?}", drag_item, container);
+            if let Some(move_data) = move_data {
+                let mut resolve = false;
+                if let MoveData {
+                    drag: Some(ref drag),
+                    target: Some((container, slot)),
+                    ..
+                } = move_data
+                {
+                    tracing::info!("moving item {:?} -> container {:?}", drag.item, container);
 
-                // FIX add/remove makes no sense if contents are builders
+                    // Using indexmap or something else to get two mutable
+                    // refs would make this transactable.
+                    match self.contents.get_mut(&drag.container.0).and_then(|items| {
+                        let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
+                        idx.map(|idx| items.remove(idx).1)
+                    }) {
+                        Some(mut item) => {
+                            tracing::info!(
+                                "new rot {:?} --> {:?}",
+                                item.rotation,
+                                drag.item.rotation
+                            );
+                            // Copy the rotation.
+                            item.rotation = drag.item.rotation;
 
-                match self.contents.get_mut(&prev).and_then(|items| {
-                    let idx = items.iter().position(|(_, item)| item.id == drag_item.id);
-                    idx.map(|i| {
-                        let (_slot, item) = items.remove(i);
-                        //c.remove(ctx, slot, &item); // FIX!!!
-                        item
-                    })
-                }) {
-                    Some(mut item) => {
-                        tracing::info!("new rot {:?} --> {:?}", item.rotation, drag_item.rotation);
-                        // Copy the rotation.
-                        item.rotation = drag_item.rotation;
-
-                        match self.contents.get_mut(&container) {
-                            Some(items) => {
-                                //c.add(ctx, slot, &item); // FIX!!!
-                                items.push((slot, item));
+                            match self.contents.get_mut(&container) {
+                                Some(items) => {
+                                    items.push((slot, item));
+                                    resolve = true;
+                                }
+                                None => {
+                                    tracing::error!(
+                                        "could not find container {} to add to",
+                                        container
+                                    )
+                                }
                             }
-                            None => {
-                                tracing::error!("could not find container {} to add to", container)
-                            }
                         }
+                        None => tracing::error!(
+                            "could not find container {} to remove from",
+                            drag.container.0
+                        ),
                     }
-                    None => tracing::error!("could not find container {} to remove from", prev),
+                }
+                if resolve {
+                    move_data.resolve(ctx);
                 }
             }
         });

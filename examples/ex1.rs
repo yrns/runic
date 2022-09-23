@@ -40,16 +40,6 @@ fn main() {
                 )],
             );
 
-            contents.insert(
-                5,
-                Vec::new(), // empty
-            );
-
-            contents.insert(
-                6,
-                Vec::new(), // empty
-            );
-
             Box::new(Runic {
                 images,
                 drag_item: None,
@@ -119,6 +109,23 @@ impl eframe::App for Runic {
                         .inner,
                 );
 
+                ui.label("Inline contents 2x2:");
+                let contents = self.contents.get(&7);
+                let inline_contents = contents
+                    .and_then(|items| items.get(0))
+                    .map(|item| item.1.id);
+                let data = data.merge(
+                    InlineContents::new(
+                        ExpandingContainer::new(7, (2, 2), contents),
+                        // TODO the layout of contents is fixed here,
+                        // but should depend on the item somehow
+                        inline_contents
+                            .map(|id| GridContents::new(id, (3, 2), self.contents.get(&id))),
+                    )
+                    .ui(drag_item, ui)
+                    .inner,
+                );
+
                 data
             });
 
@@ -147,18 +154,12 @@ impl eframe::App for Runic {
                             // Copy the rotation.
                             item.rotation = drag.item.rotation;
 
-                            match self.contents.get_mut(&container) {
-                                Some(items) => {
-                                    items.push((slot, item));
-                                    resolve = true;
-                                }
-                                None => {
-                                    tracing::error!(
-                                        "could not find container {} to add to",
-                                        container
-                                    )
-                                }
-                            }
+                            // Insert item.
+                            self.contents
+                                .entry(container)
+                                .or_insert_with(Vec::new)
+                                .push((slot, item));
+                            resolve = true;
                         }
                         None => tracing::error!(
                             "could not find container {} to remove from",

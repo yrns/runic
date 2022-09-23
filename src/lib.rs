@@ -1049,7 +1049,38 @@ where
 // contents of which are displayed inline when present.
 pub struct InlineContents<I, C> {
     pub container: ExpandingContainer<I>,
-    pub contents: C,
+    pub contents: Option<C>,
 }
 
+impl<'a, I, C: Contents> InlineContents<I, C>
+where
+    I: Iterator<Item = &'a (usize, Item)>,
+{
+    pub fn new(container: ExpandingContainer<I>, contents: Option<C>) -> Self {
+        Self {
+            container,
+            contents,
+        }
+    }
+
+    pub fn ui(
+        self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<MoveData> {
+        ui.horizontal(|ui| {
+            let Self {
+                mut container,
+                contents,
+            } = self;
+
+            let data = container.ui(drag_item, ui).inner;
+
+            if let Some(mut contents) = contents {
+                data.merge(contents.ui(drag_item, ui).inner)
+            } else {
+                data
+            }
+        })
+    }
 }

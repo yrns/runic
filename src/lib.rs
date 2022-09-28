@@ -1,9 +1,10 @@
 use egui::{InnerResponse, TextureId};
+use flagset::{flags, FlagSet};
 use itertools::Itertools;
 
 pub mod shape;
 
-pub const ITEM_SIZE: f32 = 32.0;
+pub const ITEM_SIZE: f32 = 48.0;
 
 // static?
 pub fn item_size() -> egui::Vec2 {
@@ -207,9 +208,7 @@ pub trait Contents {
     /// invalid results if the offset is outside the container.
     fn slot(&self, offset: egui::Vec2) -> usize;
 
-    fn accepts(&self, _item: &Item) -> bool {
-        true
-    }
+    fn accepts(&self, item: &Item, slot: usize) -> bool;
 
     // What about fits anywhere/any slot?
     fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool;
@@ -239,10 +238,6 @@ pub trait Contents {
         // tarkov also checks if containers are full, even if not
         // hovering -- maybe track min size free?
         let dragging = drag_item.is_some();
-        let accepts = drag_item
-            .as_ref()
-            .map(|drag| self.accepts(&drag.item))
-            .unwrap_or_default();
 
         let r = content_ui.min_rect();
         let slot = response
@@ -250,6 +245,13 @@ pub trait Contents {
             // the hover includes the outer_rect?
             .filter(|p| r.contains(*p))
             .map(|p| self.slot(p - r.min));
+
+        let accepts = drag_item
+            .as_ref()
+            .zip(slot)
+            // `accepts` takes a slot for sectioned contents.
+            .map(|(drag, slot)| self.accepts(&drag.item, slot))
+            .unwrap_or_default();
 
         let fits = drag_item
             .as_ref()
@@ -307,7 +309,14 @@ pub trait Contents {
         );
 
         // Only send target on release?
-        //let released = ui.input().pointer.any_released();
+        let released = ui.input().pointer.any_released();
+        if released && fits && !accepts {
+            tracing::info!(
+                "container {:?} does not accept item {:?}!",
+                self.id(),
+                drag_item.as_ref().map(|drag| drag.item.flags)
+            );
+        }
 
         // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
 
@@ -328,7 +337,7 @@ pub struct GridContents<I> {
     pub id: usize,
     pub size: shape::Vec2,
     pub items: Option<I>,
-    //slot/type: ?
+    pub flags: FlagSet<ItemFlags>,
 }
 
 impl<'a, I> GridContents<I>
@@ -343,16 +352,24 @@ where
             id,
             size: size.into(),
             items: items.map(|items| items.into_iter()),
+            flags: Default::default(),
         }
+    }
+
+    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+        self.flags = flags.into();
+        self
     }
 }
 
+// What is this for?
 impl<I> Clone for GridContents<I> {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
             size: self.size,
             items: None,
+            flags: self.flags,
         }
     }
 }
@@ -421,6 +438,11 @@ where
     fn slot(&self, p: egui::Vec2) -> usize {
         let p = p / ITEM_SIZE;
         p.x as usize + p.y as usize * self.size.x as usize
+    }
+
+    fn accepts(&self, item: &Item, _slot: usize) -> bool {
+        dbg!("grid", &self.flags);
+        self.flags.contains(item.flags)
     }
 
     fn fits(&self, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
@@ -554,12 +576,31 @@ where
     }
 }
 
+// Maybe this should be a trait instead of requiring flagset. Or maybe
+// `Item` itself is a trait that encompasses flags. We only care about
+// accepting items and whether or not something is a container. At a
+// minimum `Item` should be generic over flags. TODO?
+flags! {
+    // What about slots?
+    pub enum ItemFlags: u32 {
+        Weapon,
+        Armor,
+        Potion,
+        TradeGood,
+        Container,
+    }
+}
+
+// Rename "simple item"?
 #[derive(Clone, Debug)]
 pub struct Item {
     pub id: usize,
     pub rotation: ItemRotation,
     pub shape: shape::Shape,
     pub icon: TextureId,
+    pub flags: FlagSet<ItemFlags>,
+    pub cflags: FlagSet<ItemFlags>,
+    //pub layout: ContentsLayout,
 }
 
 // pub fn item(
@@ -580,7 +621,19 @@ impl Item {
             rotation: Default::default(),
             shape,
             icon,
+            flags: FlagSet::default(),
+            cflags: FlagSet::default(),
         }
+    }
+
+    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+        self.flags = flags.into();
+        self
+    }
+
+    pub fn with_cflags(mut self, cflags: impl Into<FlagSet<ItemFlags>>) -> Self {
+        self.cflags = cflags.into();
+        self
     }
 
     /// Returns an egui id based on the item id.
@@ -712,6 +765,8 @@ pub struct SectionContainer<I> {
     // This should be inside section layout...?
     pub sections: Vec<shape::Vec2>,
     pub items: Option<I>,
+    // Should each section have its own flags?
+    pub flags: FlagSet<ItemFlags>,
 }
 
 #[derive(Clone, Debug)]
@@ -740,7 +795,13 @@ where
             layout,
             sections,
             items: items.map(|items| items.into_iter()),
+            flags: Default::default(),
         }
+    }
+
+    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+        self.flags = flags.into();
+        self
     }
 
     fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
@@ -807,6 +868,16 @@ where
         todo!()
     }
 
+    // Is this even needed? We'd have to generate sections inside Self::new.
+    fn accepts(&self, _item: &Item, _slot: usize) -> bool {
+        // if let Some((section, slot)) = self.section_slot(slot) {
+        //     self.sections[section].accepts(item, slot)
+        // } else {
+        //     false
+        // }
+        unimplemented!()
+    }
+
     // Unused. We can only fit things in sections.
     fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
         false
@@ -862,7 +933,7 @@ where
                             let items = items.get(&i);
                             let data = Section::new(
                                 self.section_eid(i),
-                                GridContents::new(self.id(), *size, items),
+                                GridContents::new(self.id(), *size, items).with_flags(self.flags),
                             )
                             .ui(drag_item, ui)
                             .inner;
@@ -921,6 +992,10 @@ where
         self.contents.slot(offset)
     }
 
+    fn accepts(&self, item: &Item, slot: usize) -> bool {
+        self.contents.accepts(item, slot)
+    }
+
     fn fits(&self, ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
         self.contents.fits(ctx, item, slot)
     }
@@ -944,6 +1019,7 @@ pub struct ExpandingContainer<I> {
     // This won't be valid until body is called.
     pub filled: bool,
     pub items: Option<I>,
+    pub flags: FlagSet<ItemFlags>,
 }
 
 impl<I> ExpandingContainer<I> {
@@ -956,7 +1032,13 @@ impl<I> ExpandingContainer<I> {
             max_size: max_size.into(),
             filled: false,
             items: items.map(|items| items.into_iter()),
+            flags: Default::default(),
         }
+    }
+
+    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+        self.flags = flags.into();
+        self
     }
 }
 
@@ -967,6 +1049,7 @@ impl<I> Clone for ExpandingContainer<I> {
             max_size: self.max_size,
             filled: self.filled,
             items: None,
+            flags: self.flags,
         }
     }
 }
@@ -1000,6 +1083,11 @@ where
 
     fn slot(&self, _offset: egui::Vec2) -> usize {
         0
+    }
+
+    fn accepts(&self, item: &Item, slot: usize) -> bool {
+        assert!(slot == 0);
+        self.flags.contains(item.flags)
     }
 
     // How do we visually show if the item is too big?

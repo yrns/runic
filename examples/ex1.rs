@@ -2,6 +2,7 @@ use std::{collections::HashMap, path::PathBuf};
 
 use eframe::egui;
 use egui_extras::RetainedImage;
+use flagset::FlagSet;
 use runic::*;
 
 use bitvec::prelude::*;
@@ -22,9 +23,11 @@ fn main() {
                     0,
                     Item::new(
                         3,
-                        load_image(&mut images, "pipe").texture_id(&cc.egui_ctx),
+                        load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
                         shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
-                    ),
+                    )
+                    // this item is a weapon
+                    .with_flags(ItemFlags::Weapon),
                 )],
             );
 
@@ -34,9 +37,13 @@ fn main() {
                     0,
                     Item::new(
                         4,
-                        load_image(&mut images, "potion-icon-24").texture_id(&cc.egui_ctx),
+                        load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
                         shape::Shape::new((1, 1), true),
-                    ),
+                    )
+                    // this item is a a container
+                    .with_flags(ItemFlags::Container | ItemFlags::Potion)
+                    // this item only accepts potions
+                    .with_cflags(ItemFlags::Potion),
                 )],
             );
 
@@ -80,12 +87,16 @@ impl eframe::App for Runic {
             let move_data = ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                 ui.label("Grid contents 4x4:");
                 let data = GridContents::new(1, (4, 4), self.contents.get(&1))
+                    // accepts any item, maybe this should be the default
+                    .with_flags(FlagSet::full())
                     .ui(drag_item, ui)
                     .inner;
 
                 ui.label("Grid contents 2x2:");
                 let data = data.merge(
                     GridContents::new(2, (2, 2), self.contents.get(&2))
+                        // accepts only potions
+                        .with_flags(ItemFlags::Potion)
                         .ui(drag_item, ui)
                         .inner,
                 );
@@ -97,7 +108,8 @@ impl eframe::App for Runic {
                         SectionLayout::Grid(2),
                         vec![(1, 2).into(), (1, 2).into()],
                         self.contents.get(&5),
-                    )
+                    ) // accepts any item
+                    .with_flags(FlagSet::full())
                     .ui(drag_item, ui)
                     .inner,
                 );
@@ -105,6 +117,8 @@ impl eframe::App for Runic {
                 ui.label("Expanding container 2x2:");
                 let data = data.merge(
                     ExpandingContainer::new(6, (2, 2), self.contents.get(&6))
+                        // accepts any item
+                        .with_flags(FlagSet::full())
                         .ui(drag_item, ui)
                         .inner,
                 );
@@ -116,11 +130,16 @@ impl eframe::App for Runic {
                     .map(|item| item.1.id);
                 let data = data.merge(
                     InlineContents::new(
-                        ExpandingContainer::new(7, (2, 2), contents),
+                        ExpandingContainer::new(7, (2, 2), contents)
+                            // we only accept containers
+                            .with_flags(ItemFlags::Container),
                         // TODO the layout of contents is fixed here,
                         // but should depend on the item somehow
-                        inline_contents
-                            .map(|id| GridContents::new(id, (3, 2), self.contents.get(&id))),
+                        inline_contents.map(|id| {
+                            GridContents::new(id, (3, 2), self.contents.get(&id))
+                                // accepts any item
+                                .with_flags(FlagSet::full())
+                        }),
                     )
                     .ui(drag_item, ui)
                     .inner,

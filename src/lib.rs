@@ -441,7 +441,6 @@ where
     }
 
     fn accepts(&self, item: &Item, _slot: usize) -> bool {
-        dbg!("grid", &self.flags);
         self.flags.contains(item.flags)
     }
 

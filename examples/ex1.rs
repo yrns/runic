@@ -19,16 +19,40 @@ fn main() {
 
             contents.insert(
                 1,
-                vec![(
-                    0,
-                    Item::new(
-                        3,
-                        load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
-                        shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
-                    )
-                    // this item is a weapon
-                    .with_flags(ItemFlags::Weapon),
-                )],
+                vec![
+                    (
+                        0,
+                        Item::new(
+                            3,
+                            load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
+                            shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
+                        )
+                        // this item is a weapon
+                        .with_flags(ItemFlags::Weapon),
+                    ),
+                    (
+                        2,
+                        Item::new(
+                            8,
+                            load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
+                            shape::Shape::new((2, 2), true),
+                        )
+                        // this item is a container
+                        .with_flags(ItemFlags::Container)
+                        // it only holds potions
+                        .with_cflags(ItemFlags::Potion),
+                    ),
+                    (
+                        8,
+                        Item::new(
+                            9,
+                            load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
+                            shape::Shape::new((3, 1), true),
+                        )
+                        // this item is a weapon
+                        .with_flags(ItemFlags::Weapon),
+                    ),
+                ],
             );
 
             contents.insert(
@@ -40,10 +64,7 @@ fn main() {
                         load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
                         shape::Shape::new((1, 1), true),
                     )
-                    // this item is a a container
-                    .with_flags(ItemFlags::Container | ItemFlags::Potion)
-                    // this item only accepts potions
-                    .with_cflags(ItemFlags::Potion),
+                    .with_flags(ItemFlags::Potion),
                 )],
             );
 
@@ -117,8 +138,8 @@ impl eframe::App for Runic {
                 ui.label("Expanding container 2x2:");
                 let data = data.merge(
                     ExpandingContainer::new(6, (2, 2), self.contents.get(&6))
-                        // accepts any item
-                        .with_flags(FlagSet::full())
+                        // accepts only weapons
+                        .with_flags(ItemFlags::Weapon)
                         .ui(drag_item, ui)
                         .inner,
                 );

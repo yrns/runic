@@ -755,10 +755,9 @@ impl ItemRotation {
 
 // A sectioned container is a set of smaller containers displayed as
 // one. Like pouches on a belt or different pockets in a jacket. It's
-// one item than holds many fixed containers. This should have the
-// same interface as [Container].
+// one item than holds many fixed containers.
 #[derive(Clone, Debug)]
-pub struct SectionContainer<I> {
+pub struct SectionContents<I> {
     pub id: usize,
     pub layout: SectionLayout,
     // This should be inside section layout...?
@@ -776,7 +775,7 @@ pub enum SectionLayout {
     // Other(Fn?)
 }
 
-impl<'a, I> SectionContainer<I>
+impl<'a, I> SectionContents<I>
 where
     I: Iterator<Item = &'a (usize, Item)>,
 {
@@ -823,7 +822,7 @@ where
     }
 }
 
-impl<'a, I> Contents for SectionContainer<I>
+impl<'a, I> Contents for SectionContents<I>
 where
     I: Iterator<Item = &'a (usize, Item)>,
 {
@@ -1012,7 +1011,7 @@ where
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
 #[derive(Debug)]
-pub struct ExpandingContainer<I> {
+pub struct ExpandingContents<I> {
     pub id: usize,
     pub max_size: shape::Vec2,
     // This won't be valid until body is called.
@@ -1021,7 +1020,7 @@ pub struct ExpandingContainer<I> {
     pub flags: FlagSet<ItemFlags>,
 }
 
-impl<I> ExpandingContainer<I> {
+impl<I> ExpandingContents<I> {
     pub fn new<J>(id: usize, max_size: impl Into<shape::Vec2>, items: Option<J>) -> Self
     where
         J: IntoIterator<IntoIter = I>,
@@ -1041,7 +1040,7 @@ impl<I> ExpandingContainer<I> {
     }
 }
 
-impl<I> Clone for ExpandingContainer<I> {
+impl<I> Clone for ExpandingContents<I> {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
@@ -1053,7 +1052,7 @@ impl<I> Clone for ExpandingContainer<I> {
     }
 }
 
-impl<'a, I> Contents for ExpandingContainer<I>
+impl<'a, I> Contents for ExpandingContents<I>
 where
     I: Iterator<Item = &'a (usize, Item)>,
 {
@@ -1135,7 +1134,7 @@ where
 // An expanding container that contains another container, the
 // contents of which are displayed inline when present.
 pub struct InlineContents<I, C> {
-    pub container: ExpandingContainer<I>,
+    pub container: ExpandingContents<I>,
     pub contents: Option<C>,
 }
 
@@ -1143,7 +1142,7 @@ impl<'a, I, C: Contents> InlineContents<I, C>
 where
     I: Iterator<Item = &'a (usize, Item)>,
 {
-    pub fn new(container: ExpandingContainer<I>, contents: Option<C>) -> Self {
+    pub fn new(container: ExpandingContents<I>, contents: Option<C>) -> Self {
         Self {
             container,
             contents,

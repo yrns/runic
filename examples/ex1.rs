@@ -124,7 +124,7 @@ impl eframe::App for Runic {
 
                 ui.label("Section contents 2x1x2:");
                 let data = data.merge(
-                    SectionContainer::new(
+                    SectionContents::new(
                         5,
                         SectionLayout::Grid(2),
                         vec![(1, 2).into(), (1, 2).into()],
@@ -137,7 +137,7 @@ impl eframe::App for Runic {
 
                 ui.label("Expanding container 2x2:");
                 let data = data.merge(
-                    ExpandingContainer::new(6, (2, 2), self.contents.get(&6))
+                    ExpandingContents::new(6, (2, 2), self.contents.get(&6))
                         // accepts only weapons
                         .with_flags(ItemFlags::Weapon)
                         .ui(drag_item, ui)
@@ -151,7 +151,7 @@ impl eframe::App for Runic {
                     .map(|item| item.1.id);
                 let data = data.merge(
                     InlineContents::new(
-                        ExpandingContainer::new(7, (2, 2), contents)
+                        ExpandingContents::new(7, (2, 2), contents)
                             // we only accept containers
                             .with_flags(ItemFlags::Container),
                         // TODO the layout of contents is fixed here,

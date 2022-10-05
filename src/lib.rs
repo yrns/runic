@@ -214,18 +214,27 @@ pub trait Contents {
     fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool;
 
     // Draw contents.
-    fn body(
+    fn body<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>;
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = &'a (usize, Item)>,
+        Self: Sized;
 
     // Default impl should handle everything including grid/sectioned/expanding containers.
-    fn ui(
+    fn ui<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData> {
+    ) -> egui::InnerResponse<MoveData>
+    where
+        I: IntoIterator<Item = &'a (usize, Item)>,
+        Self: Sized,
+    {
         let margin = egui::Vec2::splat(4.0);
         let outer_rect_bounds = ui.available_rect_before_wrap();
         let inner_rect = outer_rect_bounds.shrink2(margin);
@@ -233,7 +242,8 @@ pub trait Contents {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        let egui::InnerResponse { inner, response } = self.body(drag_item, &mut content_ui);
+        let items = items.map(|items| items.into_iter());
+        let egui::InnerResponse { inner, response } = self.body(drag_item, items, &mut content_ui);
 
         // tarkov also checks if containers are full, even if not
         // hovering -- maybe track min size free?
@@ -332,26 +342,18 @@ pub trait Contents {
 }
 
 #[derive(Debug)]
-pub struct GridContents<I> {
+pub struct GridContents {
     // This shares w/ items, but the eid is unique.
     pub id: usize,
     pub size: shape::Vec2,
-    pub items: Option<I>,
     pub flags: FlagSet<ItemFlags>,
 }
 
-impl<'a, I> GridContents<I>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
-    pub fn new<J>(id: usize, size: impl Into<shape::Vec2>, items: Option<J>) -> Self
-    where
-        J: IntoIterator<IntoIter = I>,
-    {
+impl GridContents {
+    pub fn new(id: usize, size: impl Into<shape::Vec2>) -> Self {
         Self {
             id,
             size: size.into(),
-            items: items.map(|items| items.into_iter()),
             flags: Default::default(),
         }
     }
@@ -363,12 +365,11 @@ where
 }
 
 // What is this for?
-impl<I> Clone for GridContents<I> {
+impl Clone for GridContents {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
             size: self.size,
-            items: None,
             flags: self.flags,
         }
     }
@@ -405,10 +406,7 @@ fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::S
     })
 }
 
-impl<'a, I> Contents for GridContents<I>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
+impl Contents for GridContents {
     fn id(&self) -> usize {
         self.id
     }
@@ -468,11 +466,15 @@ where
         }
     }
 
-    fn body(
+    fn body<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>> {
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = &'a (usize, Item)>,
+    {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
             egui::Vec2::from(self.size) * ITEM_SIZE,
@@ -519,7 +521,7 @@ where
             // I should be movable? Make it an option? We need to be
             // able to call self methods in the adapters. I should be
             // Iterator<Item = (usize, &Item)? FIX:
-            let items = self.items.take();
+            //let items = self.items.take();
 
             let new_drag = items
                 .map(|items|
@@ -588,6 +590,14 @@ flags! {
         TradeGood,
         Container,
     }
+}
+
+// This is literally the contents impls w/o the item iterator.
+// Contents.with_items is contents layout + items
+
+#[derive(Debug)]
+pub enum ContentsLayout {
+    Grid(GridContents),
 }
 
 // Rename "simple item"?
@@ -757,12 +767,11 @@ impl ItemRotation {
 // one. Like pouches on a belt or different pockets in a jacket. It's
 // one item than holds many fixed containers.
 #[derive(Clone, Debug)]
-pub struct SectionContents<I> {
+pub struct SectionContents {
     pub id: usize,
     pub layout: SectionLayout,
     // This should be inside section layout...?
     pub sections: Vec<shape::Vec2>,
-    pub items: Option<I>,
     // Should each section have its own flags?
     pub flags: FlagSet<ItemFlags>,
 }
@@ -775,24 +784,12 @@ pub enum SectionLayout {
     // Other(Fn?)
 }
 
-impl<'a, I> SectionContents<I>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
-    pub fn new<J>(
-        id: usize,
-        layout: SectionLayout,
-        sections: Vec<shape::Vec2>,
-        items: Option<J>,
-    ) -> Self
-    where
-        J: IntoIterator<IntoIter = I>,
-    {
+impl SectionContents {
+    pub fn new(id: usize, layout: SectionLayout, sections: Vec<shape::Vec2>) -> Self {
         Self {
             id,
             layout,
             sections,
-            items: items.map(|items| items.into_iter()),
             flags: Default::default(),
         }
     }
@@ -822,10 +819,7 @@ where
     }
 }
 
-impl<'a, I> Contents for SectionContents<I>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
+impl Contents for SectionContents {
     fn id(&self) -> usize {
         self.id
     }
@@ -881,19 +875,27 @@ where
         false
     }
 
-    fn body(
+    fn body<'a, I>(
         &mut self,
         _drag_item: &Option<DragItem>,
+        _items: Option<I>,
         _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>> {
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = &'a (usize, Item)>,
+    {
         unimplemented!()
     }
 
-    fn ui(
+    fn ui<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData> {
+    ) -> egui::InnerResponse<MoveData>
+    where
+        I: IntoIterator<Item = &'a (usize, Item)>,
+    {
         // map (slot, item) -> (section, (slot, item))
         let ranges = self.section_ranges().collect_vec();
 
@@ -902,11 +904,10 @@ where
         // be more flexible with the input, probably via trait. If we
         // know the input is sorted there is also probably a way to do
         // this w/o collecting into a hash map.
-        let items = self
-            .items
-            .take()
+        let items = items
             .map(|items| {
                 items
+                    .into_iter()
                     .filter_map(|(slot, item)| {
                         // Find section for each slot.
                         ranges
@@ -931,9 +932,9 @@ where
                             let items = items.get(&i);
                             let data = Section::new(
                                 self.section_eid(i),
-                                GridContents::new(self.id(), *size, items).with_flags(self.flags),
+                                GridContents::new(self.id(), *size).with_flags(self.flags),
                             )
-                            .ui(drag_item, ui)
+                            .ui(drag_item, items, ui)
                             .inner;
 
                             if (i + 1) % width == 0 {
@@ -998,12 +999,16 @@ where
         self.contents.fits(ctx, item, slot)
     }
 
-    fn body(
+    fn body<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>> {
-        self.contents.body(drag_item, ui)
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = &'a (usize, Item)>,
+    {
+        self.contents.body(drag_item, items, ui)
     }
 }
 
@@ -1011,25 +1016,20 @@ where
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
 #[derive(Debug)]
-pub struct ExpandingContents<I> {
+pub struct ExpandingContents {
     pub id: usize,
     pub max_size: shape::Vec2,
     // This won't be valid until body is called.
     pub filled: bool,
-    pub items: Option<I>,
     pub flags: FlagSet<ItemFlags>,
 }
 
-impl<I> ExpandingContents<I> {
-    pub fn new<J>(id: usize, max_size: impl Into<shape::Vec2>, items: Option<J>) -> Self
-    where
-        J: IntoIterator<IntoIter = I>,
-    {
+impl ExpandingContents {
+    pub fn new(id: usize, max_size: impl Into<shape::Vec2>) -> Self {
         Self {
             id,
             max_size: max_size.into(),
             filled: false,
-            items: items.map(|items| items.into_iter()),
             flags: Default::default(),
         }
     }
@@ -1040,22 +1040,18 @@ impl<I> ExpandingContents<I> {
     }
 }
 
-impl<I> Clone for ExpandingContents<I> {
+impl Clone for ExpandingContents {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
             max_size: self.max_size,
             filled: self.filled,
-            items: None,
             flags: self.flags,
         }
     }
 }
 
-impl<'a, I> Contents for ExpandingContents<I>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
+impl Contents for ExpandingContents {
     fn id(&self) -> usize {
         self.id
     }
@@ -1093,16 +1089,20 @@ where
         slot == 0 && !self.filled && drag.item.shape.size.le(&self.max_size)
     }
 
-    fn body(
+    fn body<'a, I>(
         &mut self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>> {
-        let mut items = self.items.take().into_iter().flatten();
-        let item = items.next();
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = &'a (usize, Item)>,
+    {
+        //let mut items = self.items.take().into_iter().flatten();
+        let item = items.map(|mut items| items.next()).flatten();
         self.filled = item.is_some();
-        // Make sure items is <= 1:
-        assert!(items.next().is_none());
+        // Make sure items is <= 1: FIX
+        //assert!(items.map(|mut items| items.next()).flatten().is_none());
 
         // is_rect_visible?
         let (new_drag, response) = match item {
@@ -1131,39 +1131,41 @@ where
     }
 }
 
-// An expanding container that contains another container, the
-// contents of which are displayed inline when present.
-pub struct InlineContents<I, C> {
-    pub container: ExpandingContents<I>,
+// A container for a single item (or "slot") that, when containing
+// another container, the interior contents are displayed inline.
+pub struct InlineContents<C> {
+    pub container: ExpandingContents,
     pub contents: Option<C>,
 }
 
-impl<'a, I, C: Contents> InlineContents<I, C>
-where
-    I: Iterator<Item = &'a (usize, Item)>,
-{
-    pub fn new(container: ExpandingContents<I>, contents: Option<C>) -> Self {
+impl<C: Contents> InlineContents<C> {
+    pub fn new(container: ExpandingContents, contents: Option<C>) -> Self {
         Self {
             container,
             contents,
         }
     }
 
-    pub fn ui(
+    pub fn ui<'a, I>(
         self,
         drag_item: &Option<DragItem>,
+        items: Option<I>,
+        items_inline: Option<I>,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData> {
+    ) -> egui::InnerResponse<MoveData>
+    where
+        I: IntoIterator<Item = &'a (usize, Item)>,
+    {
         ui.horizontal(|ui| {
             let Self {
                 mut container,
                 contents,
             } = self;
 
-            let data = container.ui(drag_item, ui).inner;
+            let data = container.ui(drag_item, items, ui).inner;
 
             if let Some(mut contents) = contents {
-                data.merge(contents.ui(drag_item, ui).inner)
+                data.merge(contents.ui(drag_item, items_inline, ui).inner)
             } else {
                 data
             }

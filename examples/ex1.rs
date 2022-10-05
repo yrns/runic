@@ -82,6 +82,7 @@ struct Runic {
     #[allow(dead_code)]
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
+    //contents: HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>,
     contents: HashMap<usize, Vec<(usize, Item)>>,
 }
 
@@ -107,18 +108,18 @@ impl eframe::App for Runic {
         egui::CentralPanel::default().show(ctx, |ui| {
             let move_data = ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                 ui.label("Grid contents 4x4:");
-                let data = GridContents::new(1, (4, 4), self.contents.get(&1))
+                let data = GridContents::new(1, (4, 4))
                     // accepts any item, maybe this should be the default
                     .with_flags(FlagSet::full())
-                    .ui(drag_item, ui)
+                    .ui(drag_item, self.contents.get(&1), ui)
                     .inner;
 
                 ui.label("Grid contents 2x2:");
                 let data = data.merge(
-                    GridContents::new(2, (2, 2), self.contents.get(&2))
+                    GridContents::new(2, (2, 2))
                         // accepts only potions
                         .with_flags(ItemFlags::Potion)
-                        .ui(drag_item, ui)
+                        .ui(drag_item, self.contents.get(&2), ui)
                         .inner,
                 );
 
@@ -128,19 +129,18 @@ impl eframe::App for Runic {
                         5,
                         SectionLayout::Grid(2),
                         vec![(1, 2).into(), (1, 2).into()],
-                        self.contents.get(&5),
                     ) // accepts any item
                     .with_flags(FlagSet::full())
-                    .ui(drag_item, ui)
+                    .ui(drag_item, self.contents.get(&5), ui)
                     .inner,
                 );
 
                 ui.label("Expanding container 2x2:");
                 let data = data.merge(
-                    ExpandingContents::new(6, (2, 2), self.contents.get(&6))
+                    ExpandingContents::new(6, (2, 2))
                         // accepts only weapons
                         .with_flags(ItemFlags::Weapon)
-                        .ui(drag_item, ui)
+                        .ui(drag_item, self.contents.get(&6), ui)
                         .inner,
                 );
 
@@ -151,18 +151,23 @@ impl eframe::App for Runic {
                     .map(|item| item.1.id);
                 let data = data.merge(
                     InlineContents::new(
-                        ExpandingContents::new(7, (2, 2), contents)
+                        ExpandingContents::new(7, (2, 2))
                             // we only accept containers
                             .with_flags(ItemFlags::Container),
                         // TODO the layout of contents is fixed here,
                         // but should depend on the item somehow
                         inline_contents.map(|id| {
-                            GridContents::new(id, (3, 2), self.contents.get(&id))
+                            GridContents::new(id, (3, 2))
                                 // accepts any item
                                 .with_flags(FlagSet::full())
                         }),
                     )
-                    .ui(drag_item, ui)
+                    .ui(
+                        drag_item,
+                        contents,
+                        inline_contents.map(|id| self.contents.get(&id)).flatten(),
+                        ui,
+                    )
                     .inner,
                 );
 

@@ -17,55 +17,108 @@ fn main() {
             let mut contents = HashMap::new();
             let mut images = HashMap::new();
 
+            let boomerang = Item::new(
+                3,
+                load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
+                shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
+            )
+            // this item is a weapon
+            .with_flags(ItemFlags::Weapon);
+
+            let pouch = Item::new(
+                8,
+                load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
+                shape::Shape::new((2, 2), true),
+            )
+            // this item is a container
+            .with_flags(ItemFlags::Container);
+
+            let short_sword = Item::new(
+                9,
+                load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
+                shape::Shape::new((3, 1), true),
+            )
+            // this item is a weapon
+            .with_flags(ItemFlags::Weapon);
+
+            let potion = Item::new(
+                4,
+                load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
+                shape::Shape::new((1, 1), true),
+            )
+            .with_flags(ItemFlags::Potion);
+
+            contents.insert(
+                8,
+                (
+                    GridContents::new(8, (3, 2))
+                        // it only holds potions
+                        .with_flags(ItemFlags::Potion)
+                        .into(),
+                    vec![],
+                ),
+            );
+
             contents.insert(
                 1,
-                vec![
-                    (
-                        0,
-                        Item::new(
-                            3,
-                            load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
-                            shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
-                        )
-                        // this item is a weapon
-                        .with_flags(ItemFlags::Weapon),
-                    ),
-                    (
-                        2,
-                        Item::new(
-                            8,
-                            load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
-                            shape::Shape::new((2, 2), true),
-                        )
-                        // this item is a container
-                        .with_flags(ItemFlags::Container)
-                        // it only holds potions
-                        .with_cflags(ItemFlags::Potion),
-                    ),
-                    (
-                        8,
-                        Item::new(
-                            9,
-                            load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
-                            shape::Shape::new((3, 1), true),
-                        )
-                        // this item is a weapon
-                        .with_flags(ItemFlags::Weapon),
-                    ),
-                ],
+                (
+                    // this id is redundant
+                    GridContents::new(1, (4, 4))
+                        // accepts any item
+                        .with_flags(FlagSet::full())
+                        .into(),
+                    vec![(0, boomerang), (2, pouch), (8, short_sword)],
+                ),
             );
 
             contents.insert(
                 2,
-                vec![(
-                    0,
-                    Item::new(
-                        4,
-                        load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
-                        shape::Shape::new((1, 1), true),
+                (
+                    GridContents::new(2, (2, 2))
+                        // accepts only potions
+                        .with_flags(ItemFlags::Potion)
+                        .into(),
+                    vec![(0, potion)],
+                ),
+            );
+
+            contents.insert(
+                5,
+                (
+                    SectionContents::new(
+                        5,
+                        // grid w/ two columns
+                        SectionLayout::Grid(2),
+                        vec![(1, 2).into(), (1, 2).into()],
                     )
-                    .with_flags(ItemFlags::Potion),
-                )],
+                    // accepts any item
+                    .with_flags(FlagSet::full())
+                    .into(),
+                    vec![],
+                ),
+            );
+
+            contents.insert(
+                6,
+                (
+                    ExpandingContents::new(6, (2, 2))
+                        // accepts only weapons
+                        .with_flags(ItemFlags::Weapon)
+                        .into(),
+                    vec![],
+                ),
+            );
+
+            contents.insert(
+                7,
+                (
+                    ContentsLayout::Inline(
+                        ExpandingContents::new(7, (2, 2))
+                            // we only accept containers
+                            .with_flags(ItemFlags::Container),
+                    ),
+                    vec![],
+                ),
             );
 
             Box::new(Runic {
@@ -82,8 +135,7 @@ struct Runic {
     #[allow(dead_code)]
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
-    //contents: HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>,
-    contents: HashMap<usize, Vec<(usize, Item)>>,
+    contents: HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>,
 }
 
 fn load_image<'a>(
@@ -108,68 +160,70 @@ impl eframe::App for Runic {
         egui::CentralPanel::default().show(ctx, |ui| {
             let move_data = ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
                 ui.label("Grid contents 4x4:");
-                let data = GridContents::new(1, (4, 4))
-                    // accepts any item, maybe this should be the default
-                    .with_flags(FlagSet::full())
-                    .ui(drag_item, self.contents.get(&1), ui)
-                    .inner;
+                let data = match self.contents.get(&1) {
+                    Some((ContentsLayout::Grid(layout), items)) => {
+                        // Option on items not needed anymore?
+                        layout.ui(drag_item, Some(items), ui).inner
+                    }
+                    _ => Default::default(),
+                };
 
                 ui.label("Grid contents 2x2:");
-                let data = data.merge(
-                    GridContents::new(2, (2, 2))
-                        // accepts only potions
-                        .with_flags(ItemFlags::Potion)
-                        .ui(drag_item, self.contents.get(&2), ui)
-                        .inner,
-                );
+                let data = match self.contents.get(&2) {
+                    Some((ContentsLayout::Grid(layout), items)) => {
+                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
+                    }
+                    _ => data,
+                };
 
                 ui.label("Section contents 2x1x2:");
-                let data = data.merge(
-                    SectionContents::new(
-                        5,
-                        SectionLayout::Grid(2),
-                        vec![(1, 2).into(), (1, 2).into()],
-                    ) // accepts any item
-                    .with_flags(FlagSet::full())
-                    .ui(drag_item, self.contents.get(&5), ui)
-                    .inner,
-                );
+                let data = match self.contents.get(&5) {
+                    Some((ContentsLayout::Section(layout), items)) => {
+                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
+                    }
+                    _ => data,
+                };
 
                 ui.label("Expanding container 2x2:");
-                let data = data.merge(
-                    ExpandingContents::new(6, (2, 2))
-                        // accepts only weapons
-                        .with_flags(ItemFlags::Weapon)
-                        .ui(drag_item, self.contents.get(&6), ui)
-                        .inner,
-                );
+                let data = match self.contents.get(&6) {
+                    Some((ContentsLayout::Expanding(layout), items)) => {
+                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
+                    }
+                    _ => data,
+                };
 
                 ui.label("Inline contents 2x2:");
-                let contents = self.contents.get(&7);
-                let inline_contents = contents
-                    .and_then(|items| items.get(0))
-                    .map(|item| item.1.id);
-                let data = data.merge(
-                    InlineContents::new(
-                        ExpandingContents::new(7, (2, 2))
-                            // we only accept containers
-                            .with_flags(ItemFlags::Container),
-                        // TODO the layout of contents is fixed here,
-                        // but should depend on the item somehow
-                        inline_contents.map(|id| {
-                            GridContents::new(id, (3, 2))
-                                // accepts any item
-                                .with_flags(FlagSet::full())
-                        }),
-                    )
-                    .ui(
-                        drag_item,
-                        contents,
-                        inline_contents.map(|id| self.contents.get(&id)).flatten(),
-                        ui,
-                    )
-                    .inner,
-                );
+                let data = match self.contents.get(&7) {
+                    Some((ContentsLayout::Inline(layout), items)) => {
+                        // get the layout and contents of the
+                        // contained item (if any)
+                        let (inline_layout, inline_items) = match items
+                            .get(0)
+                            .map(|(_, item)| item.id)
+                            .and_then(|id| self.contents.get(&id))
+                        {
+                            // this is unzip
+                            Some((a, b)) => (Some(a), Some(b)),
+                            None => (None, None),
+                        };
+
+                        data.merge(
+                            InlineContents::new(
+                                layout,
+                                // FIX this mess
+                                inline_layout.map(|layout| match layout {
+                                    ContentsLayout::Expanding(_) => todo!(),
+                                    ContentsLayout::Inline(_) => todo!(),
+                                    ContentsLayout::Grid(g) => g,
+                                    ContentsLayout::Section(_) => todo!(),
+                                }),
+                            )
+                            .ui(drag_item, Some(items), inline_items, ui)
+                            .inner,
+                        )
+                    }
+                    _ => data,
+                };
 
                 data
             });
@@ -186,10 +240,13 @@ impl eframe::App for Runic {
 
                     // Using indexmap or something else to get two mutable
                     // refs would make this transactable.
-                    match self.contents.get_mut(&drag.container.0).and_then(|items| {
-                        let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
-                        idx.map(|idx| items.remove(idx).1)
-                    }) {
+                    match self
+                        .contents
+                        .get_mut(&drag.container.0)
+                        .and_then(|(_, items)| {
+                            let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
+                            idx.map(|idx| items.remove(idx).1)
+                        }) {
                         Some(mut item) => {
                             tracing::info!(
                                 "new rot {:?} --> {:?}",
@@ -199,11 +256,16 @@ impl eframe::App for Runic {
                             // Copy the rotation.
                             item.rotation = drag.item.rotation;
 
-                            // Insert item.
-                            self.contents
-                                .entry(container)
-                                .or_insert_with(Vec::new)
-                                .push((slot, item));
+                            // Insert item. The contents must exist
+                            // already to insert an item?
+                            match self.contents.get_mut(&container) {
+                                Some((_, items)) => items.push((slot, item)),
+                                None => tracing::error!(
+                                    "could not find container {} to add to",
+                                    container
+                                ),
+                            }
+
                             resolve = true;
                         }
                         None => tracing::error!(

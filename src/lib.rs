@@ -215,7 +215,7 @@ pub trait Contents {
 
     // Draw contents.
     fn body<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -226,7 +226,7 @@ pub trait Contents {
 
     // Default impl should handle everything including grid/sectioned/expanding containers.
     fn ui<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -467,7 +467,7 @@ impl Contents for GridContents {
     }
 
     fn body<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -592,12 +592,54 @@ flags! {
     }
 }
 
-// This is literally the contents impls w/o the item iterator.
-// Contents.with_items is contents layout + items
-
-#[derive(Debug)]
+// The contents id is not relevant to the layout, just like items,
+// which we removed. In particular, the ids of sections are always the
+// parent container id. Maybe split Contents into two elements?
+#[derive(Clone, Debug)]
 pub enum ContentsLayout {
+    Expanding(ExpandingContents),
+    // Leave out the generic part since it is dynamic.
+    Inline(ExpandingContents),
     Grid(GridContents),
+    Section(SectionContents),
+}
+
+// Delegate full impl of Contents?
+impl ContentsLayout {
+    pub fn len(&self) -> usize {
+        match self {
+            ContentsLayout::Expanding(c) => c.len(),
+            ContentsLayout::Inline(c) => c.len(),
+            ContentsLayout::Grid(c) => c.len(),
+            ContentsLayout::Section(c) => c.len(),
+        }
+    }
+}
+
+impl From<ExpandingContents> for ContentsLayout {
+    fn from(c: ExpandingContents) -> Self {
+        Self::Expanding(c)
+    }
+}
+
+// Is this useful when we don't know the contents?
+
+// impl<C> From<InlineContents<C>> for ContentsLayout {
+//     fn from(c: InlineContents<C>) -> Self {
+//         Self::Inline(c.container)
+//     }
+// }
+
+impl From<GridContents> for ContentsLayout {
+    fn from(c: GridContents) -> Self {
+        Self::Grid(c)
+    }
+}
+
+impl From<SectionContents> for ContentsLayout {
+    fn from(c: SectionContents) -> Self {
+        Self::Section(c)
+    }
 }
 
 // Rename "simple item"?
@@ -608,7 +650,8 @@ pub struct Item {
     pub shape: shape::Shape,
     pub icon: TextureId,
     pub flags: FlagSet<ItemFlags>,
-    pub cflags: FlagSet<ItemFlags>,
+    // cflags is now in ContentsLayout.
+    //pub cflags: FlagSet<ItemFlags>,
     //pub layout: ContentsLayout,
 }
 
@@ -631,7 +674,7 @@ impl Item {
             shape,
             icon,
             flags: FlagSet::default(),
-            cflags: FlagSet::default(),
+            //cflags: FlagSet::default(),
         }
     }
 
@@ -640,10 +683,10 @@ impl Item {
         self
     }
 
-    pub fn with_cflags(mut self, cflags: impl Into<FlagSet<ItemFlags>>) -> Self {
-        self.cflags = cflags.into();
-        self
-    }
+    // pub fn with_cflags(mut self, cflags: impl Into<FlagSet<ItemFlags>>) -> Self {
+    //     self.cflags = cflags.into();
+    //     self
+    // }
 
     /// Returns an egui id based on the item id.
     pub fn eid(&self) -> egui::Id {
@@ -772,6 +815,10 @@ pub struct SectionContents {
     pub layout: SectionLayout,
     // This should be inside section layout...?
     pub sections: Vec<shape::Vec2>,
+    // If we make grid contents the only option here we can't do a
+    // full paper doll as one container. If we use ContentsLayout we
+    // can have more complicated hierarchical layouts.
+    //pub sections: Vec<ContentsLayout>,
     // Should each section have its own flags?
     pub flags: FlagSet<ItemFlags>,
 }
@@ -785,7 +832,11 @@ pub enum SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(id: usize, layout: SectionLayout, sections: Vec<shape::Vec2>) -> Self {
+    pub fn new(
+        id: usize,
+        layout: SectionLayout,
+        sections: Vec<shape::Vec2>, // sections: Vec<ContentsLayout>
+    ) -> Self {
         Self {
             id,
             layout,
@@ -876,7 +927,7 @@ impl Contents for SectionContents {
     }
 
     fn body<'a, I>(
-        &mut self,
+        &self,
         _drag_item: &Option<DragItem>,
         _items: Option<I>,
         _ui: &mut egui::Ui,
@@ -888,7 +939,7 @@ impl Contents for SectionContents {
     }
 
     fn ui<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -1000,7 +1051,7 @@ where
     }
 
     fn body<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -1090,7 +1141,7 @@ impl Contents for ExpandingContents {
     }
 
     fn body<'a, I>(
-        &mut self,
+        &self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
         ui: &mut egui::Ui,
@@ -1100,7 +1151,10 @@ impl Contents for ExpandingContents {
     {
         //let mut items = self.items.take().into_iter().flatten();
         let item = items.map(|mut items| items.next()).flatten();
-        self.filled = item.is_some();
+
+        // FIX
+        //self.filled = item.is_some();
+
         // Make sure items is <= 1: FIX
         //assert!(items.map(|mut items| items.next()).flatten().is_none());
 
@@ -1133,20 +1187,20 @@ impl Contents for ExpandingContents {
 
 // A container for a single item (or "slot") that, when containing
 // another container, the interior contents are displayed inline.
-pub struct InlineContents<C> {
-    pub container: ExpandingContents,
-    pub contents: Option<C>,
+pub struct InlineContents<'a, 'b, C> {
+    pub container: &'a ExpandingContents,
+    pub contents: Option<&'b C>,
 }
 
-impl<C: Contents> InlineContents<C> {
-    pub fn new(container: ExpandingContents, contents: Option<C>) -> Self {
+impl<'a, 'b, C: Contents> InlineContents<'a, 'b, C> {
+    pub fn new(container: &'a ExpandingContents, contents: Option<&'b C>) -> Self {
         Self {
             container,
             contents,
         }
     }
 
-    pub fn ui<'a, I>(
+    pub fn ui<'item, I>(
         self,
         drag_item: &Option<DragItem>,
         items: Option<I>,
@@ -1154,17 +1208,18 @@ impl<C: Contents> InlineContents<C> {
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData>
     where
-        I: IntoIterator<Item = &'a (usize, Item)>,
+        I: IntoIterator<Item = &'item (usize, Item)>,
     {
+        // TODO: InlineLayout?
         ui.horizontal(|ui| {
             let Self {
-                mut container,
+                container,
                 contents,
             } = self;
 
             let data = container.ui(drag_item, items, ui).inner;
 
-            if let Some(mut contents) = contents {
+            if let Some(contents) = contents {
                 data.merge(contents.ui(drag_item, items_inline, ui).inner)
             } else {
                 data

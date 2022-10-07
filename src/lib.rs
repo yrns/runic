@@ -1111,8 +1111,9 @@ impl Contents for ExpandingContents {
         1
     }
 
+    // We don't need these since it's reset in body and only used after...
+
     // fn add(&self, _slot: usize) {
-    //     // Using self.filled...
     //     // assert!(slot == 0);
     //     // ctx.data().insert_temp(self.eid(), true);
     // }
@@ -1136,8 +1137,9 @@ impl Contents for ExpandingContents {
     }
 
     // How do we visually show if the item is too big?
-    fn fits(&self, _ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
-        slot == 0 && !self.filled && drag.item.shape.size.le(&self.max_size)
+    fn fits(&self, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+        let filled: bool = ctx.data().get_temp(self.eid()).unwrap_or_default();
+        slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
     }
 
     fn body<'a, I>(
@@ -1152,8 +1154,7 @@ impl Contents for ExpandingContents {
         //let mut items = self.items.take().into_iter().flatten();
         let item = items.map(|mut items| items.next()).flatten();
 
-        // FIX
-        //self.filled = item.is_some();
+        ui.ctx().data().insert_temp(self.eid(), item.is_some());
 
         // Make sure items is <= 1: FIX
         //assert!(items.map(|mut items| items.next()).flatten().is_none());

@@ -89,10 +89,15 @@ fn main() {
                         5,
                         // grid w/ two columns
                         SectionLayout::Grid(2),
-                        vec![(1, 2).into(), (1, 2).into()],
+                        vec![
+                            GridContents::new(5, (1, 2))
+                                .with_flags(FlagSet::full()) // accepts any item
+                                .into(),
+                            GridContents::new(5, (1, 2))
+                                .with_flags(FlagSet::full()) // accepts any item
+                                .into(),
+                        ],
                     )
-                    // accepts any item
-                    .with_flags(FlagSet::full())
                     .into(),
                     vec![],
                 ),
@@ -112,11 +117,12 @@ fn main() {
             contents.insert(
                 7,
                 (
-                    ContentsLayout::Inline(
+                    InlineContents::new(
                         ExpandingContents::new(7, (2, 2))
                             // we only accept containers
                             .with_flags(ItemFlags::Container),
-                    ),
+                    )
+                    .into(),
                     vec![],
                 ),
             );
@@ -124,18 +130,20 @@ fn main() {
             Box::new(Runic {
                 images,
                 drag_item: None,
-                contents,
+                contents: ContentsStorage(contents),
             })
         }),
     )
 }
+
+struct ContentsStorage(HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>);
 
 //#[derive(Default)]
 struct Runic {
     #[allow(dead_code)]
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
-    contents: HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>,
+    contents: ContentsStorage,
 }
 
 fn load_image<'a>(
@@ -155,75 +163,40 @@ fn load_image<'a>(
     })
 }
 
+// impl<'a> ContentsQuery<'a> for ContentsStorage {
+//     type Items = ???
+//     fn query(&self, id: usize) -> Option<(&ContentsLayout, Self::Items)> {
+//         self.0
+//             .get(&id)
+//             .map(|(c, i)| (c, i.iter().map(|(slot, item)| (*slot, item))))
+//     }
+// }
+
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let move_data = ContainerSpace::show(&mut self.drag_item, ui, |drag_item, ui| {
+            let drag_item = &mut self.drag_item;
+            let q = &self.contents;
+            let q = |id: usize| {
+                q.0.get(&id)
+                    .map(|(c, i)| (c, i.iter().map(|(slot, item)| (*slot, item))))
+            };
+
+            let move_data = ContainerSpace::show(drag_item, ui, |drag_item, ui| {
                 ui.label("Grid contents 4x4:");
-                let data = match self.contents.get(&1) {
-                    Some((ContentsLayout::Grid(layout), items)) => {
-                        // Option on items not needed anymore?
-                        layout.ui(drag_item, Some(items), ui).inner
-                    }
-                    _ => Default::default(),
-                };
+                let data = show_contents(&q, 1, drag_item, ui).unwrap().inner;
 
                 ui.label("Grid contents 2x2:");
-                let data = match self.contents.get(&2) {
-                    Some((ContentsLayout::Grid(layout), items)) => {
-                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
-                    }
-                    _ => data,
-                };
+                let data = data.merge(show_contents(&q, 2, drag_item, ui).unwrap().inner);
 
                 ui.label("Section contents 2x1x2:");
-                let data = match self.contents.get(&5) {
-                    Some((ContentsLayout::Section(layout), items)) => {
-                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
-                    }
-                    _ => data,
-                };
+                let data = data.merge(show_contents(&q, 5, drag_item, ui).unwrap().inner);
 
                 ui.label("Expanding container 2x2:");
-                let data = match self.contents.get(&6) {
-                    Some((ContentsLayout::Expanding(layout), items)) => {
-                        data.merge(layout.ui(drag_item, Some(items), ui).inner)
-                    }
-                    _ => data,
-                };
+                let data = data.merge(show_contents(&q, 6, drag_item, ui).unwrap().inner);
 
                 ui.label("Inline contents 2x2:");
-                let data = match self.contents.get(&7) {
-                    Some((ContentsLayout::Inline(layout), items)) => {
-                        // get the layout and contents of the
-                        // contained item (if any)
-                        let (inline_layout, inline_items) = match items
-                            .get(0)
-                            .map(|(_, item)| item.id)
-                            .and_then(|id| self.contents.get(&id))
-                        {
-                            // this is unzip
-                            Some((a, b)) => (Some(a), Some(b)),
-                            None => (None, None),
-                        };
-
-                        data.merge(
-                            InlineContents::new(
-                                layout,
-                                // FIX this mess
-                                inline_layout.map(|layout| match layout {
-                                    ContentsLayout::Expanding(_) => todo!(),
-                                    ContentsLayout::Inline(_) => todo!(),
-                                    ContentsLayout::Grid(g) => g,
-                                    ContentsLayout::Section(_) => todo!(),
-                                }),
-                            )
-                            .ui(drag_item, Some(items), inline_items, ui)
-                            .inner,
-                        )
-                    }
-                    _ => data,
-                };
+                let data = data.merge(show_contents(&q, 7, drag_item, ui).unwrap().inner);
 
                 data
             });
@@ -242,6 +215,7 @@ impl eframe::App for Runic {
                     // refs would make this transactable.
                     match self
                         .contents
+                        .0
                         .get_mut(&drag.container.0)
                         .and_then(|(_, items)| {
                             let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
@@ -258,7 +232,7 @@ impl eframe::App for Runic {
 
                             // Insert item. The contents must exist
                             // already to insert an item?
-                            match self.contents.get_mut(&container) {
+                            match self.contents.0.get_mut(&container) {
                                 Some((_, items)) => items.push((slot, item)),
                                 None => tracing::error!(
                                     "could not find container {} to add to",

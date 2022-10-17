@@ -1,3 +1,4 @@
+use ambassador::{delegatable_trait, Delegate};
 use egui::{InnerResponse, TextureId};
 use flagset::{flags, FlagSet};
 use itertools::Itertools;
@@ -168,6 +169,7 @@ pub fn paint_shape(
 // }
 
 /// A widget to display the contents of a container.
+#[delegatable_trait]
 pub trait Contents {
     fn id(&self) -> usize;
 
@@ -216,23 +218,32 @@ pub trait Contents {
     // Draw contents.
     fn body<'a, I>(
         &self,
+        // id: usize,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
+        items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>>
     where
-        I: Iterator<Item = &'a (usize, Item)>,
+        I: Iterator<Item = (usize, &'a Item)>,
         Self: Sized;
 
-    // Default impl should handle everything including grid/sectioned/expanding containers.
-    fn ui<'a, I>(
+    // Default impl should handle everything including
+    // grid/sectioned/expanding containers. Iterator type changed to
+    // (usize, &Item) so section contents can rewrite slots.
+    fn ui<'a, I, Q>(
         &self,
+        // id: usize,
+        _q: &'a Q,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
+        // This used to be an option but we're generally starting with
+        // show_contents at the root which implies items. (You can't
+        // have items w/o a layout or vice-versa).
+        items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData>
     where
-        I: IntoIterator<Item = &'a (usize, Item)>,
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Q: ContentsQuery<'a>,
         Self: Sized,
     {
         let margin = egui::Vec2::splat(4.0);
@@ -242,7 +253,8 @@ pub trait Contents {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        let items = items.map(|items| items.into_iter());
+        //let items = items.map(|items| items.into_iter());
+        let items = items.into_iter();
         let egui::InnerResponse { inner, response } = self.body(drag_item, items, &mut content_ui);
 
         // tarkov also checks if containers are full, even if not
@@ -469,11 +481,11 @@ impl Contents for GridContents {
     fn body<'a, I>(
         &self,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
+        items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>>
     where
-        I: Iterator<Item = &'a (usize, Item)>,
+        I: Iterator<Item = (usize, &'a Item)>,
     {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
@@ -524,15 +536,14 @@ impl Contents for GridContents {
             //let items = self.items.take();
 
             let new_drag = items
-                .map(|items|
-                // Paint each item and fill our shape if needed.
-                items.map(|(slot, item)| {
+                .map(|(slot, item)| {
+                    // Paint each item and fill our shape if needed.
                     if fill {
-                        shape.paint(&item.shape, *slot);
+                        shape.paint(&item.shape, slot);
                     }
 
                     let item_rect =
-                        egui::Rect::from_min_size(ui.min_rect().min + self.pos(*slot), item_size);
+                        egui::Rect::from_min_size(ui.min_rect().min + self.pos(slot), item_size);
                     // item returns a clone if it's being dragged
                     ui.allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
                         .inner
@@ -553,16 +564,15 @@ impl Contents for GridContents {
                     let mut cshape = shape.clone();
                     // We've already cloned the item and we're cloning
                     // the shape again to rotate? Isn't it already rotated?
-                    cshape.unpaint(&item.shape(), *slot);
+                    cshape.unpaint(&item.shape(), slot);
                     //let item_shape = item.shape();
                     DragItem {
                         item,
-                        container: (self.id, *slot),
+                        container: (self.id, slot),
                         cshape: Some(cshape),
-                        remove_fn: self.remove(*slot),
+                        remove_fn: self.remove(slot),
                     }
-                }))
-                .flatten();
+                });
 
             // Write out the new shape.
             if fill {
@@ -592,28 +602,53 @@ flags! {
     }
 }
 
+/// ContentsQuery allows Contents impls to recursively query the
+/// contents of subcontents (InlineContents specifically). This allows
+/// SectionContents to use InlineContents as sections, for example.
+pub trait ContentsQuery<'a> {
+    type Items: IntoIterator<Item = (usize, &'a Item)>;
+
+    fn query(&'a self, id: usize) -> Option<(&'a ContentsLayout, Self::Items)>;
+}
+
+// This gets around having to manually specify the iterator type when
+// implementing ContentsQuery. Maybe just get rid of the trait?
+impl<'a, F, I> ContentsQuery<'a> for F
+where
+    F: Fn(usize) -> Option<(&'a ContentsLayout, I)>,
+    I: Iterator<Item = (usize, &'a Item)> + 'a,
+{
+    type Items = I;
+
+    fn query(&'a self, id: usize) -> Option<(&'a ContentsLayout, Self::Items)> {
+        self(id)
+    }
+}
+
 // The contents id is not relevant to the layout, just like items,
 // which we removed. In particular, the ids of sections are always the
 // parent container id. Maybe split Contents into two elements?
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Delegate)]
+#[delegate(Contents)]
 pub enum ContentsLayout {
     Expanding(ExpandingContents),
-    // Leave out the generic part since it is dynamic.
-    Inline(ExpandingContents),
+    Inline(InlineContents),
     Grid(GridContents),
     Section(SectionContents),
 }
 
-// Delegate full impl of Contents?
-impl ContentsLayout {
-    pub fn len(&self) -> usize {
-        match self {
-            ContentsLayout::Expanding(c) => c.len(),
-            ContentsLayout::Inline(c) => c.len(),
-            ContentsLayout::Grid(c) => c.len(),
-            ContentsLayout::Section(c) => c.len(),
-        }
-    }
+// Use ContentsQuery to query a layout and contents, then show it.
+pub fn show_contents<'a, Q>(
+    q: &'a Q,
+    id: usize,
+    drag_item: &Option<DragItem>,
+    ui: &mut egui::Ui,
+) -> Option<egui::InnerResponse<MoveData>>
+where
+    Q: ContentsQuery<'a>,
+{
+    q.query(id)
+        .map(|(layout, items)| layout.ui(q, drag_item, items, ui))
 }
 
 impl From<ExpandingContents> for ContentsLayout {
@@ -622,13 +657,11 @@ impl From<ExpandingContents> for ContentsLayout {
     }
 }
 
-// Is this useful when we don't know the contents?
-
-// impl<C> From<InlineContents<C>> for ContentsLayout {
-//     fn from(c: InlineContents<C>) -> Self {
-//         Self::Inline(c.container)
-//     }
-// }
+impl From<InlineContents> for ContentsLayout {
+    fn from(c: InlineContents) -> Self {
+        Self::Inline(c)
+    }
+}
 
 impl From<GridContents> for ContentsLayout {
     fn from(c: GridContents) -> Self {
@@ -642,7 +675,6 @@ impl From<SectionContents> for ContentsLayout {
     }
 }
 
-// Rename "simple item"?
 #[derive(Clone, Debug)]
 pub struct Item {
     pub id: usize,
@@ -806,6 +838,24 @@ impl ItemRotation {
     }
 }
 
+// This might be useful to get generic over item iterators, but it
+// would require adding another parameter to `Contents::ui`.
+pub trait SlotItem {
+    fn slot_item(&self) -> (usize, &Item);
+}
+
+impl SlotItem for (usize, Item) {
+    fn slot_item(&self) -> (usize, &Item) {
+        (self.0, &self.1)
+    }
+}
+
+impl SlotItem for (usize, &Item) {
+    fn slot_item(&self) -> (usize, &Item) {
+        *self
+    }
+}
+
 // A sectioned container is a set of smaller containers displayed as
 // one. Like pouches on a belt or different pockets in a jacket. It's
 // one item than holds many fixed containers.
@@ -813,14 +863,9 @@ impl ItemRotation {
 pub struct SectionContents {
     pub id: usize,
     pub layout: SectionLayout,
-    // This should be inside section layout...?
-    pub sections: Vec<shape::Vec2>,
-    // If we make grid contents the only option here we can't do a
-    // full paper doll as one container. If we use ContentsLayout we
-    // can have more complicated hierarchical layouts.
-    //pub sections: Vec<ContentsLayout>,
-    // Should each section have its own flags?
-    pub flags: FlagSet<ItemFlags>,
+    // This should be generic over Contents but then ContentsLayout
+    // will cycle on itself.
+    pub sections: Vec<ContentsLayout>,
 }
 
 #[derive(Clone, Debug)]
@@ -832,23 +877,19 @@ pub enum SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(
-        id: usize,
-        layout: SectionLayout,
-        sections: Vec<shape::Vec2>, // sections: Vec<ContentsLayout>
-    ) -> Self {
+    pub fn new(id: usize, layout: SectionLayout, sections: Vec<ContentsLayout>) -> Self {
         Self {
             id,
             layout,
             sections,
-            flags: Default::default(),
+            //flags: Default::default(),
         }
     }
 
-    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
-        self.flags = flags.into();
-        self
-    }
+    // pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+    //     self.flags = flags.into();
+    //     self
+    // }
 
     fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
         self.section_ranges()
@@ -929,23 +970,27 @@ impl Contents for SectionContents {
     fn body<'a, I>(
         &self,
         _drag_item: &Option<DragItem>,
-        _items: Option<I>,
+        _items: I,
         _ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>>
     where
-        I: Iterator<Item = &'a (usize, Item)>,
+        I: Iterator<Item = (usize, &'a Item)>,
     {
         unimplemented!()
     }
 
-    fn ui<'a, I>(
+    fn ui<'a, I, Q>(
         &self,
+        // id: usize,
+        q: &'a Q,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
+        items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData>
     where
-        I: IntoIterator<Item = &'a (usize, Item)>,
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Q: ContentsQuery<'a>,
+        Self: Sized,
     {
         // map (slot, item) -> (section, (slot, item))
         let ranges = self.section_ranges().collect_vec();
@@ -955,38 +1000,39 @@ impl Contents for SectionContents {
         // be more flexible with the input, probably via trait. If we
         // know the input is sorted there is also probably a way to do
         // this w/o collecting into a hash map.
-        let items = items
-            .map(|items| {
-                items
-                    .into_iter()
-                    .filter_map(|(slot, item)| {
-                        // Find section for each slot.
-                        ranges
-                            .iter()
-                            .enumerate()
-                            .find_map(|(section, (start, end))| {
-                                (slot < end).then(|| (section, ((slot - start), item.clone())))
-                            })
+        let mut items = items
+            .into_iter()
+            // Find section for each item.
+            .filter_map(|(slot, item)| {
+                ranges
+                    .iter()
+                    .enumerate()
+                    .find_map(|(section, (start, end))| {
+                        (slot < *end).then(|| (section, ((slot - start), item)))
                     })
-                    .into_group_map()
             })
-            .unwrap_or_default();
+            .into_group_map();
+
+        let sections = self.sections.iter().zip(ranges.iter()).enumerate().map(
+            |(i, (layout, (start, _end)))| {
+                (
+                    i,
+                    // store ref, not clone?
+                    Section::new(self.section_eid(i), layout.clone()),
+                    start,
+                    items.remove(&i).unwrap_or_default(),
+                )
+            },
+        );
 
         match self.layout {
             SectionLayout::Grid(width) => {
                 egui::Grid::new(self.id).num_columns(width).show(ui, |ui| {
-                    self.sections
-                        .iter()
-                        .zip(ranges.iter())
-                        .enumerate()
-                        .map(|(i, (size, (start, _end)))| {
-                            let items = items.get(&i);
-                            let data = Section::new(
-                                self.section_eid(i),
-                                GridContents::new(self.id(), *size).with_flags(self.flags),
-                            )
-                            .ui(drag_item, items, ui)
-                            .inner;
+                    sections
+                        .map(|(i, layout, start, items)| {
+                            let data = layout
+                                .ui(q, drag_item, items, ui) // FIX pass our id
+                                .inner;
 
                             if (i + 1) % width == 0 {
                                 ui.end_row();
@@ -1005,10 +1051,10 @@ impl Contents for SectionContents {
 
 /// Section wraps GridContents to provide a unique egui::Id from the
 /// actual (parent) container.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Delegate)]
+#[delegate(Contents, target = "contents")]
 pub struct Section<C> {
     pub eid: egui::Id,
-    // This could be Box<dyn Contents>?
     pub contents: C,
 }
 
@@ -1016,50 +1062,10 @@ impl<C> Section<C> {
     pub fn new(eid: egui::Id, contents: C) -> Self {
         Self { eid, contents }
     }
-}
 
-impl<C> Contents for Section<C>
-where
-    C: Contents,
-{
-    fn id(&self) -> usize {
-        self.contents.id()
-    }
-
-    fn eid(&self) -> egui::Id {
+    // This overrides the delegate.
+    pub fn eid(&self) -> egui::Id {
         self.eid
-    }
-
-    fn len(&self) -> usize {
-        self.contents.len()
-    }
-
-    fn pos(&self, slot: usize) -> egui::Vec2 {
-        self.contents.pos(slot)
-    }
-
-    fn slot(&self, offset: egui::Vec2) -> usize {
-        self.contents.slot(offset)
-    }
-
-    fn accepts(&self, item: &Item, slot: usize) -> bool {
-        self.contents.accepts(item, slot)
-    }
-
-    fn fits(&self, ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
-        self.contents.fits(ctx, item, slot)
-    }
-
-    fn body<'a, I>(
-        &self,
-        drag_item: &Option<DragItem>,
-        items: Option<I>,
-        ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
-    where
-        I: Iterator<Item = &'a (usize, Item)>,
-    {
-        self.contents.body(drag_item, items, ui)
     }
 }
 
@@ -1071,7 +1077,7 @@ pub struct ExpandingContents {
     pub id: usize,
     pub max_size: shape::Vec2,
     // This won't be valid until body is called.
-    pub filled: bool,
+    //pub filled: bool,
     pub flags: FlagSet<ItemFlags>,
 }
 
@@ -1080,7 +1086,7 @@ impl ExpandingContents {
         Self {
             id,
             max_size: max_size.into(),
-            filled: false,
+            //filled: false,
             flags: Default::default(),
         }
     }
@@ -1096,7 +1102,7 @@ impl Clone for ExpandingContents {
         Self {
             id: self.id,
             max_size: self.max_size,
-            filled: self.filled,
+            //filled: self.filled,
             flags: self.flags,
         }
     }
@@ -1145,14 +1151,13 @@ impl Contents for ExpandingContents {
     fn body<'a, I>(
         &self,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
+        mut items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<DragItem>>
     where
-        I: Iterator<Item = &'a (usize, Item)>,
+        I: Iterator<Item = (usize, &'a Item)>,
     {
-        //let mut items = self.items.take().into_iter().flatten();
-        let item = items.map(|mut items| items.next()).flatten();
+        let item = items.next();
 
         ui.ctx().data().insert_temp(self.eid(), item.is_some());
 
@@ -1162,13 +1167,13 @@ impl Contents for ExpandingContents {
         // is_rect_visible?
         let (new_drag, response) = match item {
             Some((slot, item)) => {
-                assert!(*slot == 0);
+                assert!(slot == 0);
                 let InnerResponse { inner, response } =
                     ui.allocate_ui(item.size(), |ui| item.ui(drag_item, ui));
                 (
                     inner.map(|item| DragItem {
                         item,
-                        container: (self.id(), *slot),
+                        container: (self.id(), slot),
                         cshape: None,
                         remove_fn: None,
                     }),
@@ -1188,42 +1193,79 @@ impl Contents for ExpandingContents {
 
 // A container for a single item (or "slot") that, when containing
 // another container, the interior contents are displayed inline.
-pub struct InlineContents<'a, 'b, C> {
-    pub container: &'a ExpandingContents,
-    pub contents: Option<&'b C>,
+#[derive(Clone, Debug)]
+pub struct InlineContents(ExpandingContents);
+
+impl InlineContents {
+    pub fn new(contents: ExpandingContents) -> Self {
+        Self(contents)
+    }
 }
 
-impl<'a, 'b, C: Contents> InlineContents<'a, 'b, C> {
-    pub fn new(container: &'a ExpandingContents, contents: Option<&'b C>) -> Self {
-        Self {
-            container,
-            contents,
-        }
+impl Contents for InlineContents {
+    fn id(&self) -> usize {
+        todo!()
     }
 
-    pub fn ui<'item, I>(
-        self,
+    fn len(&self) -> usize {
+        todo!() // 1?
+    }
+
+    fn pos(&self, _slot: usize) -> egui::Vec2 {
+        todo!()
+    }
+
+    fn slot(&self, _offset: egui::Vec2) -> usize {
+        todo!()
+    }
+
+    fn accepts(&self, _item: &Item, _slot: usize) -> bool {
+        todo!()
+    }
+
+    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
+        todo!()
+    }
+
+    fn body<'a, I>(
+        &self,
+        // id: usize,
+        _drag_item: &Option<DragItem>,
+        _items: I,
+        _ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<Option<DragItem>>
+    where
+        I: Iterator<Item = (usize, &'a Item)>,
+        Self: Sized,
+    {
+        unimplemented!()
+    }
+
+    fn ui<'a, I, Q>(
+        &self,
+        // id: usize,
+        q: &'a Q,
         drag_item: &Option<DragItem>,
-        items: Option<I>,
-        items_inline: Option<I>,
+        items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData>
     where
-        I: IntoIterator<Item = &'item (usize, Item)>,
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Q: ContentsQuery<'a>,
     {
+        // get the layout and contents of the contained item (if any)
+        let mut items = items.into_iter().peekable();
+        let inline_id = items.peek().map(|(_, item)| item.id);
+
         // TODO: InlineLayout?
         ui.horizontal(|ui| {
-            let Self {
-                container,
-                contents,
-            } = self;
+            let data = self.0.ui(q, drag_item, items, ui).inner;
 
-            let data = container.ui(drag_item, items, ui).inner;
+            // Don't add contents if the container is being dragged?
 
-            if let Some(contents) = contents {
-                data.merge(contents.ui(drag_item, items_inline, ui).inner)
-            } else {
-                data
+            match inline_id.and_then(|id| show_contents(q, id, drag_item, ui)) {
+                Some(resp) => data.merge(resp.inner),
+                None => data,
             }
         })
     }

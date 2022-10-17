@@ -171,13 +171,11 @@ pub fn paint_shape(
 /// A widget to display the contents of a container.
 #[delegatable_trait]
 pub trait Contents {
-    fn id(&self) -> usize;
-
     /// Returns an egui id based on the contents id. Unused, except
     /// for loading state.
-    fn eid(&self) -> egui::Id {
+    fn eid(&self, id: usize) -> egui::Id {
         // Containers are items, so we need a unique id for the contents.
-        egui::Id::new("contents").with(self.id())
+        egui::Id::new("contents").with(id)
     }
 
     fn boxed(self) -> Box<dyn Contents>
@@ -194,12 +192,12 @@ pub trait Contents {
     /// added. The contents won't exist after a move so we use this to
     /// update internal state in lieu of a normal trait method. `slot`
     /// is used for sectioned contents only.
-    fn add(&self, _slot: usize) -> Option<ResolveFn> {
+    fn add(&self, _id: usize, _slot: usize) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a thunk that is resolved after a move when an item is removed.
-    fn remove(&self, _slot: usize) -> Option<ResolveFn> {
+    fn remove(&self, _id: usize, _slot: usize) -> Option<ResolveFn> {
         None
     }
 
@@ -213,12 +211,12 @@ pub trait Contents {
     fn accepts(&self, item: &Item, slot: usize) -> bool;
 
     // What about fits anywhere/any slot?
-    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool;
+    fn fits(&self, id: usize, ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
     // Draw contents.
     fn body<'a, I>(
         &self,
-        // id: usize,
+        id: usize,
         drag_item: &Option<DragItem>,
         items: I,
         ui: &mut egui::Ui,
@@ -232,7 +230,7 @@ pub trait Contents {
     // (usize, &Item) so section contents can rewrite slots.
     fn ui<'a, I, Q>(
         &self,
-        // id: usize,
+        id: usize,
         _q: &'a Q,
         drag_item: &Option<DragItem>,
         // This used to be an option but we're generally starting with
@@ -255,7 +253,8 @@ pub trait Contents {
 
         //let items = items.map(|items| items.into_iter());
         let items = items.into_iter();
-        let egui::InnerResponse { inner, response } = self.body(drag_item, items, &mut content_ui);
+        let egui::InnerResponse { inner, response } =
+            self.body(id, drag_item, items, &mut content_ui);
 
         // tarkov also checks if containers are full, even if not
         // hovering -- maybe track min size free?
@@ -278,7 +277,7 @@ pub trait Contents {
         let fits = drag_item
             .as_ref()
             .zip(slot)
-            .map(|(item, slot)| self.fits(ui.ctx(), item, slot))
+            .map(|(item, slot)| self.fits(id, ui.ctx(), item, slot))
             .unwrap_or_default();
 
         assert!(match drag_item {
@@ -335,7 +334,7 @@ pub trait Contents {
         if released && fits && !accepts {
             tracing::info!(
                 "container {:?} does not accept item {:?}!",
-                self.id(),
+                id,
                 drag_item.as_ref().map(|drag| drag.item.flags)
             );
         }
@@ -345,26 +344,25 @@ pub trait Contents {
         InnerResponse::new(
             MoveData {
                 drag: inner,
-                target: (dragging && accepts && fits).then(|| (self.id(), slot.unwrap())),
-                add_fn: (accepts && fits).then(|| self.add(slot.unwrap())).flatten(),
+                target: (dragging && accepts && fits).then(|| (id, slot.unwrap())),
+                add_fn: (accepts && fits)
+                    .then(|| self.add(id, slot.unwrap()))
+                    .flatten(),
             },
             response,
         )
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GridContents {
-    // This shares w/ items, but the eid is unique.
-    pub id: usize,
     pub size: shape::Vec2,
     pub flags: FlagSet<ItemFlags>,
 }
 
 impl GridContents {
-    pub fn new(id: usize, size: impl Into<shape::Vec2>) -> Self {
+    pub fn new(size: impl Into<shape::Vec2>) -> Self {
         Self {
-            id,
             size: size.into(),
             flags: Default::default(),
         }
@@ -373,17 +371,6 @@ impl GridContents {
     pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
         self.flags = flags.into();
         self
-    }
-}
-
-// What is this for?
-impl Clone for GridContents {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            size: self.size,
-            flags: self.flags,
-        }
     }
 }
 
@@ -419,23 +406,19 @@ fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::S
 }
 
 impl Contents for GridContents {
-    fn id(&self) -> usize {
-        self.id
-    }
-
     fn len(&self) -> usize {
         self.size.len()
     }
 
-    fn add(&self, _slot: usize) -> Option<ResolveFn> {
-        let eid = self.eid();
+    fn add(&self, id: usize, _slot: usize) -> Option<ResolveFn> {
+        let eid = self.eid(id);
         Some(Box::new(move |ctx, drag, (_c, slot)| {
             add_shape(ctx, eid, slot, &drag.item.shape())
         }))
     }
 
-    fn remove(&self, _slot: usize) -> Option<ResolveFn> {
-        let eid = self.eid();
+    fn remove(&self, id: usize, _slot: usize) -> Option<ResolveFn> {
+        let eid = self.eid(id);
         Some(Box::new(move |ctx, drag, _| {
             remove_shape(ctx, eid, drag.container.1, &drag.item.shape())
         }))
@@ -454,15 +437,15 @@ impl Contents for GridContents {
         self.flags.contains(item.flags)
     }
 
-    fn fits(&self, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+    fn fits(&self, id: usize, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
         // Must be careful with the type inference here since it will
         // never fetch anything if it thinks it's a reference.
-        match ctx.data().get_temp(self.eid()) {
+        match ctx.data().get_temp(self.eid(id)) {
             Some(shape) => {
                 // Check if the shape fits here. When moving within
                 // one container, use the cached shape with the
                 // dragged item (and original rotation) unpainted.
-                let shape = match (drag.container.0 == self.id(), &drag.cshape) {
+                let shape = match (drag.container.0 == id, &drag.cshape) {
                     // (true, None) should never happen...
                     (true, Some(shape)) => shape,
                     _ => &shape,
@@ -472,7 +455,7 @@ impl Contents for GridContents {
             }
             None => {
                 // TODO remove this
-                tracing::error!("shape {:?} not found!", self.eid());
+                tracing::error!("shape {:?} not found!", self.eid(id));
                 false
             }
         }
@@ -480,6 +463,7 @@ impl Contents for GridContents {
 
     fn body<'a, I>(
         &self,
+        id: usize,
         drag_item: &Option<DragItem>,
         items: I,
         ui: &mut egui::Ui,
@@ -501,7 +485,7 @@ impl Contents for GridContents {
             // painted?  [`fits`] also checks the boundaries even if the
             // container is empty...
             let mut fill = false;
-            let eid = self.eid();
+            let eid = self.eid(id);
             let mut shape = ui.data().get_temp(eid).unwrap_or_else(|| {
                 // We don't need to fill if we aren't dragging currently...
                 fill = true;
@@ -514,7 +498,7 @@ impl Contents for GridContents {
                 // rehashes what's in `fits`.
                 let shape = drag_item
                     .as_ref()
-                    .filter(|drag| self.id == drag.container.0)
+                    .filter(|drag| id == drag.container.0)
                     .and_then(|drag| drag.cshape.as_ref())
                     .unwrap_or(&shape);
 
@@ -568,9 +552,9 @@ impl Contents for GridContents {
                     //let item_shape = item.shape();
                     DragItem {
                         item,
-                        container: (self.id, slot),
+                        container: (id, slot),
                         cshape: Some(cshape),
-                        remove_fn: self.remove(slot),
+                        remove_fn: self.remove(id, slot),
                     }
                 });
 
@@ -648,7 +632,7 @@ where
     Q: ContentsQuery<'a>,
 {
     q.query(id)
-        .map(|(layout, items)| layout.ui(q, drag_item, items, ui))
+        .map(|(layout, items)| layout.ui(id, q, drag_item, items, ui))
 }
 
 impl From<ExpandingContents> for ContentsLayout {
@@ -861,7 +845,6 @@ impl SlotItem for (usize, &Item) {
 // one item than holds many fixed containers.
 #[derive(Clone, Debug)]
 pub struct SectionContents {
-    pub id: usize,
     pub layout: SectionLayout,
     // This should be generic over Contents but then ContentsLayout
     // will cycle on itself.
@@ -877,9 +860,8 @@ pub enum SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(id: usize, layout: SectionLayout, sections: Vec<ContentsLayout>) -> Self {
+    pub fn new(layout: SectionLayout, sections: Vec<ContentsLayout>) -> Self {
         Self {
-            id,
             layout,
             sections,
             //flags: Default::default(),
@@ -906,24 +888,20 @@ impl SectionContents {
         })
     }
 
-    fn section_eid(&self, idx: usize) -> egui::Id {
-        egui::Id::new(self.eid().with("section").with(idx))
+    fn section_eid(&self, id: usize, sid: usize) -> egui::Id {
+        egui::Id::new(self.eid(id).with("section").with(sid))
     }
 }
 
 impl Contents for SectionContents {
-    fn id(&self) -> usize {
-        self.id
-    }
-
     fn len(&self) -> usize {
         self.sections.iter().map(|s| s.len()).sum()
     }
 
-    fn add(&self, slot: usize) -> Option<ResolveFn> {
+    fn add(&self, id: usize, slot: usize) -> Option<ResolveFn> {
         match self.section_slot(slot) {
             Some((i, slot)) => {
-                let seid = self.section_eid(i);
+                let seid = self.section_eid(id, i);
                 Some(Box::new(move |ctx, drag, _c| {
                     add_shape(ctx, seid, slot, &drag.item.shape())
                 }))
@@ -932,10 +910,10 @@ impl Contents for SectionContents {
         }
     }
 
-    fn remove(&self, slot: usize) -> Option<ResolveFn> {
+    fn remove(&self, id: usize, slot: usize) -> Option<ResolveFn> {
         match self.section_slot(slot) {
             Some((i, slot)) => {
-                let seid = self.section_eid(i);
+                let seid = self.section_eid(id, i);
                 Some(Box::new(move |ctx, drag, _c| {
                     remove_shape(ctx, seid, slot, &drag.item.shape())
                 }))
@@ -963,12 +941,13 @@ impl Contents for SectionContents {
     }
 
     // Unused. We can only fit things in sections.
-    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
+    fn fits(&self, _id: usize, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
         false
     }
 
     fn body<'a, I>(
         &self,
+        _id: usize,
         _drag_item: &Option<DragItem>,
         _items: I,
         _ui: &mut egui::Ui,
@@ -981,7 +960,7 @@ impl Contents for SectionContents {
 
     fn ui<'a, I, Q>(
         &self,
-        // id: usize,
+        id: usize,
         q: &'a Q,
         drag_item: &Option<DragItem>,
         items: I,
@@ -1018,7 +997,7 @@ impl Contents for SectionContents {
                 (
                     i,
                     // store ref, not clone?
-                    Section::new(self.section_eid(i), layout.clone()),
+                    Section::new(self.section_eid(id, i), layout.clone()),
                     start,
                     items.remove(&i).unwrap_or_default(),
                 )
@@ -1027,12 +1006,10 @@ impl Contents for SectionContents {
 
         match self.layout {
             SectionLayout::Grid(width) => {
-                egui::Grid::new(self.id).num_columns(width).show(ui, |ui| {
+                egui::Grid::new(id).num_columns(width).show(ui, |ui| {
                     sections
                         .map(|(i, layout, start, items)| {
-                            let data = layout
-                                .ui(q, drag_item, items, ui) // FIX pass our id
-                                .inner;
+                            let data = layout.ui(id, q, drag_item, items, ui).inner;
 
                             if (i + 1) % width == 0 {
                                 ui.end_row();
@@ -1072,9 +1049,8 @@ impl<C> Section<C> {
 // An expanding container fits only one item but it can be any size up
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ExpandingContents {
-    pub id: usize,
     pub max_size: shape::Vec2,
     // This won't be valid until body is called.
     //pub filled: bool,
@@ -1082,9 +1058,8 @@ pub struct ExpandingContents {
 }
 
 impl ExpandingContents {
-    pub fn new(id: usize, max_size: impl Into<shape::Vec2>) -> Self {
+    pub fn new(max_size: impl Into<shape::Vec2>) -> Self {
         Self {
-            id,
             max_size: max_size.into(),
             //filled: false,
             flags: Default::default(),
@@ -1097,22 +1072,7 @@ impl ExpandingContents {
     }
 }
 
-impl Clone for ExpandingContents {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            max_size: self.max_size,
-            //filled: self.filled,
-            flags: self.flags,
-        }
-    }
-}
-
 impl Contents for ExpandingContents {
-    fn id(&self) -> usize {
-        self.id
-    }
-
     fn len(&self) -> usize {
         1
     }
@@ -1143,13 +1103,14 @@ impl Contents for ExpandingContents {
     }
 
     // How do we visually show if the item is too big?
-    fn fits(&self, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
-        let filled: bool = ctx.data().get_temp(self.eid()).unwrap_or_default();
+    fn fits(&self, id: usize, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+        let filled: bool = ctx.data().get_temp(self.eid(id)).unwrap_or_default();
         slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
     }
 
     fn body<'a, I>(
         &self,
+        id: usize,
         drag_item: &Option<DragItem>,
         mut items: I,
         ui: &mut egui::Ui,
@@ -1159,7 +1120,7 @@ impl Contents for ExpandingContents {
     {
         let item = items.next();
 
-        ui.ctx().data().insert_temp(self.eid(), item.is_some());
+        ui.ctx().data().insert_temp(self.eid(id), item.is_some());
 
         // Make sure items is <= 1: FIX
         //assert!(items.map(|mut items| items.next()).flatten().is_none());
@@ -1173,7 +1134,7 @@ impl Contents for ExpandingContents {
                 (
                     inner.map(|item| DragItem {
                         item,
-                        container: (self.id(), slot),
+                        container: (id, slot),
                         cshape: None,
                         remove_fn: None,
                     }),
@@ -1203,10 +1164,6 @@ impl InlineContents {
 }
 
 impl Contents for InlineContents {
-    fn id(&self) -> usize {
-        todo!()
-    }
-
     fn len(&self) -> usize {
         todo!() // 1?
     }
@@ -1223,13 +1180,13 @@ impl Contents for InlineContents {
         todo!()
     }
 
-    fn fits(&self, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
+    fn fits(&self, _id: usize, _ctx: &egui::Context, _item: &DragItem, _slot: usize) -> bool {
         todo!()
     }
 
     fn body<'a, I>(
         &self,
-        // id: usize,
+        _id: usize,
         _drag_item: &Option<DragItem>,
         _items: I,
         _ui: &mut egui::Ui,
@@ -1243,7 +1200,7 @@ impl Contents for InlineContents {
 
     fn ui<'a, I, Q>(
         &self,
-        // id: usize,
+        id: usize,
         q: &'a Q,
         drag_item: &Option<DragItem>,
         items: I,
@@ -1259,7 +1216,7 @@ impl Contents for InlineContents {
 
         // TODO: InlineLayout?
         ui.horizontal(|ui| {
-            let data = self.0.ui(q, drag_item, items, ui).inner;
+            let data = self.0.ui(id, q, drag_item, items, ui).inner;
 
             // Don't add contents if the container is being dragged?
 

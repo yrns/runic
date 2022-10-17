@@ -51,7 +51,7 @@ fn main() {
             contents.insert(
                 8,
                 (
-                    GridContents::new(8, (3, 2))
+                    GridContents::new((3, 2))
                         // it only holds potions
                         .with_flags(ItemFlags::Potion)
                         .into(),
@@ -63,7 +63,7 @@ fn main() {
                 1,
                 (
                     // this id is redundant
-                    GridContents::new(1, (4, 4))
+                    GridContents::new((4, 4))
                         // accepts any item
                         .with_flags(FlagSet::full())
                         .into(),
@@ -74,7 +74,7 @@ fn main() {
             contents.insert(
                 2,
                 (
-                    GridContents::new(2, (2, 2))
+                    GridContents::new((2, 2))
                         // accepts only potions
                         .with_flags(ItemFlags::Potion)
                         .into(),
@@ -86,14 +86,13 @@ fn main() {
                 5,
                 (
                     SectionContents::new(
-                        5,
                         // grid w/ two columns
                         SectionLayout::Grid(2),
                         vec![
-                            GridContents::new(5, (1, 2))
+                            GridContents::new((1, 2))
                                 .with_flags(FlagSet::full()) // accepts any item
                                 .into(),
-                            GridContents::new(5, (1, 2))
+                            GridContents::new((1, 2))
                                 .with_flags(FlagSet::full()) // accepts any item
                                 .into(),
                         ],
@@ -106,7 +105,7 @@ fn main() {
             contents.insert(
                 6,
                 (
-                    ExpandingContents::new(6, (2, 2))
+                    ExpandingContents::new((2, 2))
                         // accepts only weapons
                         .with_flags(ItemFlags::Weapon)
                         .into(),
@@ -118,7 +117,7 @@ fn main() {
                 7,
                 (
                     InlineContents::new(
-                        ExpandingContents::new(7, (2, 2))
+                        ExpandingContents::new((2, 2))
                             // we only accept containers
                             .with_flags(ItemFlags::Container),
                     )

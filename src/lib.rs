@@ -514,11 +514,6 @@ impl Contents for GridContents {
 
             let item_size = item_size();
 
-            // I should be movable? Make it an option? We need to be
-            // able to call self methods in the adapters. I should be
-            // Iterator<Item = (usize, &Item)? FIX:
-            //let items = self.items.take();
-
             let new_drag = items
                 .map(|(slot, item)| {
                     // Paint each item and fill our shape if needed.
@@ -666,9 +661,6 @@ pub struct Item {
     pub shape: shape::Shape,
     pub icon: TextureId,
     pub flags: FlagSet<ItemFlags>,
-    // cflags is now in ContentsLayout.
-    //pub cflags: FlagSet<ItemFlags>,
-    //pub layout: ContentsLayout,
 }
 
 // pub fn item(
@@ -690,7 +682,6 @@ impl Item {
             shape,
             icon,
             flags: FlagSet::default(),
-            //cflags: FlagSet::default(),
         }
     }
 
@@ -698,11 +689,6 @@ impl Item {
         self.flags = flags.into();
         self
     }
-
-    // pub fn with_cflags(mut self, cflags: impl Into<FlagSet<ItemFlags>>) -> Self {
-    //     self.cflags = cflags.into();
-    //     self
-    // }
 
     /// Returns an egui id based on the item id.
     pub fn eid(&self) -> egui::Id {
@@ -861,17 +847,8 @@ pub enum SectionLayout {
 
 impl SectionContents {
     pub fn new(layout: SectionLayout, sections: Vec<ContentsLayout>) -> Self {
-        Self {
-            layout,
-            sections,
-            //flags: Default::default(),
-        }
+        Self { layout, sections }
     }
-
-    // pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
-    //     self.flags = flags.into();
-    //     self
-    // }
 
     fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
         self.section_ranges()
@@ -1122,8 +1099,7 @@ impl Contents for ExpandingContents {
 
         ui.ctx().data().insert_temp(self.eid(id), item.is_some());
 
-        // Make sure items is <= 1: FIX
-        //assert!(items.map(|mut items| items.next()).flatten().is_none());
+        assert!(items.next().is_none());
 
         // is_rect_visible?
         let (new_drag, response) = match item {

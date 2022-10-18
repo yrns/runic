@@ -661,6 +661,7 @@ pub struct Item {
     pub shape: shape::Shape,
     pub icon: TextureId,
     pub flags: FlagSet<ItemFlags>,
+    pub name: String, // WidgetText?
 }
 
 // pub fn item(
@@ -682,11 +683,17 @@ impl Item {
             shape,
             icon,
             flags: FlagSet::default(),
+            name: Default::default(),
         }
     }
 
     pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
         self.flags = flags.into();
+        self
+    }
+
+    pub fn with_name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
         self
     }
 
@@ -709,17 +716,16 @@ impl Item {
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
 
         ui.add(
-            egui::Image::new(self.icon, self.size())
-                .rotate(
-                    drag_item
-                        .as_ref()
-                        .filter(|drag| drag.item.id == self.id)
-                        .map_or(self.rotation, |drag| drag.item.rotation)
-                        .angle(),
-                    egui::Vec2::splat(0.5),
-                )
-                .sense(egui::Sense::click()),
+            egui::Image::new(self.icon, self.size()).rotate(
+                drag_item
+                    .as_ref()
+                    .filter(|drag| drag.item.id == self.id)
+                    .map_or(self.rotation, |drag| drag.item.rotation)
+                    .angle(),
+                egui::Vec2::splat(0.5),
+            ),
         )
+        .on_hover_text(format!("{}", self))
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
@@ -776,6 +782,14 @@ impl Item {
     fn rotate(mut self) -> Self {
         self.shape = self.shape();
         self
+    }
+}
+
+impl std::fmt::Display for Item {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.name)?;
+        f.write_str(" ")?;
+        f.debug_list().entries(self.flags.into_iter()).finish()
     }
 }
 

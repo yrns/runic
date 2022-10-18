@@ -23,7 +23,8 @@ fn main() {
                 shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
             )
             // this item is a weapon
-            .with_flags(ItemFlags::Weapon);
+            .with_flags(ItemFlags::Weapon)
+            .with_name("Boomerang");
 
             let pouch = Item::new(
                 8,
@@ -31,7 +32,8 @@ fn main() {
                 shape::Shape::new((2, 2), true),
             )
             // this item is a container
-            .with_flags(ItemFlags::Container);
+            .with_flags(ItemFlags::Container)
+            .with_name("Pouch");
 
             let short_sword = Item::new(
                 9,
@@ -39,14 +41,16 @@ fn main() {
                 shape::Shape::new((3, 1), true),
             )
             // this item is a weapon
-            .with_flags(ItemFlags::Weapon);
+            .with_flags(ItemFlags::Weapon)
+            .with_name("Short sword");
 
             let potion = Item::new(
                 4,
                 load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
                 shape::Shape::new((1, 1), true),
             )
-            .with_flags(ItemFlags::Potion);
+            .with_flags(ItemFlags::Potion)
+            .with_name("Potion");
 
             contents.insert(
                 8,

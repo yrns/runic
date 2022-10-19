@@ -251,7 +251,6 @@ pub trait Contents {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
-        //let items = items.map(|items| items.into_iter());
         let items = items.into_iter();
         let egui::InnerResponse { inner, response } =
             self.body(id, drag_item, items, &mut content_ui);
@@ -287,7 +286,9 @@ pub trait Contents {
 
         if let Some(drag) = drag_item {
             if let Some(slot) = slot {
-                let color = if fits {
+                let color = if !accepts {
+                    egui::color::Color32::GRAY
+                } else if fits {
                     egui::color::Color32::GREEN
                 } else {
                     egui::color::Color32::RED
@@ -715,16 +716,26 @@ impl Item {
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
 
-        ui.add(
-            egui::Image::new(self.icon, self.size()).rotate(
-                drag_item
-                    .as_ref()
-                    .filter(|drag| drag.item.id == self.id)
-                    .map_or(self.rotation, |drag| drag.item.rotation)
-                    .angle(),
-                egui::Vec2::splat(0.5),
-            ),
-        )
+        // Scale down slightly when dragged to see the background.
+        let dragging = drag_item
+            .as_ref()
+            .map(|d| d.item.id == self.id)
+            .unwrap_or_default();
+        let size = self.size() * if dragging { 0.8 } else { 1.0 };
+
+        let image = egui::Image::new(self.icon, size).rotate(
+            drag_item
+                .as_ref()
+                .filter(|drag| drag.item.id == self.id)
+                .map_or(self.rotation, |drag| drag.item.rotation)
+                .angle(),
+            egui::Vec2::splat(0.5),
+        );
+        ui.add(if dragging {
+            image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.5))
+        } else {
+            image
+        })
         .on_hover_text(format!("{}", self))
     }
 
@@ -732,6 +743,12 @@ impl Item {
         let id = self.eid();
         let drag = ui.memory().is_being_dragged(id);
         if !drag {
+            // This does not work.
+            // ui.push_id(self.id, |ui| self.body(drag_item, ui))
+            //     .response
+            //     .interact(egui::Sense::drag())
+            //     .on_hover_cursor(egui::CursorIcon::Grab);
+
             let response = ui.scope(|ui| self.body(drag_item, ui)).response;
             let response = ui.interact(response.rect, id, egui::Sense::drag());
             if response.hovered() {

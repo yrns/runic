@@ -731,12 +731,12 @@ impl Item {
                 .angle(),
             egui::Vec2::splat(0.5),
         );
-        ui.add(if dragging {
-            image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.5))
-        } else {
-            image
-        })
-        .on_hover_text(format!("{}", self))
+        // let image = if dragging {
+        //     image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.5))
+        // } else {
+        //     image
+        // };
+        ui.add(image).on_hover_text(format!("{}", self))
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
@@ -763,8 +763,15 @@ impl Item {
                 .with_layer_id(layer_id, |ui| self.body(drag_item, ui))
                 .response;
 
-            if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
-                let delta = pointer_pos - response.rect.center();
+            // pos - pos = vec
+            // pos + pos = error
+            // pos +/- vec = pos
+            // vec +/- pos = error
+
+            // The cursor is placing the first slot (upper left) when
+            // dragging, so draw the dragged item in roughly the same place.
+            if let Some(p) = ui.ctx().pointer_interact_pos() {
+                let delta = (p - response.rect.min) - item_size() * 0.25;
                 ui.ctx().translate_layer(layer_id, delta);
             }
 

@@ -52,6 +52,8 @@ fn main() {
             .with_flags(ItemFlags::Potion)
             .with_name("Potion");
 
+            let potion2 = potion.clone().with_id(10).with_name("Potion 2");
+
             contents.insert(
                 8,
                 (
@@ -82,7 +84,7 @@ fn main() {
                         // accepts only potions
                         .with_flags(ItemFlags::Potion)
                         .into(),
-                    vec![(0, potion)],
+                    vec![(0, potion), (1, potion2)],
                 ),
             );
 
@@ -90,9 +92,11 @@ fn main() {
                 5,
                 (
                     SectionContents::new(
-                        // grid w/ two columns
-                        SectionLayout::Grid(2),
+                        SectionLayout::Grid(3),
                         vec![
+                            GridContents::new((1, 2))
+                                .with_flags(FlagSet::full()) // accepts any item
+                                .into(),
                             GridContents::new((1, 2))
                                 .with_flags(FlagSet::full()) // accepts any item
                                 .into(),
@@ -208,7 +212,7 @@ impl eframe::App for Runic {
                 let mut resolve = false;
                 if let MoveData {
                     drag: Some(ref drag),
-                    target: Some((container, slot)),
+                    target: Some((container, slot, _eid)),
                     ..
                 } = move_data
                 {

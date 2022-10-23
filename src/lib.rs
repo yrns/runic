@@ -1181,9 +1181,12 @@ impl Contents for ExpandingContents {
         self.flags.contains(item.flags)
     }
 
-    // How do we visually show if the item is too big?
+    // How do we visually show if the item is too big? What if the
+    // item is rotated and oblong, and only fits one way?
     fn fits(&self, (_id, eid): Context, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
-        let filled: bool = ctx.data().get_temp(eid).unwrap_or_default();
+        // Allow rotating in place.
+        let current_item = eid == drag.container.2;
+        let filled: bool = !current_item && ctx.data().get_temp(eid).unwrap_or_default();
         slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
     }
 

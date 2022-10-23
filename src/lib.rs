@@ -756,9 +756,10 @@ impl Item {
             .as_ref()
             .map(|d| d.item.id == self.id)
             .unwrap_or_default();
-        let size = self.size() * if dragging { 0.8 } else { 1.0 };
+        let size = self.size();
+        let drag_scale = if dragging { 0.8 } else { 1.0 };
 
-        let image = egui::Image::new(self.icon, size).rotate(
+        let image = egui::Image::new(self.icon, size * drag_scale).rotate(
             drag_item
                 .as_ref()
                 .filter(|drag| drag.item.id == self.id)
@@ -771,7 +772,13 @@ impl Item {
         // } else {
         //     image
         // };
-        ui.add(image).on_hover_text(format!("{}", self))
+
+        // Rather than use ui.add(image) we allocate the original size
+        // so the contents draws consistenly when the dragged item is
+        // scaled.
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        image.paint_at(ui, rect);
+        response.on_hover_text(format!("{}", self))
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {

@@ -216,43 +216,46 @@ impl eframe::App for Runic {
                     ..
                 } = move_data
                 {
-                    tracing::info!("moving item {:?} -> container {:?}", drag.item, container);
+                    // In lieu of an efficient way to do an exhaustive check for cycles:
+                    if drag.item.id == container {
+                        tracing::info!("cannot move an item inside itself: {}", drag.item.id);
+                    } else {
+                        tracing::info!("moving item {} -> container {}", drag.item.id, container);
 
-                    // Using indexmap or something else to get two mutable
-                    // refs would make this transactable.
-                    match self
-                        .contents
-                        .0
-                        .get_mut(&drag.container.0)
-                        .and_then(|(_, items)| {
-                            let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
-                            idx.map(|idx| items.remove(idx).1)
-                        }) {
-                        Some(mut item) => {
-                            tracing::info!(
-                                "new rot {:?} --> {:?}",
-                                item.rotation,
-                                drag.item.rotation
-                            );
-                            // Copy the rotation.
-                            item.rotation = drag.item.rotation;
+                        // Using indexmap or something else to get two mutable
+                        // refs would make this transactable.
+                        match self
+                            .contents
+                            .0
+                            .get_mut(&drag.container.0)
+                            .and_then(|(_, items)| {
+                                let idx =
+                                    items.iter().position(|(_, item)| item.id == drag.item.id);
+                                idx.map(|idx| items.remove(idx).1)
+                            }) {
+                            Some(mut item) => {
+                                //tracing::info!("new rot {:?} --> {:?}", item.rotation, drag.item.rotation);
 
-                            // Insert item. The contents must exist
-                            // already to insert an item?
-                            match self.contents.0.get_mut(&container) {
-                                Some((_, items)) => items.push((slot, item)),
-                                None => tracing::error!(
-                                    "could not find container {} to add to",
-                                    container
-                                ),
+                                // Copy the rotation.
+                                item.rotation = drag.item.rotation;
+
+                                // Insert item. The contents must exist
+                                // already to insert an item?
+                                match self.contents.0.get_mut(&container) {
+                                    Some((_, items)) => items.push((slot, item)),
+                                    None => tracing::error!(
+                                        "could not find container {} to add to",
+                                        container
+                                    ),
+                                }
+
+                                resolve = true;
                             }
-
-                            resolve = true;
+                            None => tracing::error!(
+                                "could not find container {} to remove from",
+                                drag.container.0
+                            ),
                         }
-                        None => tracing::error!(
-                            "could not find container {} to remove from",
-                            drag.container.0
-                        ),
                     }
                 }
                 if resolve {

@@ -129,6 +129,11 @@ impl ContainerSpace {
             }
         }
 
+        // Toggle debug.
+        if ui.input().key_pressed(egui::Key::D) {
+            ui.ctx().set_debug_on_hover(!ui.ctx().debug_on_hover());
+        }
+
         // If the pointer is released, take drag_item.
         ui.input()
             .pointer
@@ -517,27 +522,25 @@ impl Contents for GridContents {
                 shape::Shape::new(self.size, false)
             });
 
-            // TODO make debug option
-            if !fill {
-                // Use the cached shape if the dragged item is ours. This
-                // rehashes what's in `fits`.
-                let shape = drag_item
-                    .as_ref()
-                    .filter(|drag| {
-                        //dbg!(&drag.container);
-                        eid == drag.container.2
-                    })
-                    .and_then(|drag| drag.cshape.as_ref())
-                    .unwrap_or(&shape);
+            if ui.ctx().debug_on_hover() {
+                if !fill {
+                    // Use the cached shape if the dragged item is ours. This
+                    // rehashes what's in `fits`.
+                    let shape = drag_item
+                        .as_ref()
+                        .filter(|drag| eid == drag.container.2)
+                        .and_then(|drag| drag.cshape.as_ref())
+                        .unwrap_or(&shape);
 
-                // debug paint the container "shape" (filled slots)
-                paint_shape(
-                    shape,
-                    ui.min_rect(),
-                    egui::Vec2::ZERO,
-                    egui::color::Color32::DARK_BLUE,
-                    ui,
-                );
+                    // debug paint the container "shape" (filled slots)
+                    paint_shape(
+                        shape,
+                        ui.min_rect(),
+                        egui::Vec2::ZERO,
+                        egui::color::Color32::DARK_BLUE,
+                        ui,
+                    );
+                }
             }
 
             let item_size = item_size();

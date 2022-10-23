@@ -152,6 +152,7 @@ impl ContainerSpace {
 }
 
 pub fn paint_shape(
+    idxs: Vec<egui::layers::ShapeIdx>,
     shape: &shape::Shape,
     grid_rect: egui::Rect,
     offset: egui::Vec2,
@@ -163,10 +164,14 @@ pub fn paint_shape(
         .slots()
         .map(|slot| offset + xy(slot, shape.width()) * ITEM_SIZE)
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
-        .for_each(|p| {
+        // It does not matter if we don't use all the shape indices.
+        .zip(idxs.iter())
+        .for_each(|(p, idx)| {
             let slot_rect = egui::Rect::from_min_size(p, item_size());
+            // ui.painter()
+            //     .rect(slot_rect, 0., color, egui::Stroke::none())
             ui.painter()
-                .rect(slot_rect, 0., color, egui::Stroke::none())
+                .set(*idx, egui::epaint::RectShape::filled(slot_rect, 0., color));
         })
 }
 
@@ -276,6 +281,14 @@ pub trait Contents {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
+        let shadow_idxs = drag_item.as_ref().map(|drag| {
+            drag.item
+                .shape
+                .slots()
+                .map(|_| ui.painter().add(egui::Shape::Noop))
+                .collect_vec()
+        });
+
         let items = items.into_iter();
         let egui::InnerResponse { inner, response } =
             self.body(ctx, drag_item, items, &mut content_ui);
@@ -324,7 +337,14 @@ pub trait Contents {
 
                 // paint item slots, need to reserve shapes so this
                 // draws w/ the background
-                paint_shape(&drag.item.shape, r, self.pos(slot), color, ui);
+                paint_shape(
+                    shadow_idxs.unwrap(),
+                    &drag.item.shape,
+                    r,
+                    self.pos(slot),
+                    color,
+                    ui,
+                );
             }
         }
 
@@ -532,8 +552,13 @@ impl Contents for GridContents {
                         .and_then(|drag| drag.cshape.as_ref())
                         .unwrap_or(&shape);
 
-                    // debug paint the container "shape" (filled slots)
+                    // debug paint the container "shape" (filled
+                    // slots)
                     paint_shape(
+                        shape
+                            .slots()
+                            .map(|_| ui.painter().add(egui::Shape::Noop))
+                            .collect_vec(),
                         shape,
                         ui.min_rect(),
                         egui::Vec2::ZERO,

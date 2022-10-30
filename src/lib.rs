@@ -7,7 +7,7 @@ pub mod shape;
 
 pub const ITEM_SIZE: f32 = 48.0;
 
-// static?
+// static? rename slot_size?
 pub fn item_size() -> egui::Vec2 {
     egui::vec2(ITEM_SIZE, ITEM_SIZE)
 }
@@ -758,6 +758,11 @@ impl Item {
         self
     }
 
+    pub fn with_rotation(mut self, r: ItemRotation) -> Self {
+        self.rotation = r;
+        self
+    }
+
     /// Returns an egui id based on the item id.
     pub fn eid(&self) -> egui::Id {
         egui::Id::new(self.id)
@@ -776,33 +781,42 @@ impl Item {
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
 
-        // Scale down slightly when dragged to see the background.
-        let dragging = drag_item
-            .as_ref()
-            .map(|d| d.item.id == self.id)
-            .unwrap_or_default();
-        let size = self.size();
-        let drag_scale = if dragging { 0.8 } else { 1.0 };
+        let (dragging, rot) = match drag_item.as_ref() {
+            Some(drag) if drag.item.id == self.id => (true, drag.item.rotation),
+            _ => (false, self.rotation),
+        };
 
-        let image = egui::Image::new(self.icon, size * drag_scale).rotate(
-            drag_item
-                .as_ref()
-                .filter(|drag| drag.item.id == self.id)
-                .map_or(self.rotation, |drag| drag.item.rotation)
-                .angle(),
-            egui::Vec2::splat(0.5),
-        );
         // let image = if dragging {
         //     image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.5))
         // } else {
         //     image
         // };
 
-        // Rather than use ui.add(image) we allocate the original size
-        // so the contents draws consistenly when the dragged item is
-        // scaled.
+        // Allocate the original size so the contents draws
+        // consistenly when the dragged item is scaled.
+        let size = rot.size(self.size());
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
-        image.paint_at(ui, rect);
+
+        // Image::rotate was problematic for non-square images. Rather
+        // than rotate the mesh, reassign uvs.
+        if ui.is_rect_visible(rect) {
+            let mut mesh = egui::Mesh::with_texture(self.icon);
+            // Scale down slightly when dragged to see the background.
+            let drag_scale = if dragging { 0.8 } else { 1.0 };
+
+            mesh.add_rect_with_uv(
+                egui::Rect::from_min_size(rect.min, size * drag_scale),
+                egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1.0, 1.0)),
+                egui::Color32::WHITE,
+            );
+
+            for (v, uv) in mesh.vertices.iter_mut().zip(rot.uvs().iter()) {
+                v.uv = *uv;
+            }
+
+            ui.painter().add(egui::Shape::mesh(mesh));
+        }
+
         response.on_hover_text(format!("{}", self))
     }
 
@@ -894,6 +908,34 @@ pub enum ItemRotation {
 }
 
 impl ItemRotation {
+    pub const R0_UVS: [egui::Pos2; 4] = [
+        egui::pos2(0.0, 0.0),
+        egui::pos2(1.0, 0.0),
+        egui::pos2(0.0, 1.0),
+        egui::pos2(1.0, 1.0),
+    ];
+
+    pub const R90_UVS: [egui::Pos2; 4] = [
+        egui::pos2(0.0, 1.0),
+        egui::pos2(0.0, 0.0),
+        egui::pos2(1.0, 1.0),
+        egui::pos2(1.0, 0.0),
+    ];
+
+    pub const R180_UVS: [egui::Pos2; 4] = [
+        egui::pos2(1.0, 1.0),
+        egui::pos2(0.0, 1.0),
+        egui::pos2(1.0, 0.0),
+        egui::pos2(0.0, 0.0),
+    ];
+
+    pub const R270_UVS: [egui::Pos2; 4] = [
+        egui::pos2(1.0, 0.0),
+        egui::pos2(1.0, 1.0),
+        egui::pos2(0.0, 0.0),
+        egui::pos2(0.0, 1.0),
+    ];
+
     pub fn increment(&self) -> Self {
         match self {
             Self::None => Self::R90,
@@ -909,6 +951,26 @@ impl ItemRotation {
             Self::R90 => 90.0_f32.to_radians(),
             Self::R180 => 180.0_f32.to_radians(),
             Self::R270 => 270.0_f32.to_radians(),
+        }
+    }
+
+    pub fn rot2(&self) -> egui::emath::Rot2 {
+        egui::emath::Rot2::from_angle(self.angle())
+    }
+
+    pub fn size(&self, size: egui::Vec2) -> egui::Vec2 {
+        match *self {
+            ItemRotation::R90 | ItemRotation::R270 => egui::Vec2::new(size.y, size.x),
+            _ => size,
+        }
+    }
+
+    pub fn uvs(&self) -> &[egui::Pos2; 4] {
+        match *self {
+            ItemRotation::None => &Self::R0_UVS,
+            ItemRotation::R90 => &Self::R90_UVS,
+            ItemRotation::R180 => &Self::R180_UVS,
+            ItemRotation::R270 => &Self::R270_UVS,
         }
     }
 }

@@ -817,7 +817,7 @@ impl Item {
             ui.painter().add(egui::Shape::mesh(mesh));
         }
 
-        response.on_hover_text(format!("{}", self))
+        response.on_hover_text_at_pointer(format!("{}", self))
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
@@ -839,21 +839,28 @@ impl Item {
         } else {
             ui.output().cursor_icon = egui::CursorIcon::Grabbing;
 
-            let layer_id = egui::LayerId::new(egui::Order::Tooltip, id);
-            let response = ui
-                .with_layer_id(layer_id, |ui| self.body(drag_item, ui))
-                .response;
-
             // pos - pos = vec
             // pos + pos = error
             // pos +/- vec = pos
             // vec +/- pos = error
 
-            // The cursor is placing the first slot (upper left) when
-            // dragging, so draw the dragged item in roughly the same place.
-            if let Some(p) = ui.ctx().pointer_interact_pos() {
-                let delta = (p - response.rect.min) - item_size() * 0.25;
-                ui.ctx().translate_layer(layer_id, delta);
+            // Draw the dragged item in a new area so it does not
+            // affect the size of the contents, which could occur with
+            // a large item rotated outside the bounds of the contents.
+            match ui.ctx().pointer_interact_pos() {
+                Some(p) => {
+                    // from egui::containers::show_tooltip_area_dyn
+                    egui::containers::Area::new(id)
+                        .order(egui::Order::Tooltip)
+                        // The cursor is placing the first slot (upper
+                        // left) when dragging, so draw the dragged
+                        // item in roughly the same place.
+                        .fixed_pos(p - item_size() * 0.25)
+                        .interactable(false)
+                        .drag_bounds(egui::Rect::EVERYTHING)
+                        .show(ui.ctx(), |ui| self.body(drag_item, ui));
+                }
+                _ => tracing::error!("no interact position for drag?"),
             }
 
             // make sure there is no existing drag_item or it matches

@@ -1383,3 +1383,24 @@ impl Contents for InlineContents {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // 1234, rotate x times, swap the last two to match the quad uvs:
+    fn gen_uvs(r: usize) -> [egui::Pos2; 4] {
+        let mut uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+        uvs.rotate_right(r); // not const yet
+        uvs.swap(2, 3); // not const yet
+        uvs.map(|(x, y)| egui::pos2(x, y)) // never?
+    }
+
+    #[test]
+    fn uvs() {
+        assert_eq!(gen_uvs(0), ItemRotation::R0_UVS);
+        assert_eq!(gen_uvs(1), ItemRotation::R90_UVS);
+        assert_eq!(gen_uvs(2), ItemRotation::R180_UVS);
+        assert_eq!(gen_uvs(3), ItemRotation::R270_UVS);
+    }
+}

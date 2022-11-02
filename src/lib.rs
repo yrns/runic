@@ -281,6 +281,7 @@ pub trait Contents {
         let bg = ui.painter().add(egui::Shape::Noop);
         let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
 
+        // Reserve shapes for the dragged item's shadow.
         let shadow_idxs = drag_item.as_ref().map(|drag| {
             drag.item
                 .shape
@@ -324,6 +325,8 @@ pub trait Contents {
             _ => true, // we could be dragging something else
         });
 
+        // Paint the dragged item's shadow, showing which slots will
+        // be filled.
         if let Some(drag) = drag_item {
             if let Some(slot) = slot {
                 let color = if !accepts {
@@ -335,8 +338,6 @@ pub trait Contents {
                 };
                 let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
-                // paint item slots, need to reserve shapes so this
-                // draws w/ the background
                 paint_shape(
                     shadow_idxs.unwrap(),
                     &drag.item.shape,
@@ -584,7 +585,8 @@ impl Contents for GridContents {
                         .inner
                         .map(|new_drag| (slot, new_drag))
                 })
-                // Reduce down to one new_drag.
+                // Reduce down to one new_drag. At some point change
+                // the above to find_map.
                 .reduce(|a, b| {
                     if a.as_ref().and(b.as_ref()).is_some() {
                         // This will only happen if the items overlap?
@@ -831,9 +833,27 @@ impl Item {
             //     .on_hover_cursor(egui::CursorIcon::Grab);
 
             let response = ui.scope(|ui| self.body(drag_item, ui)).response;
-            let response = ui.interact(response.rect, id, egui::Sense::drag());
-            if response.hovered() {
-                ui.output().cursor_icon = egui::CursorIcon::Grab;
+
+            // Figure out what slot we're in, see if it's filled,
+            // don't sense drag if not.
+            let filled = ui
+                .ctx()
+                .pointer_interact_pos()
+                .filter(|p| response.rect.contains(*p))
+                .map(|p| {
+                    // This is roughly <GridContents as Contents>::slot?
+                    let p = (p - response.rect.min) / ITEM_SIZE;
+                    let slot = p.x as usize + p.y as usize * self.shape.width();
+
+                    self.shape.fill[slot]
+                })
+                .unwrap_or_default();
+
+            if filled {
+                let response = ui.interact(response.rect, id, egui::Sense::drag());
+                if response.hovered() {
+                    ui.output().cursor_icon = egui::CursorIcon::Grab;
+                }
             }
             None
         } else {
@@ -857,6 +877,7 @@ impl Item {
                         // item in roughly the same place.
                         .fixed_pos(p - item_size() * 0.25)
                         .interactable(false)
+                        // Restrict to ContainerShape?
                         .drag_bounds(egui::Rect::EVERYTHING)
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
                 }

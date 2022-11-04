@@ -10,15 +10,24 @@ use bitvec::prelude::*;
 fn main() {
     tracing_subscriber::fmt::init();
     let options = eframe::NativeOptions::default();
+
     eframe::run_native(
         "runic",
         options,
         Box::new(|cc| {
+            // let mut next_id = {
+            //     let mut id = 0;
+            //     move || {
+            //         id += 1;
+            //         id
+            //     }
+            // };
+
             let mut contents = HashMap::new();
             let mut images = HashMap::new();
 
             let boomerang = Item::new(
-                3,
+                3, //next_id(),
                 load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
                 shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
             )
@@ -42,6 +51,7 @@ fn main() {
             )
             // this item is a weapon
             .with_flags(ItemFlags::Weapon)
+            //.with_rotation(ItemRotation::R90);
             .with_name("Short sword");
 
             let potion = Item::new(
@@ -60,6 +70,8 @@ fn main() {
                     GridContents::new((3, 2))
                         // it only holds potions
                         .with_flags(ItemFlags::Potion)
+                        // checking cycles
+                        //.with_flags(FlagSet::full())
                         .into(),
                     vec![],
                 ),
@@ -220,7 +232,13 @@ impl eframe::App for Runic {
                     if drag.item.id == container {
                         tracing::info!("cannot move an item inside itself: {}", drag.item.id);
                     } else {
-                        tracing::info!("moving item {} -> container {}", drag.item.id, container);
+                        tracing::info!(
+                            "moving item {} {:?} -> container {} slot {}",
+                            drag.item.id,
+                            drag.item.rotation,
+                            container,
+                            slot
+                        );
 
                         // Using indexmap or something else to get two mutable
                         // refs would make this transactable.

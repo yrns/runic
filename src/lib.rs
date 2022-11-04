@@ -30,6 +30,16 @@ pub struct DragItem {
     pub remove_fn: Option<ResolveFn>,
 }
 
+impl std::fmt::Debug for DragItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "DragItem {{ item: {:?}, container: {:?} }}",
+            self.item, self.container
+        )
+    }
+}
+
 /// source item -> target container
 #[derive(Default)]
 pub struct MoveData {
@@ -198,6 +208,41 @@ impl IntoContext for Context {
     }
 }
 
+// Add contents inside a styled background with a margin. The style is
+// mutable so it can be modified based on the contents.
+pub fn with_bg<R>(
+    ui: &mut egui::Ui,
+    add_contents: impl FnOnce(&mut egui::style::WidgetVisuals, &mut egui::Ui) -> R,
+) -> InnerResponse<R> {
+    let margin = egui::Vec2::splat(4.0);
+    let outer_rect_bounds = ui.available_rect_before_wrap();
+    let inner_rect = outer_rect_bounds.shrink2(margin);
+
+    // Reserve a shape for the background so it draws first.
+    let bg = ui.painter().add(egui::Shape::Noop);
+    let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
+
+    // Draw contents.
+    let mut style = ui.visuals().widgets.active;
+    let inner = add_contents(&mut style, &mut content_ui);
+
+    let outer_rect =
+        egui::Rect::from_min_max(outer_rect_bounds.min, content_ui.min_rect().max + margin);
+    let (rect, response) = ui.allocate_at_least(outer_rect.size(), egui::Sense::hover());
+
+    ui.painter().set(
+        bg,
+        egui::epaint::RectShape {
+            rounding: style.rounding,
+            fill: style.bg_fill,
+            stroke: style.bg_stroke,
+            rect,
+        },
+    );
+
+    InnerResponse::new(inner, response)
+}
+
 /// A widget to display the contents of a container.
 #[delegatable_trait]
 pub trait Contents {
@@ -250,7 +295,7 @@ pub trait Contents {
         drag_item: &Option<DragItem>,
         items: I,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
+    ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
         Self: Sized;
@@ -274,133 +319,120 @@ pub trait Contents {
         Q: ContentsQuery<'a>,
         Self: Sized,
     {
-        let margin = egui::Vec2::splat(4.0);
-        let outer_rect_bounds = ui.available_rect_before_wrap();
-        let inner_rect = outer_rect_bounds.shrink2(margin);
-        // reserve a shape for the background so it draws first
-        let bg = ui.painter().add(egui::Shape::Noop);
-        let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
-
-        // Reserve shapes for the dragged item's shadow.
-        let shadow_idxs = drag_item.as_ref().map(|drag| {
-            drag.item
-                .shape
-                .slots()
-                .map(|_| ui.painter().add(egui::Shape::Noop))
-                .collect_vec()
-        });
-
-        let items = items.into_iter();
-        let egui::InnerResponse { inner, response } =
-            self.body(ctx, drag_item, items, &mut content_ui);
-
-        // tarkov also checks if containers are full, even if not
-        // hovering -- maybe track min size free?
-        let dragging = drag_item.is_some();
-
-        let r = content_ui.min_rect();
-        let slot = response
-            .hover_pos()
-            // the hover includes the outer_rect?
-            .filter(|p| r.contains(*p))
-            .map(|p| self.slot(p - r.min));
-
-        let accepts = drag_item
-            .as_ref()
-            .zip(slot)
-            // `accepts` takes a slot for sectioned contents.
-            .map(|(drag, slot)| self.accepts(&drag.item, slot))
-            .unwrap_or_default();
-
-        let (id, eid) = ctx;
-
-        let fits = drag_item
-            .as_ref()
-            .zip(slot)
-            .map(|(item, slot)| self.fits(ctx, ui.ctx(), item, slot))
-            .unwrap_or_default();
-
         assert!(match drag_item {
             Some(drag) => ui.memory().is_being_dragged(drag.item.eid()),
             _ => true, // we could be dragging something else
         });
 
-        // Paint the dragged item's shadow, showing which slots will
-        // be filled.
-        if let Some(drag) = drag_item {
-            if let Some(slot) = slot {
-                let color = if !accepts {
-                    egui::color::Color32::GRAY
-                } else if fits {
-                    egui::color::Color32::GREEN
-                } else {
-                    egui::color::Color32::RED
-                };
-                let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
+        // We have all the information we need to set the style from
+        // the MoveData/drag_item, so we could do that internal to
+        // with_bg... ItemResponse::Item would need to be
+        // preserved. Also, with_item_shadow()?
+        with_bg(ui, |style, mut ui| {
+            // The item shadow becomes the target item, not the dragged
+            // item, for drag-to-item?
 
-                paint_shape(
-                    shadow_idxs.unwrap(),
-                    &drag.item.shape,
-                    r,
-                    self.pos(slot),
-                    color,
-                    ui,
+            // Reserve shapes for the dragged item's shadow.
+            let shadow_idxs = drag_item.as_ref().map(|drag| {
+                drag.item
+                    .shape
+                    .slots()
+                    .map(|_| ui.painter().add(egui::Shape::Noop))
+                    .collect_vec()
+            });
+
+            let egui::InnerResponse { inner, response } =
+                self.body(ctx, drag_item, items.into_iter(), &mut ui);
+
+            // tarkov also checks if containers are full, even if not
+            // hovering -- maybe track min size free? TODO just do
+            // accepts, and only check fits for hover
+            let dragging = drag_item.is_some();
+
+            let min_rect = ui.min_rect();
+            let slot = response
+                .hover_pos()
+                // the hover includes the outer_rect?
+                .filter(|p| min_rect.contains(*p))
+                .map(|p| self.slot(p - min_rect.min));
+
+            let accepts = drag_item
+                .as_ref()
+                .zip(slot)
+                // `accepts` takes a slot for sectioned contents.
+                .map(|(drag, slot)| self.accepts(&drag.item, slot))
+                .unwrap_or_default();
+
+            let (id, eid) = ctx;
+
+            let fits = drag_item
+                .as_ref()
+                .zip(slot)
+                .map(|(item, slot)| self.fits(ctx, ui.ctx(), item, slot))
+                .unwrap_or_default();
+
+            // Paint the dragged item's shadow, showing which slots will
+            // be filled.
+            if let Some(drag) = drag_item {
+                if let Some(slot) = slot {
+                    let color = if !accepts {
+                        egui::color::Color32::GRAY
+                    } else if fits {
+                        egui::color::Color32::GREEN
+                    } else {
+                        egui::color::Color32::RED
+                    };
+                    let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
+
+                    paint_shape(
+                        shadow_idxs.unwrap(),
+                        &drag.item.shape,
+                        min_rect,
+                        self.pos(slot),
+                        color,
+                        ui,
+                    );
+                }
+            }
+
+            if !(dragging && accepts && response.hovered()) {
+                *style = ui.visuals().widgets.inactive;
+            };
+
+            if dragging && accepts {
+                // gray out:
+                style.bg_fill =
+                    egui::color::tint_color_towards(style.bg_fill, ui.visuals().window_fill());
+                style.bg_stroke.color = egui::color::tint_color_towards(
+                    style.bg_stroke.color,
+                    ui.visuals().window_fill(),
                 );
             }
-        }
 
-        let outer_rect =
-            egui::Rect::from_min_max(outer_rect_bounds.min, content_ui.min_rect().max + margin);
-        let (rect, response) = ui.allocate_at_least(outer_rect.size(), egui::Sense::hover());
+            // Only send target on release?
+            let released = ui.input().pointer.any_released();
+            if released && fits && !accepts {
+                tracing::info!(
+                    "container {:?} does not accept item {:?}!",
+                    id,
+                    drag_item.as_ref().map(|drag| drag.item.flags)
+                );
+            }
 
-        let style = if dragging && accepts && response.hovered() {
-            ui.visuals().widgets.active
-        } else {
-            ui.visuals().widgets.inactive
-        };
+            // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
 
-        let mut fill = style.bg_fill;
-        let mut stroke = style.bg_stroke;
-        if dragging && accepts {
-            // gray out:
-            fill = egui::color::tint_color_towards(fill, ui.visuals().window_fill());
-            stroke.color =
-                egui::color::tint_color_towards(stroke.color, ui.visuals().window_fill());
-        }
-
-        ui.painter().set(
-            bg,
-            egui::epaint::RectShape {
-                rounding: style.rounding,
-                fill,
-                stroke,
-                rect,
-            },
-        );
-
-        // Only send target on release?
-        let released = ui.input().pointer.any_released();
-        if released && fits && !accepts {
-            tracing::info!(
-                "container {:?} does not accept item {:?}!",
-                id,
-                drag_item.as_ref().map(|drag| drag.item.flags)
-            );
-        }
-
-        // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
-
-        InnerResponse::new(
             MoveData {
-                drag: inner,
-                // The target eid is unused..?
+                drag: match inner {
+                    Some(ItemResponse::Drag(drag)) => Some(drag),
+                    _ => None,
+                },
+                // The target eid is unused..? dragging implied...
                 target: (dragging && accepts && fits).then(|| (id, slot.unwrap(), eid)),
                 add_fn: (accepts && fits)
                     .then(|| self.add(ctx, slot.unwrap()))
                     .flatten(),
-            },
-            response,
-        )
+            }
+        })
     }
 }
 
@@ -517,7 +549,7 @@ impl Contents for GridContents {
         drag_item: &Option<DragItem>,
         items: I,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
+    ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
     {
@@ -598,16 +630,23 @@ impl Contents for GridContents {
                 // Add the contents id, current slot and
                 // container shape w/ the item unpainted.
                 .map(|(slot, item)| {
-                    let mut cshape = shape.clone();
-                    // We've already cloned the item and we're cloning
-                    // the shape again to rotate? Isn't it already rotated?
-                    cshape.unpaint(&item.shape(), slot);
-                    //let item_shape = item.shape();
-                    DragItem {
-                        item,
-                        container: (id, slot, eid),
-                        cshape: Some(cshape),
-                        remove_fn: self.remove(ctx, slot),
+                    match item {
+                        ItemResponse::NewDrag(item) => {
+                            let mut cshape = shape.clone();
+                            // We've already cloned the item and we're cloning
+                            // the shape again to rotate? Isn't it already rotated?
+                            cshape.unpaint(&item.shape(), slot);
+                            //let item_shape = item.shape();
+                            ItemResponse::Drag(DragItem {
+                                item,
+                                // FIX just use ctx?
+                                container: (id, slot, eid),
+                                cshape: Some(cshape),
+                                remove_fn: self.remove(ctx, slot),
+                            })
+                        }
+                        // ItemResponse::Item(id) ...
+                        _ => item,
                     }
                 });
 
@@ -733,6 +772,13 @@ pub struct Item {
 //     move |ui: &mut egui::Ui| ui.horizontal(|ui| Item::new(id, icon, shape).ui(drag_item, ui))
 // }
 
+#[derive(Debug)]
+pub enum ItemResponse {
+    Hover(Item),
+    NewDrag(Item),
+    Drag(DragItem),
+}
+
 impl Item {
     pub fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
         Self {
@@ -803,7 +849,8 @@ impl Item {
         // than rotate the mesh, reassign uvs.
         if ui.is_rect_visible(rect) {
             let mut mesh = egui::Mesh::with_texture(self.icon);
-            // Scale down slightly when dragged to see the background.
+            // Scale down slightly when dragged to see the
+            // background. Animate this and the drag-shift to cursor?
             let drag_scale = if dragging { 0.8 } else { 1.0 };
 
             mesh.add_rect_with_uv(
@@ -822,7 +869,10 @@ impl Item {
         response.on_hover_text_at_pointer(format!("{}", self))
     }
 
-    pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
+    // return something that says this item can be a drag target, draw
+    // outline?
+    // let parent contents decide if the dragged item will fit using q?
+    pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
         let id = self.eid();
         let drag = ui.memory().is_being_dragged(id);
         if !drag {
@@ -853,9 +903,15 @@ impl Item {
                 let response = ui.interact(response.rect, id, egui::Sense::drag());
                 if response.hovered() {
                     ui.output().cursor_icon = egui::CursorIcon::Grab;
+                    drag_item
+                        .as_ref()
+                        .map(|_| ItemResponse::Hover(self.clone()))
+                } else {
+                    None
                 }
+            } else {
+                None
             }
-            None
         } else {
             ui.output().cursor_icon = egui::CursorIcon::Grabbing;
 
@@ -890,14 +946,12 @@ impl Item {
                 drag_item.is_none() || drag_item.as_ref().map(|drag| drag.item.id) == Some(self.id)
             );
 
-            // only send back a clone if this is a new drag (drag_item
-            // is empty)
-            if drag_item.is_none() {
+            // Only send back a clone if this is a new drag (drag_item
+            // is empty):
+            drag_item
+                .is_none()
                 // This clones the shape twice...
-                Some(self.clone().rotate())
-            } else {
-                None
-            }
+                .then(|| ItemResponse::NewDrag(self.clone().rotate()))
         }
     }
 
@@ -1123,7 +1177,7 @@ impl Contents for SectionContents {
         _drag_item: &Option<DragItem>,
         _items: I,
         _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
+    ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
     {
@@ -1286,7 +1340,7 @@ impl Contents for ExpandingContents {
         drag_item: &Option<DragItem>,
         mut items: I,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
+    ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
     {
@@ -1301,13 +1355,18 @@ impl Contents for ExpandingContents {
             Some((slot, item)) => {
                 assert!(slot == 0);
                 let InnerResponse { inner, response } =
+                    // item.size() isn't rotated... TODO: test
+                    // non-square containers, review item.size() everywhere
                     ui.allocate_ui(item.size(), |ui| item.ui(drag_item, ui));
                 (
-                    inner.map(|item| DragItem {
-                        item,
-                        container: (id, slot, eid),
-                        cshape: None,
-                        remove_fn: None,
+                    inner.map(|item| match item {
+                        ItemResponse::NewDrag(item) => ItemResponse::Drag(DragItem {
+                            item,
+                            container: (id, slot, eid),
+                            cshape: None,
+                            remove_fn: None,
+                        }),
+                        _ => item,
                     }),
                     response,
                 )
@@ -1367,7 +1426,7 @@ impl Contents for InlineContents {
         _drag_item: &Option<DragItem>,
         _items: I,
         _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<DragItem>>
+    ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
         Self: Sized,

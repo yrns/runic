@@ -266,13 +266,14 @@ pub trait Contents {
     /// Creates a thunk that is resolved after a move when an item is
     /// added. The contents won't exist after a move so we use this to
     /// update internal state in lieu of a normal trait method. `slot`
-    /// is used for sectioned contents only.
+    /// is used for sectioned contents only. SectionContents needs to
+    /// be updated...
     fn add(&self, _ctx: Context, _slot: usize) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a thunk that is resolved after a move when an item is removed.
-    fn remove(&self, _ctx: Context, _slot: usize) -> Option<ResolveFn> {
+    fn remove(&self, _ctx: Context, _slot: usize, _shape: shape::Shape) -> Option<ResolveFn> {
         None
     }
 
@@ -495,14 +496,13 @@ impl Contents for GridContents {
     // ctx and target are the same...
     fn add(&self, _ctx: Context, _slot: usize) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, drag, (_c, slot, eid)| {
-            add_shape(ctx, eid, slot, &drag.item.shape())
+            add_shape(ctx, eid, slot, &drag.item.shape)
         }))
     }
 
-    fn remove(&self, (_id, eid): Context, slot: usize) -> Option<ResolveFn> {
-        Some(Box::new(move |ctx, drag, _target| {
-            //remove_shape(ctx, eid, drag.container.1, &drag.item.shape())
-            remove_shape(ctx, eid, slot, &drag.item.shape())
+    fn remove(&self, (_id, eid): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+        Some(Box::new(move |ctx, _drag, _target| {
+            remove_shape(ctx, eid, slot, &shape)
         }))
     }
 
@@ -632,17 +632,20 @@ impl Contents for GridContents {
                 .map(|(slot, item)| {
                     match item {
                         ItemResponse::NewDrag(item) => {
+                            // The dragged item shape is already rotated. We
+                            // clone it to retain the original rotation for
+                            // removal.
+                            let item_shape = item.shape.clone();
                             let mut cshape = shape.clone();
                             // We've already cloned the item and we're cloning
                             // the shape again to rotate? Isn't it already rotated?
-                            cshape.unpaint(&item.shape(), slot);
-                            //let item_shape = item.shape();
+                            cshape.unpaint(&item_shape, slot);
                             ItemResponse::Drag(DragItem {
                                 item,
                                 // FIX just use ctx?
                                 container: (id, slot, eid),
                                 cshape: Some(cshape),
-                                remove_fn: self.remove(ctx, slot),
+                                remove_fn: self.remove(ctx, slot, item_shape),
                             })
                         }
                         // ItemResponse::Item(id) ...
@@ -824,7 +827,7 @@ impl Item {
         )
     }
 
-    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
+    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Vec2 {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
@@ -866,7 +869,8 @@ impl Item {
             ui.painter().add(egui::Shape::mesh(mesh));
         }
 
-        response.on_hover_text_at_pointer(format!("{}", self))
+        response.on_hover_text_at_pointer(format!("{}", self));
+        size
     }
 
     // return something that says this item can be a drag target, draw
@@ -926,7 +930,7 @@ impl Item {
             match ui.ctx().pointer_interact_pos() {
                 Some(p) => {
                     // from egui::containers::show_tooltip_area_dyn
-                    egui::containers::Area::new(id)
+                    let resp = egui::containers::Area::new(id)
                         .order(egui::Order::Tooltip)
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
@@ -936,6 +940,10 @@ impl Item {
                         // Restrict to ContainerShape?
                         .drag_bounds(egui::Rect::EVERYTHING)
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
+
+                    // Still allocate the original size for expanding
+                    // contents.
+                    ui.allocate_exact_size(resp.inner, egui::Sense::hover());
                 }
                 _ => tracing::error!("no interact position for drag?"),
             }
@@ -1124,19 +1132,22 @@ impl Contents for SectionContents {
         self.sections.iter().map(|s| s.len()).sum()
     }
 
+    // These need to forward to the section impl. This assumes
+    // sections are always grids?
     fn add(&self, (_id, eid): Context, slot: usize) -> Option<ResolveFn> {
+        // Use map...
         match self.section_slot(slot) {
             Some((_i, slot)) => Some(Box::new(move |ctx, drag, _target| {
-                add_shape(ctx, eid, slot, &drag.item.shape())
+                add_shape(ctx, eid, slot, &drag.item.shape)
             })),
             None => None,
         }
     }
 
-    fn remove(&self, (_id, eid): Context, slot: usize) -> Option<ResolveFn> {
+    fn remove(&self, (_id, eid): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
         match self.section_slot(slot) {
-            Some((_i, slot)) => Some(Box::new(move |ctx, drag, _target| {
-                remove_shape(ctx, eid, slot, &drag.item.shape())
+            Some((_i, slot)) => Some(Box::new(move |ctx, _drag, _target| {
+                remove_shape(ctx, eid, slot, &shape)
             })),
             None => None,
         }

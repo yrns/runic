@@ -136,11 +136,15 @@ impl Shape {
     }
 
     pub fn paint(&mut self, other: &Shape, slot: usize) {
-        self.overlay_mut(other, slot, |a, b| *a = *a || *b)
+        //print!("{}+\n{}=\n", &self, other);
+        self.overlay_mut(other, slot, |a, b| *a = *a || *b);
+        //println!("{}", &self);
     }
 
     pub fn unpaint(&mut self, other: &Shape, slot: usize) {
-        self.overlay_mut(other, slot, |a, b| *a = *a && !*b)
+        //print!("{}-\n{}=\n", &self, other);
+        self.overlay_mut(other, slot, |a, b| *a = *a && !*b);
+        //println!("{}", &self);
     }
 
     pub fn fits(&self, other: &Shape, slot: usize) -> bool {

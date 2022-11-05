@@ -781,7 +781,7 @@ impl Item {
         )
     }
 
-    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Response {
+    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Vec2 {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
         //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
@@ -822,7 +822,8 @@ impl Item {
             ui.painter().add(egui::Shape::mesh(mesh));
         }
 
-        response.on_hover_text_at_pointer(format!("{}", self))
+        response.on_hover_text_at_pointer(format!("{}", self));
+        size
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<Item> {
@@ -873,7 +874,7 @@ impl Item {
             match ui.ctx().pointer_interact_pos() {
                 Some(p) => {
                     // from egui::containers::show_tooltip_area_dyn
-                    egui::containers::Area::new(id)
+                    let resp = egui::containers::Area::new(id)
                         .order(egui::Order::Tooltip)
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
@@ -883,6 +884,10 @@ impl Item {
                         // Restrict to ContainerShape?
                         .drag_bounds(egui::Rect::EVERYTHING)
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
+
+                    // Still allocate the original size for expanding
+                    // contents.
+                    ui.allocate_exact_size(resp.inner, egui::Sense::hover());
                 }
                 _ => tracing::error!("no interact position for drag?"),
             }

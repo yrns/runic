@@ -819,7 +819,8 @@ impl Item {
         egui::Id::new(self.id)
     }
 
-    /// Size of the item in pixels.
+    /// Size of the (unrotated?) item in pixels.
+    // TODO check uses of this and make sure the rotation is right
     pub fn size(&self) -> egui::Vec2 {
         egui::Vec2::new(
             self.shape.width() as f32 * ITEM_SIZE,
@@ -930,7 +931,7 @@ impl Item {
             match ui.ctx().pointer_interact_pos() {
                 Some(p) => {
                     // from egui::containers::show_tooltip_area_dyn
-                    let resp = egui::containers::Area::new(id)
+                    let _resp = egui::containers::Area::new(id)
                         .order(egui::Order::Tooltip)
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
@@ -942,8 +943,10 @@ impl Item {
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
 
                     // Still allocate the original size for expanding
-                    // contents.
-                    ui.allocate_exact_size(resp.inner, egui::Sense::hover());
+                    // contents. The response size can be rotated
+                    // (since it's being dragged), so use our
+                    // (rotated) size.
+                    ui.allocate_exact_size(self.rotation.size(self.size()), egui::Sense::hover());
                 }
                 _ => tracing::error!("no interact position for drag?"),
             }
@@ -1048,6 +1051,7 @@ impl ItemRotation {
         egui::emath::Rot2::from_angle(self.angle())
     }
 
+    // Move this into item? TODO
     pub fn size(&self, size: egui::Vec2) -> egui::Vec2 {
         match *self {
             ItemRotation::R90 | ItemRotation::R270 => egui::Vec2::new(size.y, size.x),

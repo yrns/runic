@@ -185,6 +185,32 @@ pub fn paint_shape(
         })
 }
 
+// Replaces `paint_shape` and uses only only one shape index, so we
+// don't have to reserve multiple.
+pub fn shape_mesh(
+    shape: &shape::Shape,
+    grid_rect: egui::Rect,
+    offset: egui::Vec2,
+    color: egui::Color32,
+    //texture_id: egui::TextureId,
+    scale: f32,
+) -> egui::Mesh {
+    let mut mesh = egui::Mesh::default();
+
+    // TODO share vertices in grid
+    let offset = grid_rect.min + offset;
+    shape
+        .slots()
+        .map(|slot| offset + xy(slot, shape.width()) * scale)
+        // TODO use clip rect instead of remaking vertices every frame
+        .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+        .map(|p| egui::Rect::from_min_size(p, egui::Vec2::splat(scale)))
+        .for_each(|rect| {
+            mesh.add_colored_rect(rect, color);
+        });
+    mesh
+}
+
 // Is this a trait or generic struct?
 // pub trait Item {
 //     type Id;
@@ -333,14 +359,8 @@ pub trait Contents {
             // The item shadow becomes the target item, not the dragged
             // item, for drag-to-item?
 
-            // Reserve shapes for the dragged item's shadow.
-            let shadow_idxs = drag_item.as_ref().map(|drag| {
-                drag.item
-                    .shape
-                    .slots()
-                    .map(|_| ui.painter().add(egui::Shape::Noop))
-                    .collect_vec()
-            });
+            // Reserve shape for the dragged item's shadow.
+            let shadow = ui.painter().add(egui::Shape::Noop);
 
             let egui::InnerResponse { inner, response } =
                 self.body(ctx, drag_item, items.into_iter(), &mut ui);
@@ -385,13 +405,9 @@ pub trait Contents {
                     };
                     let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
 
-                    paint_shape(
-                        shadow_idxs.unwrap(),
-                        &drag.item.shape,
-                        min_rect,
-                        self.pos(slot),
-                        color,
-                        ui,
+                    ui.painter().set(
+                        shadow,
+                        shape_mesh(&drag.item.shape, min_rect, self.pos(slot), color, ITEM_SIZE),
                     );
                 }
             }
@@ -587,17 +603,13 @@ impl Contents for GridContents {
 
                     // debug paint the container "shape" (filled
                     // slots)
-                    paint_shape(
-                        shape
-                            .slots()
-                            .map(|_| ui.painter().add(egui::Shape::Noop))
-                            .collect_vec(),
+                    ui.painter().add(shape_mesh(
                         shape,
                         ui.min_rect(),
                         egui::Vec2::ZERO,
                         egui::color::Color32::DARK_BLUE,
-                        ui,
-                    );
+                        ITEM_SIZE,
+                    ));
                 }
             }
 

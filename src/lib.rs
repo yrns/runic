@@ -828,6 +828,14 @@ impl Item {
         )
     }
 
+    // The width of the item with rotation.
+    pub fn width(&self) -> usize {
+        match self.rotation {
+            ItemRotation::R90 | ItemRotation::R270 => self.shape.height(),
+            _ => self.shape.width(),
+        }
+    }
+
     pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Vec2 {
         // the demo adds a context menu here for removing items
         // check the response id is the item id?
@@ -898,9 +906,11 @@ impl Item {
                 .map(|p| {
                     // This is roughly <GridContents as Contents>::slot?
                     let p = (p - response.rect.min) / ITEM_SIZE;
-                    let slot = p.x as usize + p.y as usize * self.shape.width();
-
-                    self.shape.fill[slot]
+                    let slot = p.x as usize + p.y as usize * self.width();
+                    self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
+                        tracing::error!("point {:?} slot {} out of shape fill", p, slot);
+                        false
+                    })
                 })
                 .unwrap_or_default();
 

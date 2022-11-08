@@ -185,8 +185,8 @@ pub fn paint_shape(
         })
 }
 
-// Replaces `paint_shape` and uses only only one shape index, so we
-// don't have to reserve multiple.
+// Replaces `paint_shape` and uses only one shape index, so we don't
+// have to reserve multiple.
 pub fn shape_mesh(
     shape: &shape::Shape,
     grid_rect: egui::Rect,
@@ -269,6 +269,26 @@ pub fn with_bg<R>(
     InnerResponse::new(inner, response)
 }
 
+pub fn find_slot_default<'a, C, I>(
+    contents: &C,
+    ctx: Context,
+    egui_ctx: &egui::Context,
+    drag: &DragItem,
+    _items: I,
+) -> Option<(usize, usize, egui::Id)>
+where
+    C: Contents,
+    I: IntoIterator<Item = (usize, &'a Item)>,
+{
+    // TODO test multiple rotations (if non-square) and return it?
+    (0..contents.len())
+        .find(|slot| {
+            let accepts = contents.accepts(&drag.item, *slot);
+            accepts && contents.fits(ctx, egui_ctx, drag, *slot)
+        })
+        .map(|slot| (ctx.0, slot, ctx.1))
+}
+
 /// A widget to display the contents of a container.
 #[delegatable_trait]
 pub trait Contents {
@@ -315,6 +335,32 @@ pub trait Contents {
     // What about fits anywhere/any slot?
     fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
+    fn find_slot<'a, I>(
+        &self,
+        ctx: Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        items: I,
+    ) -> Option<(usize, usize, egui::Id)>
+    where
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        //Q: ContentsQuery<'a>,
+        Self: Sized,
+    {
+        find_slot_default(self, ctx, egui_ctx, item, items)
+    }
+
+    fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
+        let color = if !accepts {
+            egui::color::Color32::GRAY
+        } else if fits {
+            egui::color::Color32::GREEN
+        } else {
+            egui::color::Color32::RED
+        };
+        egui::color::tint_color_towards(color, ui.visuals().window_fill())
+    }
+
     // Draw contents.
     fn body<'a, I>(
         &self,
@@ -333,7 +379,7 @@ pub trait Contents {
     fn ui<'a, I, Q>(
         &self,
         ctx: Context,
-        _q: &'a Q,
+        q: &'a Q,
         drag_item: &Option<DragItem>,
         // This used to be an option but we're generally starting with
         // show_contents at the root which implies items. (You can't
@@ -365,12 +411,45 @@ pub trait Contents {
             let egui::InnerResponse { inner, response } =
                 self.body(ctx, drag_item, items.into_iter(), &mut ui);
 
+            let min_rect = ui.min_rect();
+
+            // If we are dragging onto another item, check to see if
+            // the dragged item will fit anywhere within its contents.
+            match (drag_item, inner.as_ref()) {
+                // hover ⇒ dragging
+                (Some(drag), Some(ItemResponse::Hover((slot, item)))) => {
+                    if let Some((contents, items)) = q.query(item.id) {
+                        let ctx = item.id.into_ctx();
+                        let target = contents.find_slot(ctx, ui.ctx(), drag, items);
+
+                        // TODO fits && !accepts?
+                        let color = self.shadow_color(true, target.is_some(), ui);
+                        let mut mesh = egui::Mesh::default();
+                        mesh.add_colored_rect(
+                            // TODO make sure slot is correct for sections
+                            egui::Rect::from_min_size(
+                                min_rect.min + self.pos(*slot),
+                                item.size_rotated(),
+                            ),
+                            color,
+                        );
+                        ui.painter().set(shadow, mesh);
+
+                        return MoveData {
+                            drag: None,
+                            target, //: (id, slot, eid),
+                            add_fn: target.and_then(|t| contents.add(ctx, t.1)),
+                        };
+                    }
+                }
+                _ => (),
+            }
+
             // tarkov also checks if containers are full, even if not
             // hovering -- maybe track min size free? TODO just do
             // accepts, and only check fits for hover
             let dragging = drag_item.is_some();
 
-            let min_rect = ui.min_rect();
             let slot = response
                 .hover_pos()
                 // the hover includes the outer_rect?
@@ -396,15 +475,7 @@ pub trait Contents {
             // be filled.
             if let Some(drag) = drag_item {
                 if let Some(slot) = slot {
-                    let color = if !accepts {
-                        egui::color::Color32::GRAY
-                    } else if fits {
-                        egui::color::Color32::GREEN
-                    } else {
-                        egui::color::Color32::RED
-                    };
-                    let color = egui::color::tint_color_towards(color, ui.visuals().window_fill());
-
+                    let color = self.shadow_color(accepts, fits, ui);
                     ui.painter().set(
                         shadow,
                         shape_mesh(&drag.item.shape, min_rect, self.pos(slot), color, ITEM_SIZE),
@@ -559,6 +630,34 @@ impl Contents for GridContents {
         }
     }
 
+    fn find_slot<'a, I>(
+        &self,
+        ctx: Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        items: I,
+    ) -> Option<(usize, usize, egui::Id)>
+    where
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Self: Sized,
+    {
+        // Prime the container shape. Normally `body` does this.
+        let shape: Option<shape::Shape> = egui_ctx.data().get_temp(ctx.1);
+        if shape.is_none() {
+            let shape = items.into_iter().fold(
+                shape::Shape::new(self.size, false),
+                |mut shape, (slot, item)| {
+                    shape.paint(&item.shape, slot);
+                    shape
+                },
+            );
+            egui_ctx.data().insert_temp(ctx.1, shape);
+        }
+
+        // This will reclone the shape every turn of the loop...
+        find_slot_default(self, ctx, egui_ctx, item, None)
+    }
+
     fn body<'a, I>(
         &self,
         ctx: Context,
@@ -660,7 +759,8 @@ impl Contents for GridContents {
                                 remove_fn: self.remove(ctx, slot, item_shape),
                             })
                         }
-                        // ItemResponse::Item(id) ...
+                        // Update the slot.
+                        ItemResponse::Hover((_, item)) => ItemResponse::Hover((slot, item)),
                         _ => item,
                     }
                 });
@@ -789,7 +889,7 @@ pub struct Item {
 
 #[derive(Debug)]
 pub enum ItemResponse {
-    Hover(Item),
+    Hover((usize, Item)),
     NewDrag(Item),
     Drag(DragItem),
 }
@@ -838,6 +938,15 @@ impl Item {
             self.shape.width() as f32 * ITEM_SIZE,
             self.shape.height() as f32 * ITEM_SIZE,
         )
+    }
+
+    // DragItem is already rotated, so this should never be used in
+    // that case. It would be nice to enforce this via type.
+    pub fn size_rotated(&self) -> egui::Vec2 {
+        match (self.size(), self.rotation) {
+            (egui::Vec2 { x, y }, ItemRotation::R90 | ItemRotation::R270) => egui::vec2(y, x),
+            (size, _) => size,
+        }
     }
 
     // The width of the item with rotation.
@@ -930,12 +1039,10 @@ impl Item {
                 let response = response.on_hover_text_at_pointer(format!("{}", self));
                 if response.hovered() {
                     ui.output().cursor_icon = egui::CursorIcon::Grab;
-                    drag_item
-                        .as_ref()
-                        .map(|_| ItemResponse::Hover(self.clone()))
-                } else {
-                    None
                 }
+                drag_item
+                    .as_ref()
+                    .map(|_| ItemResponse::Hover((0, self.clone())))
             } else {
                 None
             }
@@ -1403,6 +1510,8 @@ impl Contents for ExpandingContents {
                             cshape: None,
                             remove_fn: None,
                         }),
+                        // We don't need to update ItemResponse::Hover(...)
+                        // since the default slot is 0.
                         _ => item,
                     }),
                     response,

@@ -281,12 +281,11 @@ where
     I: IntoIterator<Item = (usize, &'a Item)>,
 {
     // TODO test multiple rotations (if non-square) and return it?
-    (0..contents.len())
-        .find(|slot| {
-            let accepts = contents.accepts(&drag.item, *slot);
-            accepts && contents.fits(ctx, egui_ctx, drag, *slot)
-        })
-        .map(|slot| (ctx.0, slot, ctx.1))
+    contents.accepts(&drag.item).then(|| true).and(
+        (0..contents.len())
+            .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
+            .map(|slot| (ctx.0, slot, ctx.1)),
+    )
 }
 
 /// A widget to display the contents of a container.
@@ -330,11 +329,12 @@ pub trait Contents {
     /// invalid results if the offset is outside the container.
     fn slot(&self, offset: egui::Vec2) -> usize;
 
-    fn accepts(&self, item: &Item, slot: usize) -> bool;
+    fn accepts(&self, item: &Item) -> bool;
 
-    // What about fits anywhere/any slot?
+    /// Returns true if the dragged item will fit at the specified slot.
     fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
+    /// Finds the first available slot for the dragged item.
     fn find_slot<'a, I>(
         &self,
         ctx: Context,
@@ -458,9 +458,7 @@ pub trait Contents {
 
             let accepts = drag_item
                 .as_ref()
-                .zip(slot)
-                // `accepts` takes a slot for sectioned contents.
-                .map(|(drag, slot)| self.accepts(&drag.item, slot))
+                .map(|drag| self.accepts(&drag.item))
                 .unwrap_or_default();
 
             let (id, eid) = ctx;
@@ -602,7 +600,7 @@ impl Contents for GridContents {
         p.x as usize + p.y as usize * self.size.x as usize
     }
 
-    fn accepts(&self, item: &Item, _slot: usize) -> bool {
+    fn accepts(&self, item: &Item) -> bool {
         self.flags.contains(item.flags)
     }
 
@@ -976,7 +974,7 @@ impl Item {
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
         let size = rot.size(self.size());
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
         // Image::rotate was problematic for non-square images. Rather
         // than rotate the mesh, reassign uvs.
@@ -1258,32 +1256,70 @@ impl SectionContents {
     fn section_eid(&self, (_id, eid): Context, sid: usize) -> egui::Id {
         egui::Id::new(eid.with("section").with(sid))
     }
+
+    // (ctx, slot) -> (section, section ctx, section slot)
+    fn section(&self, ctx: Context, slot: usize) -> Option<(&ContentsLayout, Context, usize)> {
+        self.section_slot(slot)
+            .map(|(i, slot)| (&self.sections[i], (ctx.0, self.section_eid(ctx, i)), slot))
+    }
+
+    fn section_items<'a, I>(
+        &self,
+        items: I,
+    ) -> impl Iterator<Item = (usize, ContentsLayout, usize, Vec<(usize, &'a Item)>)>
+    where
+        I: IntoIterator<Item = (usize, &'a Item)>,
+    {
+        // map (slot, item) -> (section, (slot, item))
+        let ranges = self.section_ranges().collect_vec();
+
+        // If we know the input is sorted there is probably a way to
+        // do this w/o collecting into a hash map.
+        let mut items = items
+            .into_iter()
+            // Find section for each item.
+            .filter_map(|(slot, item)| {
+                ranges
+                    .iter()
+                    .enumerate()
+                    .find_map(|(section, (start, end))| {
+                        (slot < *end).then(|| (section, ((slot - start), item)))
+                    })
+            })
+            .into_group_map();
+
+        // TODO should be a way to do this without cloning sections
+        self.sections
+            .clone()
+            .into_iter()
+            .zip(ranges.into_iter())
+            .enumerate()
+            .map(move |(i, (layout, (start, _end)))| {
+                (i, layout, start, items.remove(&i).unwrap_or_default())
+            })
+    }
 }
+
+// pub struct SectionItems<I> {
+//     curr: usize,
+//     // keep a ref to section contents or clone sections?
+//     items: itertools::GroupingMap<I>,
+// }
 
 impl Contents for SectionContents {
     fn len(&self) -> usize {
         self.sections.iter().map(|s| s.len()).sum()
     }
 
-    // These need to forward to the section impl. This assumes
-    // sections are always grids?
-    fn add(&self, (_id, eid): Context, slot: usize) -> Option<ResolveFn> {
-        // Use map...
-        match self.section_slot(slot) {
-            Some((_i, slot)) => Some(Box::new(move |ctx, drag, _target| {
-                add_shape(ctx, eid, slot, &drag.item.shape)
-            })),
-            None => None,
-        }
+    // Forward to section.
+    fn add(&self, ctx: Context, slot: usize) -> Option<ResolveFn> {
+        self.section(ctx, slot)
+            .and_then(|(a, ctx, slot)| a.add(ctx, slot))
     }
 
-    fn remove(&self, (_id, eid): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
-        match self.section_slot(slot) {
-            Some((_i, slot)) => Some(Box::new(move |ctx, _drag, _target| {
-                remove_shape(ctx, eid, slot, &shape)
-            })),
-            None => None,
-        }
+    fn remove(&self, ctx: Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+        self.section(ctx, slot)
+            .and_then(|(a, ctx, slot)| a.remove(ctx, slot, shape))
     }
 
     fn pos(&self, _slot: usize) -> egui::Vec2 {
@@ -1294,14 +1330,9 @@ impl Contents for SectionContents {
         todo!()
     }
 
-    // Is this even needed? We'd have to generate sections inside Self::new.
-    fn accepts(&self, _item: &Item, _slot: usize) -> bool {
-        // if let Some((section, slot)) = self.section_slot(slot) {
-        //     self.sections[section].accepts(item, slot)
-        // } else {
-        //     false
-        // }
-        unimplemented!()
+    /// Returns true if any section can accept this item.
+    fn accepts(&self, item: &Item) -> bool {
+        self.sections.iter().any(|a| a.accepts(item))
     }
 
     // Unused. We can only fit things in sections.
@@ -1313,6 +1344,27 @@ impl Contents for SectionContents {
         _slot: usize,
     ) -> bool {
         false
+    }
+
+    fn find_slot<'a, I>(
+        &self,
+        ctx: Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        items: I,
+        // id, slot, ...
+    ) -> Option<(usize, usize, egui::Id)>
+    where
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Self: Sized,
+    {
+        self.section_items(items)
+            .find_map(|(i, layout, start, items)| {
+                let ctx = (ctx.0, self.section_eid(ctx, i));
+                layout
+                    .find_slot(ctx, egui_ctx, item, items)
+                    .map(|(id, slot, eid)| (id, (slot + start), eid))
+            })
     }
 
     fn body<'a, I>(
@@ -1341,30 +1393,7 @@ impl Contents for SectionContents {
         Q: ContentsQuery<'a>,
         Self: Sized,
     {
-        // map (slot, item) -> (section, (slot, item))
-        let ranges = self.section_ranges().collect_vec();
-
-        // TODO We have to clone the items here to produce the proper
-        // iterator type `&(usize, Item)`. Need to figure out a way to
-        // be more flexible with the input, probably via trait. If we
-        // know the input is sorted there is also probably a way to do
-        // this w/o collecting into a hash map.
-        let mut items = items
-            .into_iter()
-            // Find section for each item.
-            .filter_map(|(slot, item)| {
-                ranges
-                    .iter()
-                    .enumerate()
-                    .find_map(|(section, (start, end))| {
-                        (slot < *end).then(|| (section, ((slot - start), item)))
-                    })
-            })
-            .into_group_map();
-
-        let sections = self.sections.iter().zip(ranges.iter()).enumerate().map(
-            |(i, (layout, (start, _end)))| (i, layout, start, items.remove(&i).unwrap_or_default()),
-        );
+        let sections = self.section_items(items);
 
         let id = ctx.0;
 
@@ -1392,35 +1421,12 @@ impl Contents for SectionContents {
     }
 }
 
-/// Section wraps GridContents to provide a unique egui::Id from the
-/// actual (parent) container.
-// #[derive(Clone, Debug, Delegate)]
-// #[delegate(Contents, target = "contents")]
-// pub struct Section<C> {
-//     pub eid: egui::Id,
-//     pub contents: C,
-// }
-
-// impl<C> Section<C> {
-//     pub fn new(eid: egui::Id, contents: C) -> Self {
-//         Self { eid, contents }
-//     }
-
-//     // This overrides the delegate.
-//     pub fn eid(&self) -> egui::Id {
-//         dbg!("section eid", self.eid);
-//         self.eid
-//     }
-// }
-
 // An expanding container fits only one item but it can be any size up
 // to a maximum size. This is useful for equipment slots where only
 // one item can go and the size varies.
 #[derive(Clone, Debug)]
 pub struct ExpandingContents {
     pub max_size: shape::Vec2,
-    // This won't be valid until body is called.
-    //pub filled: bool,
     pub flags: FlagSet<ItemFlags>,
 }
 
@@ -1428,7 +1434,6 @@ impl ExpandingContents {
     pub fn new(max_size: impl Into<shape::Vec2>) -> Self {
         Self {
             max_size: max_size.into(),
-            //filled: false,
             flags: Default::default(),
         }
     }
@@ -1464,8 +1469,7 @@ impl Contents for ExpandingContents {
         0
     }
 
-    fn accepts(&self, item: &Item, slot: usize) -> bool {
-        assert!(slot == 0);
+    fn accepts(&self, item: &Item) -> bool {
         self.flags.contains(item.flags)
     }
 
@@ -1552,7 +1556,7 @@ impl Contents for InlineContents {
         todo!()
     }
 
-    fn accepts(&self, _item: &Item, _slot: usize) -> bool {
+    fn accepts(&self, _item: &Item) -> bool {
         todo!()
     }
 

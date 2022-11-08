@@ -65,19 +65,6 @@ fn main() {
             let potion2 = potion.clone().with_id(10).with_name("Potion 2");
 
             contents.insert(
-                8,
-                (
-                    GridContents::new((3, 2))
-                        // it only holds potions
-                        .with_flags(ItemFlags::Potion)
-                        // checking cycles
-                        //.with_flags(FlagSet::full())
-                        .into(),
-                    vec![],
-                ),
-            );
-
-            contents.insert(
                 1,
                 (
                     // this id is redundant
@@ -140,6 +127,24 @@ fn main() {
                         ExpandingContents::new((2, 2))
                             // we only accept containers
                             .with_flags(ItemFlags::Container),
+                    )
+                    .into(),
+                    vec![],
+                ),
+            );
+
+            contents.insert(
+                8,
+                (
+                    SectionContents::new(
+                        SectionLayout::Grid(4),
+                        std::iter::repeat(
+                            GridContents::new((1, 1))
+                                .with_flags(ItemFlags::Potion)
+                                .into(),
+                        )
+                        .take(4)
+                        .collect(),
                     )
                     .into(),
                     vec![],

@@ -890,7 +890,6 @@ impl Item {
             ui.painter().add(egui::Shape::mesh(mesh));
         }
 
-        response.on_hover_text_at_pointer(format!("{}", self));
         size
     }
 
@@ -928,6 +927,7 @@ impl Item {
 
             if filled {
                 let response = ui.interact(response.rect, id, egui::Sense::drag());
+                let response = response.on_hover_text_at_pointer(format!("{}", self));
                 if response.hovered() {
                     ui.output().cursor_icon = egui::CursorIcon::Grab;
                     drag_item

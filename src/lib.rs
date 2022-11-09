@@ -364,14 +364,18 @@ pub trait Contents {
     // Draw contents.
     fn body<'a, I>(
         &self,
-        ctx: Context,
-        drag_item: &Option<DragItem>,
-        items: I,
+        _ctx: Context,
+        _drag_item: &Option<DragItem>,
+        _items: I,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>>
     where
         I: Iterator<Item = (usize, &'a Item)>,
-        Self: Sized;
+        Self: Sized,
+    {
+        // never used
+        InnerResponse::new(None, ui.label("❓"))
+    }
 
     // Default impl should handle everything including
     // grid/sectioned/expanding containers. Iterator type changed to
@@ -1367,19 +1371,6 @@ impl Contents for SectionContents {
             })
     }
 
-    fn body<'a, I>(
-        &self,
-        _ctx: Context,
-        _drag_item: &Option<DragItem>,
-        _items: I,
-        _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>>
-    where
-        I: Iterator<Item = (usize, &'a Item)>,
-    {
-        unimplemented!()
-    }
-
     fn ui<'a, I, Q>(
         &self,
         ctx: Context,
@@ -1545,43 +1536,23 @@ impl InlineContents {
 
 impl Contents for InlineContents {
     fn len(&self) -> usize {
-        todo!() // 1?
+        self.0.len()
     }
 
-    fn pos(&self, _slot: usize) -> egui::Vec2 {
-        todo!()
+    fn pos(&self, slot: usize) -> egui::Vec2 {
+        self.0.pos(slot)
     }
 
-    fn slot(&self, _offset: egui::Vec2) -> usize {
-        todo!()
+    fn slot(&self, offset: egui::Vec2) -> usize {
+        self.0.slot(offset)
     }
 
-    fn accepts(&self, _item: &Item) -> bool {
-        todo!()
+    fn accepts(&self, item: &Item) -> bool {
+        self.0.accepts(item)
     }
 
-    fn fits(
-        &self,
-        _ctx: Context,
-        _egui_ctx: &egui::Context,
-        _item: &DragItem,
-        _slot: usize,
-    ) -> bool {
-        todo!()
-    }
-
-    fn body<'a, I>(
-        &self,
-        _ctx: Context,
-        _drag_item: &Option<DragItem>,
-        _items: I,
-        _ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>>
-    where
-        I: Iterator<Item = (usize, &'a Item)>,
-        Self: Sized,
-    {
-        unimplemented!()
+    fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+        self.0.fits(ctx, egui_ctx, item, slot)
     }
 
     fn ui<'a, I, Q>(

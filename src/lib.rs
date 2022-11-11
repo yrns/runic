@@ -71,7 +71,7 @@ impl MoveData {
         }
     }
 
-    pub fn map_slots<F>(self, f: F) -> Self
+    pub fn map_slots<F>(self, id: usize, f: F) -> Self
     where
         F: Fn(usize) -> usize,
     {
@@ -82,11 +82,15 @@ impl MoveData {
         } = self;
         Self {
             drag: drag.map(|mut drag| {
-                drag.container.1 = f(drag.container.1);
+                if drag.container.0 == id {
+                    drag.container.1 = f(drag.container.1);
+                }
                 drag
             }),
             target: target.map(|mut t| {
-                t.1 = f(t.1);
+                if t.0 == id {
+                    t.1 = f(t.1);
+                }
                 t
             }),
             add_fn,
@@ -186,7 +190,7 @@ pub fn paint_shape(
 }
 
 // Replaces `paint_shape` and uses only one shape index, so we don't
-// have to reserve multiple.
+// have to reserve multiple. There is Shape::Vec, too.
 pub fn shape_mesh(
     shape: &shape::Shape,
     grid_rect: egui::Rect,
@@ -1004,9 +1008,6 @@ impl Item {
         size
     }
 
-    // return something that says this item can be a drag target, draw
-    // outline?
-    // let parent contents decide if the dragged item will fit using q?
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
         let id = self.eid();
         let drag = ui.memory().is_being_dragged(id);
@@ -1401,8 +1402,10 @@ impl Contents for SectionContents {
                                 ui.end_row();
                             }
 
-                            // Remap slots.
-                            data.map_slots(|slot| slot + start)
+                            // Remap slots. Only if we are the subject
+                            // of the drag or target. Nested contents
+                            // will have a different id.
+                            data.map_slots(id, |slot| slot + start)
                         })
                         .reduce(|acc, a| acc.merge(a))
                         .unwrap_or_default()

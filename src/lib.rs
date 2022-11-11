@@ -245,8 +245,8 @@ pub fn with_bg<R>(
     add_contents: impl FnOnce(&mut egui::style::WidgetVisuals, &mut egui::Ui) -> R,
 ) -> InnerResponse<R> {
     let margin = egui::Vec2::splat(4.0);
-    let outer_rect_bounds = ui.available_rect_before_wrap();
-    let inner_rect = outer_rect_bounds.shrink2(margin);
+    let outer_rect = ui.available_rect_before_wrap();
+    let inner_rect = outer_rect.shrink2(margin);
 
     // Reserve a shape for the background so it draws first.
     let bg = ui.painter().add(egui::Shape::Noop);
@@ -256,9 +256,8 @@ pub fn with_bg<R>(
     let mut style = ui.visuals().widgets.active;
     let inner = add_contents(&mut style, &mut content_ui);
 
-    let outer_rect =
-        egui::Rect::from_min_max(outer_rect_bounds.min, content_ui.min_rect().max + margin);
-    let (rect, response) = ui.allocate_at_least(outer_rect.size(), egui::Sense::hover());
+    let outer_rect = content_ui.min_rect().expand2(margin);
+    let (rect, response) = ui.allocate_exact_size(outer_rect.size(), egui::Sense::hover());
 
     ui.painter().set(
         bg,
@@ -489,6 +488,7 @@ pub trait Contents {
                 }
             }
 
+            // Is response.hovered() ever true when dragging?
             if !(dragging && accepts && response.hovered()) {
                 *style = ui.visuals().widgets.inactive;
             };
@@ -832,6 +832,7 @@ pub enum ContentsLayout {
     Inline(InlineContents),
     Grid(GridContents),
     Section(SectionContents),
+    Header(HeaderContents),
 }
 
 // Use ContentsQuery to query a layout and contents, then show it.
@@ -869,6 +870,12 @@ impl From<GridContents> for ContentsLayout {
 impl From<SectionContents> for ContentsLayout {
     fn from(c: SectionContents) -> Self {
         Self::Section(c)
+    }
+}
+
+impl From<HeaderContents> for ContentsLayout {
+    fn from(c: HeaderContents) -> Self {
+        Self::Header(c)
     }
 }
 
@@ -1230,12 +1237,23 @@ pub struct SectionContents {
     pub sections: Vec<ContentsLayout>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum SectionLayout {
     Grid(usize),
     // Fixed(Vec<(usize, egui::Pos2))
     // Columns?
-    // Other(Fn?)
+    // This isn't clonable...
+    //Other(Box<dyn Fn(&mut egui::Ui) -> ...>),
+    Other(fn(&mut egui::Ui) -> InnerResponse<MoveData>),
+}
+
+impl std::fmt::Debug for SectionLayout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
+            Self::Grid(cols) => write!(f, "Grid({})", cols),
+            Self::Other(_) => write!(f, "Other(...)"),
+        }
+    }
 }
 
 impl SectionContents {
@@ -1385,14 +1403,12 @@ impl Contents for SectionContents {
         Q: ContentsQuery<'a>,
         Self: Sized,
     {
-        let sections = self.section_items(items);
-
         let id = ctx.0;
 
         match self.layout {
             SectionLayout::Grid(width) => {
                 egui::Grid::new(id).num_columns(width).show(ui, |ui| {
-                    sections
+                    self.section_items(items)
                         .map(|(i, layout, start, items)| {
                             let data = layout
                                 .ui((id, self.section_eid(ctx, i)), q, drag_item, items, ui)
@@ -1411,6 +1427,7 @@ impl Contents for SectionContents {
                         .unwrap_or_default()
                 })
             }
+            SectionLayout::Other(f) => f(ui),
         }
     }
 }
@@ -1585,6 +1602,65 @@ impl Contents for InlineContents {
                 None => data,
             }
         })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct HeaderContents {
+    // Box<dyn Fn(...)> ? Not clonable.
+    pub header: String,
+    pub contents: Box<ContentsLayout>,
+}
+
+impl HeaderContents {
+    pub fn new(header: impl Into<String>, contents: impl Into<ContentsLayout>) -> Self {
+        Self {
+            header: header.into(),
+            contents: Box::new(contents.into()),
+        }
+    }
+}
+
+impl Contents for HeaderContents {
+    fn len(&self) -> usize {
+        self.contents.len()
+    }
+
+    fn pos(&self, slot: usize) -> egui::Vec2 {
+        self.contents.pos(slot)
+    }
+
+    fn slot(&self, offset: egui::Vec2) -> usize {
+        self.contents.slot(offset)
+    }
+
+    fn accepts(&self, item: &Item) -> bool {
+        self.contents.accepts(item)
+    }
+
+    fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+        self.contents.fits(ctx, egui_ctx, item, slot)
+    }
+
+    fn ui<'a, I, Q>(
+        &self,
+        ctx: Context,
+        q: &'a Q,
+        drag_item: &Option<DragItem>,
+        items: I,
+        ui: &mut egui::Ui,
+    ) -> egui::InnerResponse<MoveData>
+    where
+        I: IntoIterator<Item = (usize, &'a Item)>,
+        Q: ContentsQuery<'a>,
+        Self: Sized,
+    {
+        // Is InnerResponse really useful?
+        let InnerResponse { inner, response } = ui.vertical(|ui| {
+            ui.label(&self.header);
+            self.contents.ui(ctx, q, drag_item, items, ui)
+        });
+        InnerResponse::new(inner.inner, response)
     }
 }
 

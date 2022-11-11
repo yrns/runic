@@ -15,19 +15,19 @@ fn main() {
         "runic",
         options,
         Box::new(|cc| {
-            // let mut next_id = {
-            //     let mut id = 0;
-            //     move || {
-            //         id += 1;
-            //         id
-            //     }
-            // };
+            let mut next_id = {
+                let mut id = 0;
+                move || {
+                    id += 1;
+                    id
+                }
+            };
 
             let mut contents = HashMap::new();
             let mut images = HashMap::new();
 
             let boomerang = Item::new(
-                3, //next_id(),
+                next_id(),
                 load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
                 shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
             )
@@ -36,7 +36,7 @@ fn main() {
             .with_name("Boomerang");
 
             let pouch = Item::new(
-                8,
+                next_id(),
                 load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
                 shape::Shape::new((2, 2), true),
             )
@@ -45,7 +45,7 @@ fn main() {
             .with_name("Pouch");
 
             let short_sword = Item::new(
-                9,
+                next_id(),
                 load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
                 shape::Shape::new((3, 1), true),
             )
@@ -55,99 +55,96 @@ fn main() {
             .with_name("Short sword");
 
             let potion = Item::new(
-                4,
+                next_id(),
                 load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
                 shape::Shape::new((1, 1), true),
             )
             .with_flags(ItemFlags::Potion)
             .with_name("Potion");
 
-            let potion2 = potion.clone().with_id(10).with_name("Potion 2");
+            let potion2 = potion.clone().with_id(next_id()).with_name("Potion 2");
 
-            contents.insert(
-                1,
-                (
-                    // this id is redundant
-                    GridContents::new((4, 4))
-                        // accepts any item
-                        .with_flags(FlagSet::full())
-                        .into(),
-                    vec![(0, boomerang), (2, pouch), (8, short_sword)],
-                ),
+            let paper_doll_id = next_id();
+            let paper_doll = SectionContents::new(
+                SectionLayout::Grid(1),
+                vec![
+                    HeaderContents::new(
+                        "Bag of any! 4x4:",
+                        GridContents::new((4, 4))
+                            // accepts any item
+                            .with_flags(FlagSet::full()),
+                    )
+                    .into(),
+                    HeaderContents::new(
+                        "Only potions! 2x2:",
+                        GridContents::new((2, 2))
+                            // accepts only potions
+                            .with_flags(ItemFlags::Potion),
+                    )
+                    .into(),
+                    HeaderContents::new(
+                        "Weapon here:",
+                        ExpandingContents::new((2, 2))
+                            // accepts only weapons
+                            .with_flags(ItemFlags::Weapon),
+                    )
+                    .into(),
+                    HeaderContents::new(
+                        "Section contents 3x1x2:",
+                        SectionContents::new(
+                            SectionLayout::Grid(3),
+                            vec![
+                                GridContents::new((1, 2))
+                                    .with_flags(FlagSet::full()) // accepts any item
+                                    .into(),
+                                GridContents::new((1, 2))
+                                    .with_flags(FlagSet::full()) // accepts any item
+                                    .into(),
+                                GridContents::new((1, 2))
+                                    .with_flags(FlagSet::full()) // accepts any item
+                                    .into(),
+                            ],
+                        ),
+                    )
+                    .into(),
+                    HeaderContents::new(
+                        "Holds a container:",
+                        InlineContents::new(
+                            ExpandingContents::new((2, 2))
+                                // we only accept containers
+                                .with_flags(ItemFlags::Container),
+                        ),
+                    )
+                    .into(),
+                ],
             );
+            contents.insert(paper_doll_id, (paper_doll.into(), vec![]));
 
-            contents.insert(
-                2,
-                (
-                    GridContents::new((2, 2))
-                        // accepts only potions
+            let pouch_contents = SectionContents::new(
+                SectionLayout::Grid(4),
+                std::iter::repeat(
+                    GridContents::new((1, 1))
                         .with_flags(ItemFlags::Potion)
                         .into(),
-                    vec![(0, potion), (1, potion2)],
-                ),
+                )
+                .take(4)
+                .collect(),
             );
+            contents.insert(pouch.id, (pouch_contents.into(), vec![]));
 
+            let ground_id = next_id();
+            let ground = GridContents::new((10, 10)).with_flags(FlagSet::full());
             contents.insert(
-                5,
+                ground_id,
                 (
-                    SectionContents::new(
-                        SectionLayout::Grid(3),
-                        vec![
-                            GridContents::new((1, 2))
-                                .with_flags(FlagSet::full()) // accepts any item
-                                .into(),
-                            GridContents::new((1, 2))
-                                .with_flags(FlagSet::full()) // accepts any item
-                                .into(),
-                            GridContents::new((1, 2))
-                                .with_flags(FlagSet::full()) // accepts any item
-                                .into(),
-                        ],
-                    )
-                    .into(),
-                    vec![],
-                ),
-            );
-
-            contents.insert(
-                6,
-                (
-                    ExpandingContents::new((2, 2))
-                        // accepts only weapons
-                        .with_flags(ItemFlags::Weapon)
-                        .into(),
-                    vec![],
-                ),
-            );
-
-            contents.insert(
-                7,
-                (
-                    InlineContents::new(
-                        ExpandingContents::new((2, 2))
-                            // we only accept containers
-                            .with_flags(ItemFlags::Container),
-                    )
-                    .into(),
-                    vec![],
-                ),
-            );
-
-            contents.insert(
-                8,
-                (
-                    SectionContents::new(
-                        SectionLayout::Grid(4),
-                        std::iter::repeat(
-                            GridContents::new((1, 1))
-                                .with_flags(ItemFlags::Potion)
-                                .into(),
-                        )
-                        .take(4)
-                        .collect(),
-                    )
-                    .into(),
-                    vec![],
+                    ground.into(),
+                    vec![
+                        (0, boomerang),
+                        (2, pouch),
+                        (4, short_sword),
+                        (7, potion),
+                        (8, potion2),
+                    ],
                 ),
             );
 
@@ -155,6 +152,8 @@ fn main() {
                 images,
                 drag_item: None,
                 contents: ContentsStorage(contents),
+                paper_doll_id,
+                ground_id,
             })
         }),
     )
@@ -168,6 +167,8 @@ struct Runic {
     images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
     contents: ContentsStorage,
+    paper_doll_id: usize,
+    ground_id: usize,
 }
 
 fn load_image<'a>(
@@ -207,20 +208,24 @@ impl eframe::App for Runic {
             };
 
             let move_data = ContainerSpace::show(drag_item, ui, |drag_item, ui| {
-                ui.label("Grid contents 4x4:");
-                let data = show_contents(&q, 1, drag_item, ui).unwrap().inner;
+                let data = MoveData::default();
 
-                ui.label("Grid contents 2x2:");
-                let data = data.merge(show_contents(&q, 2, drag_item, ui).unwrap().inner);
+                let data = ui.columns(2, |cols| {
+                    cols[0].label("Paper doll:");
+                    let data = data.merge(
+                        show_contents(&q, self.paper_doll_id, drag_item, &mut cols[0])
+                            .unwrap()
+                            .inner,
+                    );
 
-                ui.label("Section contents 2x1x2:");
-                let data = data.merge(show_contents(&q, 5, drag_item, ui).unwrap().inner);
-
-                ui.label("Expanding container 2x2:");
-                let data = data.merge(show_contents(&q, 6, drag_item, ui).unwrap().inner);
-
-                ui.label("Inline contents 2x2:");
-                let data = data.merge(show_contents(&q, 7, drag_item, ui).unwrap().inner);
+                    cols[1].label("Ground 10x10:");
+                    let data = data.merge(
+                        show_contents(&q, self.ground_id, drag_item, &mut cols[1])
+                            .unwrap()
+                            .inner,
+                    );
+                    data
+                });
 
                 data
             });

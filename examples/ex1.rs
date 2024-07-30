@@ -23,7 +23,7 @@ fn main() {
                 }
             };
 
-            let mut contents = HashMap::new();
+            let mut contents = ContentsStorage::new();
             let mut images = HashMap::new();
 
             let boomerang = Item::new(
@@ -64,80 +64,69 @@ fn main() {
 
             let potion2 = potion.clone().with_id(next_id()).with_name("Potion 2");
 
+            // Setup containers. It's important to note here that there are only three containers,
+            // the paper doll, the ground, and the pouch. Sectioned contents is one container split
+            // into many sections.
             let paper_doll_id = next_id();
             let paper_doll = SectionContents::new(
                 SectionLayout::Grid(1),
                 vec![
                     HeaderContents::new(
                         "Bag of any! 4x4:",
-                        GridContents::new((4, 4))
-                            // accepts any item
-                            .with_flags(FlagSet::full()),
+                        GridContents::new((4, 4)).with_flags(FlagSet::full()), // accepts any item
                     )
-                    .into(),
+                    .boxed(),
                     HeaderContents::new(
                         "Only potions! 2x2:",
-                        GridContents::new((2, 2))
-                            // accepts only potions
-                            .with_flags(ItemFlags::Potion),
+                        GridContents::new((2, 2)).with_flags(ItemFlags::Potion), // accepts only potions
                     )
-                    .into(),
+                    .boxed(),
                     HeaderContents::new(
                         "Weapon here:",
-                        ExpandingContents::new((2, 2))
-                            // accepts only weapons
-                            .with_flags(ItemFlags::Weapon),
+                        ExpandingContents::new((2, 2)).with_flags(ItemFlags::Weapon), // accepts only weapons
                     )
-                    .into(),
+                    .boxed(),
                     HeaderContents::new(
                         "Section contents 3x1x2:",
                         SectionContents::new(
                             SectionLayout::Grid(3),
-                            vec![
-                                GridContents::new((1, 2))
-                                    .with_flags(FlagSet::full()) // accepts any item
-                                    .into(),
-                                GridContents::new((1, 2))
-                                    .with_flags(FlagSet::full()) // accepts any item
-                                    .into(),
-                                GridContents::new((1, 2))
-                                    .with_flags(FlagSet::full()) // accepts any item
-                                    .into(),
-                            ],
+                            std::iter::repeat(
+                                GridContents::new((1, 2)).with_flags(FlagSet::full()), // accepts any item
+                            )
+                            .take(3)
+                            .map(Contents::boxed)
+                            .collect(),
                         ),
                     )
-                    .into(),
+                    .boxed(),
                     HeaderContents::new(
                         "Holds a container:",
                         InlineContents::new(
-                            ExpandingContents::new((2, 2))
-                                // we only accept containers
-                                .with_flags(ItemFlags::Container),
+                            ExpandingContents::new((2, 2)).with_flags(ItemFlags::Container), // we only accept containers
                         ),
                     )
-                    .into(),
+                    .boxed(),
                 ],
             );
-            contents.insert(paper_doll_id, (paper_doll.into(), vec![]));
+
+            contents.insert(paper_doll_id, (paper_doll.boxed(), vec![]));
 
             let pouch_contents = SectionContents::new(
                 SectionLayout::Grid(4),
-                std::iter::repeat(
-                    GridContents::new((1, 1))
-                        .with_flags(ItemFlags::Potion)
-                        .into(),
-                )
-                .take(4)
-                .collect(),
+                std::iter::repeat(GridContents::new((1, 1)).with_flags(ItemFlags::Potion))
+                    .take(4)
+                    .map(Contents::boxed)
+                    .collect(),
             );
-            contents.insert(pouch.id, (pouch_contents.into(), vec![]));
+            contents.insert(pouch.id, (Box::new(pouch_contents), vec![]));
 
             let ground_id = next_id();
             let ground = GridContents::new((10, 10)).with_flags(FlagSet::full());
             contents.insert(
                 ground_id,
                 (
-                    ground.into(),
+                    Box::new(ground),
+                    // MUST BE SORTED BY SLOT
                     vec![
                         (0, boomerang),
                         (2, pouch),
@@ -151,15 +140,13 @@ fn main() {
             Box::new(Runic {
                 images,
                 drag_item: None,
-                contents: ContentsStorage(contents),
+                contents,
                 paper_doll_id,
                 ground_id,
             })
         }),
     )
 }
-
-struct ContentsStorage(HashMap<usize, (ContentsLayout, Vec<(usize, Item)>)>);
 
 //#[derive(Default)]
 struct Runic {
@@ -202,10 +189,6 @@ impl eframe::App for Runic {
         egui::CentralPanel::default().show(ctx, |ui| {
             let drag_item = &mut self.drag_item;
             let q = &self.contents;
-            let q = |id: usize| {
-                q.0.get(&id)
-                    .map(|(c, i)| (c, i.iter().map(|(slot, item)| (*slot, item))))
-            };
 
             let move_data = ContainerSpace::show(drag_item, ui, |drag_item, ui| {
                 let data = MoveData::default();
@@ -254,7 +237,6 @@ impl eframe::App for Runic {
                         // refs would make this transactable.
                         match self
                             .contents
-                            .0
                             .get_mut(&drag.container.0)
                             .and_then(|(_, items)| {
                                 let idx =
@@ -269,8 +251,14 @@ impl eframe::App for Runic {
 
                                 // Insert item. The contents must exist
                                 // already to insert an item?
-                                match self.contents.0.get_mut(&container) {
-                                    Some((_, items)) => items.push((slot, item)),
+                                match self.contents.get_mut(&container) {
+                                    Some((_, items)) => {
+                                        // Items must be ordered by slot in order for section contents to work.
+                                        let i = items
+                                            .binary_search_by_key(&slot, |&(slot, _)| slot)
+                                            .expect_err("item slot free");
+                                        items.insert(i, (slot, item));
+                                    }
                                     None => tracing::error!(
                                         "could not find container {} to add to",
                                         container

@@ -54,33 +54,37 @@ impl Contents for ExpandingContents {
 
     // How do we visually show if the item is too big? What if the
     // item is rotated and oblong, and only fits one way?
-    fn fits(&self, (_id, eid): Context, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+    fn fits(
+        &self,
+        (_id, eid, _): Context,
+        ctx: &egui::Context,
+        drag: &DragItem,
+        slot: usize,
+    ) -> bool {
         // Allow rotating in place.
         let current_item = eid == drag.container.2;
         let filled: bool = !current_item && ctx.data().get_temp(eid).unwrap_or_default();
         slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
     }
 
-    fn body<'a, I>(
+    fn body(
         &self,
-        (id, eid): Context,
+        (id, eid, offset): Context,
         drag_item: &Option<DragItem>,
-        mut items: I,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>>
-    where
-        I: Iterator<Item = (usize, &'a Item)>,
-    {
-        let item = items.next();
+    ) -> egui::InnerResponse<Option<ItemResponse>> {
+        let item = items.first();
 
         ui.ctx().data().insert_temp(eid, item.is_some());
 
-        assert!(items.next().is_none());
+        assert!(items.len() <= 1);
 
         // is_rect_visible?
         let (new_drag, response) = match item {
             Some((slot, item)) => {
-                assert!(slot == 0);
+                assert_eq!(*slot, offset);
+
                 let InnerResponse { inner, response } =
                     // item.size() isn't rotated... TODO: test
                     // non-square containers, review item.size() everywhere
@@ -89,7 +93,7 @@ impl Contents for ExpandingContents {
                     inner.map(|item| match item {
                         ItemResponse::NewDrag(item) => ItemResponse::Drag(DragItem {
                             item,
-                            container: (id, slot, eid),
+                            container: (id, *slot, eid),
                             cshape: None,
                             remove_fn: None,
                         }),

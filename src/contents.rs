@@ -1,15 +1,15 @@
 use crate::*;
-use ambassador::{delegatable_trait, Delegate};
 pub use expanding::*;
 pub use grid::*;
+pub use inline::*;
 pub use section::*;
 
 pub mod expanding;
 pub mod grid;
+pub mod inline;
 pub mod section;
 
 /// A widget to display the contents of a container.
-#[delegatable_trait]
 pub trait Contents {
     /// Returns an egui id based on the contents id. Unused, except
     /// for loading state.
@@ -55,18 +55,13 @@ pub trait Contents {
     fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot<'a, I>(
+    fn find_slot<'a>(
         &self,
         ctx: Context,
         egui_ctx: &egui::Context,
         item: &DragItem,
-        items: I,
-    ) -> Option<(usize, usize, egui::Id)>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        //Q: ContentsQuery<'a>,
-        Self: Sized,
-    {
+        items: &[(usize, Item)],
+    ) -> Option<(usize, usize, egui::Id)> {
         find_slot_default(self, ctx, egui_ctx, item, items)
     }
 
@@ -82,17 +77,13 @@ pub trait Contents {
     }
 
     // Draw contents.
-    fn body<'a, I>(
+    fn body(
         &self,
         _ctx: Context,
         _drag_item: &Option<DragItem>,
-        _items: I,
+        _items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>>
-    where
-        I: Iterator<Item = (usize, &'a Item)>,
-        Self: Sized,
-    {
+    ) -> egui::InnerResponse<Option<ItemResponse>> {
         // never used
         InnerResponse::new(None, ui.label("❓"))
     }
@@ -100,22 +91,17 @@ pub trait Contents {
     // Default impl should handle everything including
     // grid/sectioned/expanding containers. Iterator type changed to
     // (usize, &Item) so section contents can rewrite slots.
-    fn ui<'a, I, Q>(
+    fn ui(
         &self,
         ctx: Context,
-        q: &'a Q,
+        q: &ContentsStorage,
         drag_item: &Option<DragItem>,
         // This used to be an option but we're generally starting with
         // show_contents at the root which implies items. (You can't
         // have items w/o a layout or vice-versa).
-        items: I,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Q: ContentsQuery<'a>,
-        Self: Sized,
-    {
+    ) -> egui::InnerResponse<MoveData> {
         assert!(match drag_item {
             Some(drag) => ui.memory().is_being_dragged(drag.item.eid()),
             _ => true, // we could be dragging something else
@@ -132,8 +118,7 @@ pub trait Contents {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let egui::InnerResponse { inner, response } =
-                self.body(ctx, drag_item, items.into_iter(), &mut ui);
+            let egui::InnerResponse { inner, response } = self.body(ctx, drag_item, items, &mut ui);
 
             let min_rect = ui.min_rect();
 
@@ -142,9 +127,9 @@ pub trait Contents {
             match (drag_item, inner.as_ref()) {
                 // hover ⇒ dragging
                 (Some(drag), Some(ItemResponse::Hover((slot, item)))) => {
-                    if let Some((contents, items)) = q.query(item.id) {
+                    if let Some((contents, items)) = q.get(&item.id) {
                         let ctx = item.id.into_ctx();
-                        let target = contents.find_slot(ctx, ui.ctx(), drag, items);
+                        let target = contents.find_slot(ctx, ui.ctx(), drag, items.as_slice());
 
                         // TODO fits && !accepts?
                         let color = self.shadow_color(true, target.is_some(), ui);
@@ -185,7 +170,7 @@ pub trait Contents {
                 .map(|drag| self.accepts(&drag.item))
                 .unwrap_or_default();
 
-            let (id, eid) = ctx;
+            let (id, eid, _) = ctx;
 
             let fits = drag_item
                 .as_ref()
@@ -242,111 +227,6 @@ pub trait Contents {
                 add_fn: (accepts && fits)
                     .then(|| self.add(ctx, slot.unwrap()))
                     .flatten(),
-            }
-        })
-    }
-}
-
-// The contents id is not relevant to the layout, just like items,
-// which we removed. In particular, the ids of sections are always the
-// parent container id. Maybe split Contents into two elements?
-#[derive(Clone, Debug, Delegate)]
-#[delegate(Contents)]
-pub enum ContentsLayout {
-    Expanding(ExpandingContents),
-    Inline(InlineContents),
-    Grid(GridContents),
-    Section(SectionContents),
-    Header(HeaderContents),
-}
-
-impl From<ExpandingContents> for ContentsLayout {
-    fn from(c: ExpandingContents) -> Self {
-        Self::Expanding(c)
-    }
-}
-
-impl From<InlineContents> for ContentsLayout {
-    fn from(c: InlineContents) -> Self {
-        Self::Inline(c)
-    }
-}
-
-impl From<GridContents> for ContentsLayout {
-    fn from(c: GridContents) -> Self {
-        Self::Grid(c)
-    }
-}
-
-impl From<SectionContents> for ContentsLayout {
-    fn from(c: SectionContents) -> Self {
-        Self::Section(c)
-    }
-}
-
-impl From<HeaderContents> for ContentsLayout {
-    fn from(c: HeaderContents) -> Self {
-        Self::Header(c)
-    }
-}
-
-// A container for a single item (or "slot") that, when containing
-// another container, the interior contents are displayed inline.
-#[derive(Clone, Debug)]
-pub struct InlineContents(ExpandingContents);
-
-impl InlineContents {
-    pub fn new(contents: ExpandingContents) -> Self {
-        Self(contents)
-    }
-}
-
-impl Contents for InlineContents {
-    fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    fn pos(&self, slot: usize) -> egui::Vec2 {
-        self.0.pos(slot)
-    }
-
-    fn slot(&self, offset: egui::Vec2) -> usize {
-        self.0.slot(offset)
-    }
-
-    fn accepts(&self, item: &Item) -> bool {
-        self.0.accepts(item)
-    }
-
-    fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
-        self.0.fits(ctx, egui_ctx, item, slot)
-    }
-
-    fn ui<'a, I, Q>(
-        &self,
-        ctx: Context,
-        q: &'a Q,
-        drag_item: &Option<DragItem>,
-        items: I,
-        ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Q: ContentsQuery<'a>,
-    {
-        // get the layout and contents of the contained item (if any)
-        let mut items = items.into_iter().peekable();
-        let inline_id = items.peek().map(|(_, item)| item.id);
-
-        // TODO: InlineLayout?
-        ui.horizontal(|ui| {
-            let data = self.0.ui(ctx, q, drag_item, items, ui).inner;
-
-            // Don't add contents if the container is being dragged?
-
-            match inline_id.and_then(|id| show_contents(q, id, drag_item, ui)) {
-                Some(resp) => data.merge(resp.inner),
-                None => data,
             }
         })
     }

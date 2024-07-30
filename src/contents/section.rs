@@ -1,18 +1,22 @@
+use std::ops::Range;
+
+// use itertools::Itertools;
+
 use crate::*;
 
-// A sectioned container is a set of smaller containers displayed as
-// one. Like pouches on a belt or different pockets in a jacket. It's
-// one item than holds many fixed containers.
-#[derive(Clone, Debug)]
+// A sectioned container is a set of smaller containers displayed as one. Like pouches on a belt or
+// different pockets in a jacket. It's one item than holds many fixed containers. It is considered
+// one container, so we have to remap slots from the subcontents to the main container.
 pub struct SectionContents {
     pub layout: SectionLayout,
     // This should be generic over Contents but then ContentsLayout
     // will cycle on itself.
-    pub sections: Vec<ContentsLayout>,
+    pub sections: Vec<Box<dyn Contents>>,
 }
 
 #[derive(Clone)]
 pub enum SectionLayout {
+    // Number of columns...
     Grid(usize),
     // Fixed(Vec<(usize, egui::Pos2))
     // Columns?
@@ -31,77 +35,100 @@ impl std::fmt::Debug for SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(layout: SectionLayout, sections: Vec<ContentsLayout>) -> Self {
+    pub fn new(layout: SectionLayout, sections: Vec<Box<dyn Contents>>) -> Self {
         Self { layout, sections }
     }
 
+    /// Returns (section index, section slot) for `slot`.
     fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
         self.section_ranges()
             .enumerate()
-            .find_map(|(i, (start, end))| (slot < end).then(|| (i, slot - start)))
+            .find_map(|(i, r)| (slot < r.end).then(|| (i, slot - r.start)))
     }
 
-    fn section_ranges(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
+    fn section_ranges(&self) -> impl Iterator<Item = Range<usize>> + '_ {
         let mut end = 0;
         self.sections.iter().map(move |s| {
             let start = end;
             end = end + s.len();
-            (start, end)
+            start..end
         })
     }
 
-    fn section_eid(&self, (_id, eid): Context, sid: usize) -> egui::Id {
+    fn section_eid(&self, (_id, eid, _): Context, sid: usize) -> egui::Id {
         egui::Id::new(eid.with("section").with(sid))
     }
 
     // (ctx, slot) -> (section, section ctx, section slot)
-    fn section(&self, ctx: Context, slot: usize) -> Option<(&ContentsLayout, Context, usize)> {
-        self.section_slot(slot)
-            .map(|(i, slot)| (&self.sections[i], (ctx.0, self.section_eid(ctx, i)), slot))
+    fn section(&self, ctx: Context, slot: usize) -> Option<(&dyn Contents, Context, usize)> {
+        self.section_slot(slot).map(|(i, slot)| {
+            (
+                self.sections[i].as_ref(),
+                (ctx.0, self.section_eid(ctx, i), ctx.2),
+                slot,
+            )
+        })
     }
 
-    fn section_items<'a, I>(
-        &self,
-        items: I,
-    ) -> impl Iterator<Item = (usize, ContentsLayout, usize, Vec<(usize, &'a Item)>)>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-    {
-        // map (slot, item) -> (section, (slot, item))
-        let ranges = self.section_ranges().collect_vec();
+    // TODO: enforce sortedness w/ https://github.com/rklaehn/sorted-iter or our own items collection type
+    fn split_items<'a>(
+        &'a self,
+        offset: usize,
+        mut items: &'a [(usize, Item)],
+    ) -> impl Iterator<Item = (usize, &'a [(usize, Item)])> {
+        let mut ranges = self.section_ranges();
 
-        // If we know the input is sorted there is probably a way to
-        // do this w/o collecting into a hash map.
-        let mut items = items
-            .into_iter()
-            // Find section for each item.
-            .filter_map(|(slot, item)| {
-                ranges
-                    .iter()
-                    .enumerate()
-                    .find_map(|(section, (start, end))| {
-                        (slot < *end).then(|| (section, ((slot - start), item)))
-                    })
-            })
-            .into_group_map();
+        // This is more complicated than it needs to be, but we want to catch the assertions.
+        std::iter::from_fn(move || {
+            let Some(r) = ranges.next() else {
+                assert_eq!(
+                    items.len(),
+                    0,
+                    "all items inside section ranges (is `items` sorted by slot?)"
+                );
+                return None;
+            };
 
-        // TODO should be a way to do this without cloning sections
-        self.sections
-            .clone()
-            .into_iter()
-            .zip(ranges.into_iter())
-            .enumerate()
-            .map(move |(i, (layout, (start, _end)))| {
-                (i, layout, start, items.remove(&i).unwrap_or_default())
-            })
+            // `split_once` is nightly...
+            let l = items
+                .iter()
+                .position(|(slot, _)| (slot - offset) >= r.end)
+                .unwrap_or_else(|| items.len());
+            let (head, tail) = items.split_at(l);
+
+            items = tail;
+
+            // TODO `is_sorted` is nightly...
+            assert!(
+                head.iter().all(|(slot, _)| r.contains(&(slot - offset))),
+                "item slot in range (is `items` sorted by slot?)"
+            );
+            Some((r.start, head))
+        })
+    }
+
+    fn section_items<'a>(
+        &'a self,
+        offset: usize,
+        items: &'a [(usize, Item)],
+    ) -> impl Iterator<Item = (&dyn Contents, usize, &'a [(usize, Item)])> {
+        self.split_items(offset, items)
+            .zip(&self.sections)
+            .map(|((start, items), l)| (l.as_ref(), start, items))
     }
 }
 
-// pub struct SectionItems<I> {
-//     curr: usize,
-//     // keep a ref to section contents or clone sections?
-//     items: itertools::GroupingMap<I>,
-// }
+#[allow(unused)]
+fn split_lengths<'a, T>(
+    mut slice: &'a [T],
+    lens: impl IntoIterator<Item = usize> + 'a,
+) -> impl Iterator<Item = &[T]> + 'a {
+    lens.into_iter().map(move |l| {
+        let (head, tail) = slice.split_at(l);
+        slice = tail;
+        head
+    })
+}
 
 impl Contents for SectionContents {
     fn len(&self) -> usize {
@@ -143,49 +170,58 @@ impl Contents for SectionContents {
         false
     }
 
-    fn find_slot<'a, I>(
+    // Add start slot to find_slot or move slot into item. We need to modify the slot without the item reference being changed.
+    fn find_slot(
         &self,
         ctx: Context,
         egui_ctx: &egui::Context,
         item: &DragItem,
-        items: I,
+        items: &[(usize, Item)],
         // id, slot, ...
-    ) -> Option<(usize, usize, egui::Id)>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Self: Sized,
-    {
-        self.section_items(items)
-            .find_map(|(i, layout, start, items)| {
-                let ctx = (ctx.0, self.section_eid(ctx, i));
+    ) -> Option<(usize, usize, egui::Id)> {
+        self.section_items(ctx.2, items)
+            .enumerate()
+            .find_map(|(i, (layout, offset, items))| {
+                let ctx = (ctx.0, self.section_eid(ctx, i), offset);
                 layout
                     .find_slot(ctx, egui_ctx, item, items)
-                    .map(|(id, slot, eid)| (id, (slot + start), eid))
+                    .map(|(id, slot, eid)| (id, (slot + offset), eid))
             })
     }
 
-    fn ui<'a, I, Q>(
+    fn ui(
         &self,
         ctx: Context,
-        q: &'a Q,
+        q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: I,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Q: ContentsQuery<'a>,
-        Self: Sized,
-    {
+    ) -> egui::InnerResponse<MoveData> {
         let id = ctx.0;
+
+        // if !items.is_empty() {
+        //     items
+        //         .iter()
+        //         .for_each(|(slot, item)| print!("[{} {} {}] ", slot, item.id, item.name));
+        //     println!("offset: {}", ctx.2);
+        // }
 
         match self.layout {
             SectionLayout::Grid(width) => {
                 egui::Grid::new(id).num_columns(width).show(ui, |ui| {
-                    self.section_items(items)
-                        .map(|(i, layout, start, items)| {
+                    self.section_items(ctx.2, items)
+                        .enumerate()
+                        .map(|(i, (layout, offset, items))| {
+                            //let offset = offset + ctx.2;
+                            // dbg!(i, items.len());
                             let data = layout
-                                .ui((id, self.section_eid(ctx, i)), q, drag_item, items, ui)
+                                .ui(
+                                    (id, self.section_eid(ctx, i), offset + ctx.2),
+                                    q,
+                                    drag_item,
+                                    items,
+                                    ui,
+                                )
                                 .inner;
 
                             if (i + 1) % width == 0 {
@@ -193,9 +229,9 @@ impl Contents for SectionContents {
                             }
 
                             // Remap slots. Only if we are the subject
-                            // of the drag or target. Nested contents
+                            // of the drag or target. Nested containers
                             // will have a different id.
-                            data.map_slots(id, |slot| slot + start)
+                            data.map_slots(id, |slot| slot + offset)
                         })
                         .reduce(|acc, a| acc.merge(a))
                         .unwrap_or_default()
@@ -203,5 +239,21 @@ impl Contents for SectionContents {
             }
             SectionLayout::Other(f) => f(ui),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn split_lengths() {
+        let a = [1, 2, 3, 4, 5];
+
+        // let (x, y) = a.split_at(6.min(a.len()));
+        // assert_eq!(x.len(), 5);
+        // assert_eq!(y.len(), 0);
+        // assert_eq!(a.len(), 5);
+
+        let b: Vec<_> = super::split_lengths(&a, [2usize, 3].into_iter()).collect();
+        assert_eq!(b, [&vec![1, 2], &vec![3, 4, 5]]);
     }
 }

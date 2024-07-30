@@ -11,7 +11,6 @@ edition = "2021"
 name = "ex1"
 
 [dependencies]
-ambassador = { version = "0.3.4", default-features = false }
 bitvec = "1.0.1"
 egui = "0.19.0"
 flagset = "0.4.3"

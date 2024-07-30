@@ -1,7 +1,8 @@
+use std::collections::HashMap;
+
 pub use contents::*;
 use egui::{InnerResponse, TextureId};
 use flagset::{flags, FlagSet};
-use itertools::Itertools;
 
 pub mod contents;
 pub mod shape;
@@ -166,6 +167,10 @@ impl ContainerSpace {
     }
 }
 
+pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
+    egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
+}
+
 pub fn paint_shape(
     idxs: Vec<egui::layers::ShapeIdx>,
     shape: &shape::Shape,
@@ -221,7 +226,8 @@ pub fn shape_mesh(
 //     type Id;
 // }
 
-pub type Context = (usize, egui::Id);
+// Container id, egui id, item slot offset (for sectioned containers).
+pub type Context = (usize, egui::Id, usize);
 
 pub trait IntoContext {
     fn into_ctx(self) -> Context;
@@ -229,7 +235,7 @@ pub trait IntoContext {
 
 impl IntoContext for usize {
     fn into_ctx(self) -> Context {
-        (self, egui::Id::new("contents").with(self))
+        (self, egui::Id::new("contents").with(self), 0)
     }
 }
 
@@ -273,16 +279,15 @@ pub fn with_bg<R>(
     InnerResponse::new(inner, response)
 }
 
-pub fn find_slot_default<'a, C, I>(
-    contents: &C,
+pub fn find_slot_default<'a, T>(
+    contents: &T,
     ctx: Context,
     egui_ctx: &egui::Context,
     drag: &DragItem,
-    _items: I,
+    _items: &[(usize, Item)],
 ) -> Option<(usize, usize, egui::Id)>
 where
-    C: Contents,
-    I: IntoIterator<Item = (usize, &'a Item)>,
+    T: Contents + ?Sized,
 {
     // TODO test multiple rotations (if non-square) and return it?
     contents.accepts(&drag.item).then(|| true).and(
@@ -310,37 +315,33 @@ flags! {
 /// ContentsQuery allows Contents impls to recursively query the
 /// contents of subcontents (InlineContents specifically). This allows
 /// SectionContents to use InlineContents as sections, for example.
-pub trait ContentsQuery<'a> {
-    type Items: IntoIterator<Item = (usize, &'a Item)>;
-
-    fn query(&'a self, id: usize) -> Option<(&'a ContentsLayout, Self::Items)>;
-}
+// pub trait ContentsQuery<'a, T: Contents> {
+//     fn query(&self, id: usize) -> Option<(&'a T, T::Items<'a>)>;
+// }
 
 // This gets around having to manually specify the iterator type when
 // implementing ContentsQuery. Maybe just get rid of the trait?
-impl<'a, F, I> ContentsQuery<'a> for F
-where
-    F: Fn(usize) -> Option<(&'a ContentsLayout, I)>,
-    I: Iterator<Item = (usize, &'a Item)> + 'a,
-{
-    type Items = I;
+// impl<'a, T, F> ContentsQuery<'a, T> for F
+// where
+//     T: Contents + 'a,
+//     F: Fn(usize) -> Option<(&'a T, T::Items<'a>)>,
+//     // I: Iterator<Item = (usize, &'a Item)> + 'a,
+// {
+//     // type Items = I;
 
-    fn query(&'a self, id: usize) -> Option<(&'a ContentsLayout, Self::Items)> {
-        self(id)
-    }
-}
+//     fn query(&self, id: usize) -> Option<(&'a T, T::Items<'a>)> {
+//         self(id)
+//     }
+// }
 
 // Use ContentsQuery to query a layout and contents, then show it.
-pub fn show_contents<'a, Q>(
-    q: &'a Q,
+pub fn show_contents(
+    q: &ContentsStorage,
     id: usize,
     drag_item: &Option<DragItem>,
     ui: &mut egui::Ui,
-) -> Option<egui::InnerResponse<MoveData>>
-where
-    Q: ContentsQuery<'a>,
-{
-    q.query(id)
+) -> Option<egui::InnerResponse<MoveData>> {
+    q.get(&id)
         .map(|(layout, items)| layout.ui(id.into_ctx(), q, drag_item, items, ui))
 }
 
@@ -503,7 +504,13 @@ impl Item {
                     let p = (p - response.rect.min) / ITEM_SIZE;
                     let slot = p.x as usize + p.y as usize * self.width();
                     self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
-                        tracing::error!("point {:?} slot {} out of shape fill", p, slot);
+                        // FIX This occurs somewhere on drag/mouseover.
+                        tracing::error!(
+                            "point {:?} slot {} out of shape fill {}",
+                            p,
+                            slot,
+                            self.shape.fill
+                        );
                         false
                     })
                 })
@@ -692,22 +699,27 @@ impl SlotItem for (usize, &Item) {
 }
 
 #[derive(Clone, Debug)]
-pub struct HeaderContents {
+pub struct HeaderContents<T> {
     // Box<dyn Fn(...)> ? Not clonable.
     pub header: String,
-    pub contents: Box<ContentsLayout>,
+    pub contents: T,
 }
 
-impl HeaderContents {
-    pub fn new(header: impl Into<String>, contents: impl Into<ContentsLayout>) -> Self {
+impl<T> HeaderContents<T> {
+    pub fn new(header: impl Into<String>, contents: T) -> Self {
         Self {
             header: header.into(),
-            contents: Box::new(contents.into()),
+            contents,
         }
     }
 }
 
-impl Contents for HeaderContents {
+pub type ContentsStorage = HashMap<usize, (Box<dyn Contents>, Vec<(usize, Item)>)>;
+
+impl<T> Contents for HeaderContents<T>
+where
+    T: Contents,
+{
     fn len(&self) -> usize {
         self.contents.len()
     }
@@ -728,19 +740,14 @@ impl Contents for HeaderContents {
         self.contents.fits(ctx, egui_ctx, item, slot)
     }
 
-    fn ui<'a, I, Q>(
+    fn ui(
         &self,
         ctx: Context,
-        q: &'a Q,
+        q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: I,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Q: ContentsQuery<'a>,
-        Self: Sized,
-    {
+    ) -> egui::InnerResponse<MoveData> {
         // Is InnerResponse really useful?
         let InnerResponse { inner, response } = ui.vertical(|ui| {
             ui.label(&self.header);

@@ -20,10 +20,6 @@ impl GridContents {
     }
 }
 
-pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
-    egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
-}
-
 fn update_state<T: 'static + Clone + Send + Sync>(
     ctx: &egui::Context,
     id: egui::Id,
@@ -63,7 +59,7 @@ impl Contents for GridContents {
         }))
     }
 
-    fn remove(&self, (_id, eid): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, (_, eid, _): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, _drag, _target| {
             remove_shape(ctx, eid, slot, &shape)
         }))
@@ -82,7 +78,13 @@ impl Contents for GridContents {
         self.flags.contains(item.flags)
     }
 
-    fn fits(&self, (_id, eid): Context, ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+    fn fits(
+        &self,
+        (_, eid, _): Context,
+        ctx: &egui::Context,
+        drag: &DragItem,
+        slot: usize,
+    ) -> bool {
         // Must be careful with the type inference here since it will
         // never fetch anything if it thinks it's a reference.
         match ctx.data().get_temp(eid) {
@@ -106,24 +108,20 @@ impl Contents for GridContents {
         }
     }
 
-    fn find_slot<'a, I>(
+    fn find_slot(
         &self,
         ctx: Context,
         egui_ctx: &egui::Context,
         item: &DragItem,
-        items: I,
-    ) -> Option<(usize, usize, egui::Id)>
-    where
-        I: IntoIterator<Item = (usize, &'a Item)>,
-        Self: Sized,
-    {
+        items: &[(usize, Item)],
+    ) -> Option<(usize, usize, egui::Id)> {
         // Prime the container shape. Normally `body` does this.
         let shape: Option<shape::Shape> = egui_ctx.data().get_temp(ctx.1);
         if shape.is_none() {
             let shape = items.into_iter().fold(
                 shape::Shape::new(self.size, false),
                 |mut shape, (slot, item)| {
-                    shape.paint(&item.shape, slot);
+                    shape.paint(&item.shape, *slot);
                     shape
                 },
             );
@@ -131,26 +129,23 @@ impl Contents for GridContents {
         }
 
         // This will reclone the shape every turn of the loop...
-        find_slot_default(self, ctx, egui_ctx, item, None)
+        find_slot_default(self, ctx, egui_ctx, item, &[])
     }
 
-    fn body<'a, I>(
+    fn body(
         &self,
         ctx: Context,
         drag_item: &Option<DragItem>,
-        items: I,
+        items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>>
-    where
-        I: Iterator<Item = (usize, &'a Item)>,
-    {
+    ) -> egui::InnerResponse<Option<ItemResponse>> {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
             egui::Vec2::from(self.size) * ITEM_SIZE,
             egui::Sense::hover(),
         );
 
-        let (id, eid) = ctx;
+        let (id, eid, offset) = ctx;
 
         let new_drag = if ui.is_rect_visible(rect) {
             // Skip this if the container is empty? Only if dragging into
@@ -191,7 +186,10 @@ impl Contents for GridContents {
             let item_size = item_size();
 
             let new_drag = items
+                .iter()
                 .map(|(slot, item)| {
+                    let slot = slot - offset;
+
                     // Paint each item and fill our shape if needed.
                     if fill {
                         shape.paint(&item.shape, slot);
@@ -217,6 +215,7 @@ impl Contents for GridContents {
                 // Add the contents id, current slot and
                 // container shape w/ the item unpainted.
                 .map(|(slot, item)| {
+                    // let slot = slot - offset;
                     match item {
                         ItemResponse::NewDrag(item) => {
                             // The dragged item shape is already rotated. We

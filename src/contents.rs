@@ -1,13 +1,15 @@
+pub mod expanding;
+pub mod grid;
+pub mod header;
+pub mod inline;
+pub mod section;
+
 use crate::*;
 pub use expanding::*;
 pub use grid::*;
+pub use header::*;
 pub use inline::*;
 pub use section::*;
-
-pub mod expanding;
-pub mod grid;
-pub mod inline;
-pub mod section;
 
 /// A widget to display the contents of a container.
 pub trait Contents {

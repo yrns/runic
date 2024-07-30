@@ -106,10 +106,22 @@ pub trait Contents {
         items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
-        assert!(match drag_item {
-            Some(drag) => ui.ctx().is_being_dragged(drag.item.eid()),
-            _ => true, // we could be dragging something else
-        });
+        // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
+        // dragged_id will be unset before drag_item for one frame.
+
+        // match drag_item.as_ref().map(|d| d.item.eid()) {
+        //     Some(id) => {
+        //         assert_eq!(ui.ctx().dragged_id(), Some(id));
+        //         // if ui.ctx().dragged_id() != Some(id) {
+        //         //     tracing::warn!(
+        //         //         "drag_item eid {:?} != dragged_id {:?}",
+        //         //         id,
+        //         //         ui.ctx().dragged_id()
+        //         //     )
+        //         // }
+        //     }
+        //     _ => (), // we could be dragging something else
+        // }
 
         // We have all the information we need to set the style from
         // the MoveData/drag_item, so we could do that internal to
@@ -163,8 +175,12 @@ pub trait Contents {
             // accepts, and only check fits for hover
             let dragging = drag_item.is_some();
 
-            let slot = response
-                .hover_pos()
+            // `contains_pointer` does not work for the target because only the dragged items'
+            // response will contain the pointer.
+            let slot = // response.contains_pointer()
+                // .then_some(())
+                // .and_then(|_| ui.ctx().pointer_latest_pos())
+                ui.ctx().pointer_latest_pos()
                 // the hover includes the outer_rect?
                 .filter(|p| min_rect.contains(*p))
                 .map(|p| self.slot(p - min_rect.min));
@@ -215,6 +231,10 @@ pub trait Contents {
                     drag_item.as_ref().map(|drag| drag.item.flags)
                 );
             }
+
+            // if released {
+            //     dbg!(dragging, accepts, slot, fits);
+            // }
 
             // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
 

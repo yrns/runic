@@ -163,7 +163,10 @@ impl ContainerSpace {
                     assert!(data.drag.replace(drag).is_none());
                     Some(data)
                 }
-                _ => None,
+                (drag_item, target) => {
+                    tracing::warn!(?target, drag_item = drag_item.map(|i| i.item.name));
+                    None
+                }
             })
             .flatten()
     }

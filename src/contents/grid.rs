@@ -1,3 +1,5 @@
+use egui::ecolor::Color32;
+
 use crate::*;
 
 #[derive(Clone, Debug)]
@@ -177,7 +179,7 @@ impl Contents for GridContents {
                         shape,
                         ui.min_rect(),
                         egui::Vec2::ZERO,
-                        egui::color::Color32::DARK_BLUE,
+                        Color32::DARK_BLUE,
                         ITEM_SIZE,
                     ));
                 }

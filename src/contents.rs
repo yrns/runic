@@ -11,6 +11,8 @@ pub use header::*;
 pub use inline::*;
 pub use section::*;
 
+use egui::ecolor::*;
+
 /// A widget to display the contents of a container.
 pub trait Contents {
     /// Returns an egui id based on the contents id. Unused, except
@@ -69,13 +71,13 @@ pub trait Contents {
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {
-            egui::color::Color32::GRAY
+            Color32::GRAY
         } else if fits {
-            egui::color::Color32::GREEN
+            Color32::GREEN
         } else {
-            egui::color::Color32::RED
+            Color32::RED
         };
-        egui::color::tint_color_towards(color, ui.visuals().window_fill())
+        tint_color_towards(color, ui.visuals().window_fill())
     }
 
     // Draw contents.
@@ -105,7 +107,7 @@ pub trait Contents {
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
         assert!(match drag_item {
-            Some(drag) => ui.memory().is_being_dragged(drag.item.eid()),
+            Some(drag) => ui.ctx().is_being_dragged(drag.item.eid()),
             _ => true, // we could be dragging something else
         });
 
@@ -199,16 +201,13 @@ pub trait Contents {
 
             if dragging && accepts {
                 // gray out:
-                style.bg_fill =
-                    egui::color::tint_color_towards(style.bg_fill, ui.visuals().window_fill());
-                style.bg_stroke.color = egui::color::tint_color_towards(
-                    style.bg_stroke.color,
-                    ui.visuals().window_fill(),
-                );
+                style.bg_fill = tint_color_towards(style.bg_fill, ui.visuals().window_fill());
+                style.bg_stroke.color =
+                    tint_color_towards(style.bg_stroke.color, ui.visuals().window_fill());
             }
 
             // Only send target on release?
-            let released = ui.input().pointer.any_released();
+            let released = ui.input(|i| i.pointer.any_released());
             if released && fits && !accepts {
                 tracing::info!(
                     "container {:?} does not accept item {:?}!",

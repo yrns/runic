@@ -141,7 +141,7 @@ impl ContainerSpace {
         }
 
         // Rotate the dragged item.
-        if ui.input().key_pressed(egui::Key::R) {
+        if ui.input(|i| i.key_pressed(egui::Key::R)) {
             if let Some(DragItem { item, .. }) = drag_item.as_mut() {
                 item.rotation = item.rotation.increment();
                 item.shape = item.shape.rotate90();
@@ -149,14 +149,12 @@ impl ContainerSpace {
         }
 
         // Toggle debug.
-        if ui.input().key_pressed(egui::Key::D) {
+        if ui.input(|i| i.key_pressed(egui::Key::D)) {
             ui.ctx().set_debug_on_hover(!ui.ctx().debug_on_hover());
         }
 
         // If the pointer is released, take drag_item.
-        ui.input()
-            .pointer
-            .any_released()
+        ui.input(|i| i.pointer.any_released())
             // If we have both a dragged item and a target, put the
             // item back into the move data and return it.
             .then(|| match (drag_item.take(), data.target.is_some()) {
@@ -260,7 +258,7 @@ pub fn with_bg<R>(
 
     // Reserve a shape for the background so it draws first.
     let bg = ui.painter().add(egui::Shape::Noop);
-    let mut content_ui = ui.child_ui(inner_rect, *ui.layout());
+    let mut content_ui = ui.child_ui(inner_rect, *ui.layout(), None);
 
     // Draw contents.
     let mut style = ui.visuals().widgets.active;
@@ -271,12 +269,7 @@ pub fn with_bg<R>(
 
     ui.painter().set(
         bg,
-        egui::epaint::RectShape {
-            rounding: style.rounding,
-            fill: style.bg_fill,
-            stroke: style.bg_stroke,
-            rect,
-        },
+        egui::epaint::RectShape::new(rect, style.rounding, style.bg_fill, style.bg_stroke),
     );
 
     InnerResponse::new(inner, response)

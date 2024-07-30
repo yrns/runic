@@ -140,7 +140,7 @@ impl Item {
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
         let id = self.eid();
-        let drag = ui.memory().is_being_dragged(id);
+        let drag = ui.ctx().is_being_dragged(id);
         if !drag {
             // This does not work.
             // ui.push_id(self.id, |ui| self.body(drag_item, ui))
@@ -177,7 +177,7 @@ impl Item {
                 let response = ui.interact(response.rect, id, egui::Sense::drag());
                 let response = response.on_hover_text_at_pointer(format!("{}", self));
                 if response.hovered() {
-                    ui.output().cursor_icon = egui::CursorIcon::Grab;
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
                 }
                 drag_item
                     .as_ref()
@@ -186,7 +186,7 @@ impl Item {
                 None
             }
         } else {
-            ui.output().cursor_icon = egui::CursorIcon::Grabbing;
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
 
             // pos - pos = vec
             // pos + pos = error
@@ -207,7 +207,7 @@ impl Item {
                         .fixed_pos(p - item_size() * 0.25)
                         .interactable(false)
                         // Restrict to ContainerShape?
-                        .drag_bounds(egui::Rect::EVERYTHING)
+                        .constrain_to(egui::Rect::EVERYTHING)
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
 
                     // Still allocate the original size for expanding

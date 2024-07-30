@@ -82,7 +82,7 @@ fn main() {
                     )
                     .boxed(),
                     HeaderContents::new(
-                        "Weapon here:",
+                        "Weapon (2x2 MAX):",
                         ExpandingContents::new((2, 2)).with_flags(ItemFlags::Weapon), // accepts only weapons
                     )
                     .boxed(),

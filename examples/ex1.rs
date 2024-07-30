@@ -7,7 +7,7 @@ use runic::*;
 
 use bitvec::prelude::*;
 
-fn main() {
+fn main() -> eframe::Result {
     tracing_subscriber::fmt::init();
     let options = eframe::NativeOptions::default();
 
@@ -29,7 +29,7 @@ fn main() {
             let boomerang = Item::new(
                 next_id(),
                 load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
-                shape::Shape::from_bits(2, bits![1, 1, 1, 0]),
+                Shape::from_bits(2, bits![1, 1, 1, 0]),
             )
             // this item is a weapon
             .with_flags(ItemFlags::Weapon)
@@ -38,7 +38,7 @@ fn main() {
             let pouch = Item::new(
                 next_id(),
                 load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
-                shape::Shape::new((2, 2), true),
+                Shape::new((2, 2), true),
             )
             // this item is a container
             .with_flags(ItemFlags::Container)
@@ -47,7 +47,7 @@ fn main() {
             let short_sword = Item::new(
                 next_id(),
                 load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
-                shape::Shape::new((3, 1), true),
+                Shape::new((3, 1), true),
             )
             // this item is a weapon
             .with_flags(ItemFlags::Weapon)
@@ -57,7 +57,7 @@ fn main() {
             let potion = Item::new(
                 next_id(),
                 load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
-                shape::Shape::new((1, 1), true),
+                Shape::new((1, 1), true),
             )
             .with_flags(ItemFlags::Potion)
             .with_name("Potion");
@@ -137,13 +137,13 @@ fn main() {
                 ),
             );
 
-            Box::new(Runic {
+            Ok(Box::new(Runic {
                 images,
                 drag_item: None,
                 contents,
                 paper_doll_id,
                 ground_id,
-            })
+            }))
         }),
     )
 }

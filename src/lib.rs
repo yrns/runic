@@ -1,6 +1,6 @@
-pub mod contents;
+mod contents;
 mod item;
-pub mod shape;
+mod shape;
 
 use std::collections::HashMap;
 
@@ -9,6 +9,7 @@ use flagset::{flags, FlagSet};
 
 pub use contents::*;
 pub use item::*;
+pub use shape::*;
 
 pub const ITEM_SIZE: f32 = 48.0;
 
@@ -285,12 +286,14 @@ pub fn find_slot_default<'a, T>(
 where
     T: Contents + ?Sized,
 {
+    if !contents.accepts(&drag.item) {
+        return None;
+    }
+
     // TODO test multiple rotations (if non-square) and return it?
-    contents.accepts(&drag.item).then(|| true).and(
-        (0..contents.len())
-            .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
-            .map(|slot| (ctx.0, slot, ctx.1)),
-    )
+    (0..contents.len())
+        .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
+        .map(|slot| (ctx.0, slot, ctx.1))
 }
 
 // Maybe this should be a trait instead of requiring flagset. Or maybe

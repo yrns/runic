@@ -59,7 +59,7 @@ pub trait Contents {
     fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot<'a>(
+    fn find_slot(
         &self,
         ctx: Context,
         egui_ctx: &egui::Context,

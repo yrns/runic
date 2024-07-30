@@ -23,6 +23,10 @@ impl ExpandingContents {
     }
 }
 
+// Indicates this expanding slot is filled.
+#[derive(Copy, Clone, Default)]
+struct Filled(bool);
+
 impl Contents for ExpandingContents {
     fn len(&self) -> usize {
         1
@@ -63,8 +67,11 @@ impl Contents for ExpandingContents {
     ) -> bool {
         // Allow rotating in place.
         let current_item = eid == drag.container.2;
-        let filled: bool = !current_item && ctx.data().get_temp(eid).unwrap_or_default();
-        slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
+        let filled = !current_item
+            && ctx
+                .data(|d| d.get_temp::<Filled>(eid).unwrap_or_default())
+                .0;
+        slot == 0 && !dbg!(filled) && drag.item.shape.size.le(&self.max_size)
     }
 
     fn body(
@@ -76,7 +83,7 @@ impl Contents for ExpandingContents {
     ) -> egui::InnerResponse<Option<ItemResponse>> {
         let item = items.first();
 
-        ui.ctx().data().insert_temp(eid, item.is_some());
+        ui.data_mut(|d| d.insert_temp(eid, Filled(item.is_some())));
 
         assert!(items.len() <= 1);
 

@@ -27,23 +27,22 @@ fn update_state<T: 'static + Clone + Send + Sync>(
     id: egui::Id,
     mut f: impl FnMut(T) -> T,
 ) {
-    let t = ctx.data().get_temp::<T>(id);
-    if let Some(t) = t {
-        ctx.data().insert_temp(id, f(t));
+    if let Some(t) = ctx.data(|d| d.get_temp::<T>(id)) {
+        ctx.data_mut(|d| d.insert_temp(id, f(t)));
     }
 }
 
 // There is no get_temp_mut... If the shape doesn't exist we don't
 // care since it will be regenerated next time the container is shown.
-fn add_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::Shape) {
-    update_state(ctx, id, |mut fill: shape::Shape| {
+fn add_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
+    update_state(ctx, id, |mut fill: Shape| {
         fill.paint(shape, slot);
         fill
     })
 }
 
-fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &shape::Shape) {
-    update_state(ctx, id, |mut fill: shape::Shape| {
+fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
+    update_state(ctx, id, |mut fill: Shape| {
         fill.unpaint(shape, slot);
         fill
     })
@@ -89,7 +88,7 @@ impl Contents for GridContents {
     ) -> bool {
         // Must be careful with the type inference here since it will
         // never fetch anything if it thinks it's a reference.
-        match ctx.data().get_temp(eid) {
+        match ctx.data(|d| d.get_temp::<Shape>(eid)) {
             Some(shape) => {
                 // Check if the shape fits here. When moving within
                 // one container, use the cached shape with the
@@ -117,21 +116,19 @@ impl Contents for GridContents {
         item: &DragItem,
         items: &[(usize, Item)],
     ) -> Option<(usize, usize, egui::Id)> {
-        // Prime the container shape. Normally `body` does this.
-        let shape: Option<shape::Shape> = egui_ctx.data().get_temp(ctx.1);
-        if shape.is_none() {
-            let shape = items.into_iter().fold(
-                shape::Shape::new(self.size, false),
-                |mut shape, (slot, item)| {
+        let new_shape = || {
+            items
+                .into_iter()
+                .fold(Shape::new(self.size, false), |mut shape, (slot, item)| {
                     shape.paint(&item.shape, *slot);
                     shape
-                },
-            );
-            egui_ctx.data().insert_temp(ctx.1, shape);
-        }
+                })
+        };
 
-        // This will reclone the shape every turn of the loop...
-        find_slot_default(self, ctx, egui_ctx, item, &[])
+        // Prime the container shape. Normally `body` does this.
+        egui_ctx.data_mut(|d| _ = d.get_temp_mut_or_insert_with(ctx.1, new_shape));
+
+        find_slot_default(self, ctx, egui_ctx, item, items)
     }
 
     fn body(
@@ -157,7 +154,7 @@ impl Contents for GridContents {
             // painted?  [`fits`] also checks the boundaries even if the
             // container is empty...
             let mut fill = false;
-            let mut shape = ui.data().get_temp(eid).unwrap_or_else(|| {
+            let mut shape = ui.data(|d| d.get_temp::<Shape>(eid)).unwrap_or_else(|| {
                 // We don't need to fill if we aren't dragging currently...
                 fill = true;
                 shape::Shape::new(self.size, false)
@@ -244,7 +241,7 @@ impl Contents for GridContents {
 
             // Write out the new shape.
             if fill {
-                ui.data().insert_temp(eid, shape);
+                ui.data_mut(|d| d.insert_temp(eid, shape));
             }
             new_drag
         } else {

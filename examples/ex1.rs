@@ -1,7 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
-
 use eframe::egui;
-use egui_extras::RetainedImage;
 use flagset::FlagSet;
 use runic::*;
 
@@ -23,12 +20,26 @@ fn main() -> eframe::Result {
                 }
             };
 
-            let mut contents = ContentsStorage::new();
-            let mut images = HashMap::new();
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+
+            macro_rules! load_icon {
+                ($path:literal) => {{
+                    let icon = egui::include_image!($path).load(
+                        &cc.egui_ctx,
+                        egui::TextureOptions::default(),
+                        egui::SizeHint::default(),
+                    )?;
+
+                    match icon {
+                        egui::load::TexturePoll::Ready { texture } => texture.id,
+                        _ => panic!("no image"),
+                    }
+                }};
+            }
 
             let boomerang = Item::new(
                 next_id(),
-                load_image(&mut images, "boomerang").texture_id(&cc.egui_ctx),
+                load_icon!("../boomerang.png"),
                 Shape::from_bits(2, bits![1, 1, 1, 0]),
             )
             // this item is a weapon
@@ -37,7 +48,7 @@ fn main() -> eframe::Result {
 
             let pouch = Item::new(
                 next_id(),
-                load_image(&mut images, "pouch").texture_id(&cc.egui_ctx),
+                load_icon!("../pouch.png"),
                 Shape::new((2, 2), true),
             )
             // this item is a container
@@ -46,7 +57,7 @@ fn main() -> eframe::Result {
 
             let short_sword = Item::new(
                 next_id(),
-                load_image(&mut images, "short-sword").texture_id(&cc.egui_ctx),
+                load_icon!("../short-sword.png"),
                 Shape::new((3, 1), true),
             )
             // this item is a weapon
@@ -56,7 +67,7 @@ fn main() -> eframe::Result {
 
             let potion = Item::new(
                 next_id(),
-                load_image(&mut images, "potion").texture_id(&cc.egui_ctx),
+                load_icon!("../potion.png"),
                 Shape::new((1, 1), true),
             )
             .with_flags(ItemFlags::Potion)
@@ -109,6 +120,7 @@ fn main() -> eframe::Result {
                 ],
             );
 
+            let mut contents = ContentsStorage::new();
             contents.insert(paper_doll_id, (paper_doll.boxed(), vec![]));
 
             let pouch_contents = SectionContents::new(
@@ -138,7 +150,6 @@ fn main() -> eframe::Result {
             );
 
             Ok(Box::new(Runic {
-                images,
                 drag_item: None,
                 contents,
                 paper_doll_id,
@@ -150,39 +161,11 @@ fn main() -> eframe::Result {
 
 //#[derive(Default)]
 struct Runic {
-    #[allow(dead_code)]
-    images: HashMap<&'static str, RetainedImage>,
     drag_item: Option<DragItem>,
     contents: ContentsStorage,
     paper_doll_id: usize,
     ground_id: usize,
 }
-
-fn load_image<'a>(
-    images: &'a mut HashMap<&'static str, RetainedImage>,
-    name: &'static str,
-) -> &'a RetainedImage {
-    images.entry(name).or_insert_with(|| {
-        let mut path = PathBuf::from(name);
-        path.set_extension("png");
-        std::fs::read(&path)
-            .map_err(|e| e.to_string())
-            .and_then(|buf| RetainedImage::from_image_bytes(name, &buf))
-            .unwrap_or_else(|e| {
-                tracing::error!("failed to load image at: {} ({})", path.display(), e);
-                RetainedImage::from_color_image(name, egui::ColorImage::example())
-            })
-    })
-}
-
-// impl<'a> ContentsQuery<'a> for ContentsStorage {
-//     type Items = ???
-//     fn query(&self, id: usize) -> Option<(&ContentsLayout, Self::Items)> {
-//         self.0
-//             .get(&id)
-//             .map(|(c, i)| (c, i.iter().map(|(slot, item)| (*slot, item))))
-//     }
-// }
 
 impl eframe::App for Runic {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {

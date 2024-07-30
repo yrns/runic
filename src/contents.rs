@@ -22,9 +22,9 @@ pub trait Contents {
     //     egui::Id::new("contents").with(id)
     // }
 
-    fn boxed(self) -> Box<dyn Contents>
+    fn boxed(self) -> Box<dyn Contents + Send + Sync>
     where
-        Self: Sized + 'static,
+        Self: Sized + Send + Sync + 'static,
     {
         Box::new(self)
     }

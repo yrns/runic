@@ -23,7 +23,8 @@ pub type ContainerId = usize;
 /// Target container id, slot, and egui::Id (which is unique to sections).
 pub type ContainerData = (ContainerId, usize, egui::Id);
 
-pub type ResolveFn = Box<dyn FnMut(&egui::Context, &DragItem, ContainerData)>;
+pub type ResolveFn =
+    Box<dyn FnMut(&egui::Context, &DragItem, ContainerData) + Send + Sync + 'static>;
 
 pub struct DragItem {
     /// A clone of the original item with rotation applied.

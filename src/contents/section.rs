@@ -11,7 +11,7 @@ pub struct SectionContents {
     pub layout: SectionLayout,
     // This should be generic over Contents but then ContentsLayout
     // will cycle on itself.
-    pub sections: Vec<Box<dyn Contents>>,
+    pub sections: Vec<Box<dyn Contents + Send + Sync + 'static>>,
 }
 
 #[derive(Clone)]
@@ -35,7 +35,10 @@ impl std::fmt::Debug for SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(layout: SectionLayout, sections: Vec<Box<dyn Contents>>) -> Self {
+    pub fn new(
+        layout: SectionLayout,
+        sections: Vec<Box<dyn Contents + Send + Sync + 'static>>,
+    ) -> Self {
         Self { layout, sections }
     }
 
@@ -60,7 +63,11 @@ impl SectionContents {
     }
 
     // (ctx, slot) -> (section, section ctx, section slot)
-    fn section(&self, ctx: Context, slot: usize) -> Option<(&dyn Contents, Context, usize)> {
+    fn section(
+        &self,
+        ctx: Context,
+        slot: usize,
+    ) -> Option<(&(dyn Contents + Send + Sync), Context, usize)> {
         self.section_slot(slot).map(|(i, slot)| {
             (
                 self.sections[i].as_ref(),
@@ -111,7 +118,7 @@ impl SectionContents {
         &'a self,
         offset: usize,
         items: &'a [(usize, Item)],
-    ) -> impl Iterator<Item = (&dyn Contents, usize, &'a [(usize, Item)])> {
+    ) -> impl Iterator<Item = (&(dyn Contents + Send + Sync), usize, &'a [(usize, Item)])> {
         self.split_items(offset, items)
             .zip(&self.sections)
             .map(|((start, items), l)| (l.as_ref(), start, items))

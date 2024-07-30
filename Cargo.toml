@@ -3,22 +3,31 @@ name = "runic"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 
 [[example]]
 name = "ex1"
 
 [dependencies]
-bitvec = "1.0.1"
+bitvec = "1"
 egui = "0.28"
-flagset = "0.4.3"
-itertools = "0.10.3"
+flagset = "0.4"
+itertools = "0.13"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-eframe = { version = "0.1.0", path = "eframe-dynamic", package = "eframe-dynamic" }
-egui_extras = { version = "0.28", features = ["image"], default-features = false }
-image = { version = "0.25", features = ["png"], default-features = false }
-tracing-subscriber = "0.3.15"
+bevy = { version = "0.14", default-features = false, features = [
+  "bevy_asset",
+  "bevy_core_pipeline",
+  "bevy_render",
+  "bevy_state",
+  "bevy_text",
+  "bevy_ui",
+  "bevy_winit",
+  "default_font",
+  "multi_threaded",
+  "png",
+  "tonemapping_luts",
+  "x11",
+] }
+bevy_egui = "0.28"

@@ -9,7 +9,6 @@ edition = "2021"
 name = "ex1"
 
 [dependencies]
-bitvec = "1"
 egui = "0.28"
 flagset = "0.4"
 itertools = "0.13"

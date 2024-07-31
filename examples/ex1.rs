@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
-use bitvec::prelude::*;
 use egui::Ui;
 use flagset::FlagSet;
 use runic::*;
@@ -51,7 +50,7 @@ impl Runic {
         let boomerang = Item::new(
             next_id(),
             textures.add_image(asset_server.load("boomerang.png")),
-            Shape::from_bits(2, bits![1, 1, 1, 0]),
+            Shape::from_ones(2, [1, 1, 1, 0]),
         )
         // this item is a weapon
         .with_flags(ItemFlags::Weapon)

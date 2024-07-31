@@ -166,7 +166,7 @@ impl Item {
                             "point {:?} slot {} out of shape fill {}",
                             p,
                             slot,
-                            self.shape.fill
+                            self.shape
                         );
                         false
                     })

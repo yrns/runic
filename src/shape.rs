@@ -1,7 +1,5 @@
 use std::ops::{Add, Sub};
 
-use bitvec::prelude::*;
-
 // If the shape is completely filled it never needs to be rotated...
 
 // Need to store slices or make it generic over something? Or all
@@ -73,7 +71,7 @@ impl From<Vec2> for egui::Vec2 {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
     pub size: Vec2,
-    pub fill: BitVec,
+    pub fill: Vec<bool>,
 }
 
 impl Shape {
@@ -81,18 +79,30 @@ impl Shape {
         let size = size.into();
         assert!(size.x > 0, "width greater than zero");
         assert!(size.y > 0, "height greater than zero");
-        let len = size.len();
         Self {
             size,
-            fill: BitVec::repeat(fill, len),
+            fill: vec![fill; size.len()],
         }
     }
 
     // TODO check size is appropriate for bits, e.g. first/last
     // row/col are empty
-    pub fn from_bits(width: usize, bits: &BitSlice) -> Self {
-        assert!(bits.len() % width == 0, "is rect");
-        let fill = BitVec::from_bitslice(bits);
+    // pub fn from_bits(width: usize, bytes: &[u8]) -> Self {
+    //     assert!(bytes.len() % width == 0, "is rect");
+    //     let fill = BitVec::from_bytes(bytes);
+    //     Self {
+    //         size: (width, fill.len() / width).into(),
+    //         fill,
+    //     }
+    // }
+
+    pub fn from_ones(width: usize, ones: impl IntoIterator<Item = u8>) -> Self {
+        Self::from_width_slice(width, ones.into_iter().map(|a| a == 1))
+    }
+
+    pub fn from_width_slice(width: usize, fill: impl IntoIterator<Item = bool>) -> Self {
+        let fill: Vec<_> = fill.into_iter().collect();
+        assert!(fill.len() % width == 0, "is rect");
         Self {
             size: (width, fill.len() / width).into(),
             fill,
@@ -127,11 +137,7 @@ impl Shape {
                 .chunks_mut(w)
                 .map(|row| &mut row[..(other.width())])
                 .zip(other.fill.chunks(other.width()))
-                .for_each(|(r1, r2)| {
-                    r1.iter_mut()
-                        .zip(r2.iter())
-                        .for_each(|(mut a, b)| f(&mut *a, &*b))
-                })
+                .for_each(|(r1, r2)| r1.iter_mut().zip(r2.iter()).for_each(|(a, b)| f(a, b)))
         }
     }
 
@@ -180,63 +186,50 @@ impl Shape {
             .filter_map(|(i, b)| b.then_some(i))
     }
 
-    pub fn rows(&self) -> impl Iterator<Item = &BitSlice> + '_ {
-        self.fill.as_bitslice().chunks(self.width())
+    pub fn rows(&self) -> impl Iterator<Item = &[bool]> + '_ {
+        self.fill.as_slice().chunks(self.width())
     }
 
     // These are adapted from the image crate: https://github.com/image-rs/image/blob/master/src/imageops/affine.rs.
 
     pub fn rotate90(&self) -> Self {
         let (w, h) = (self.width(), self.height());
-        let mut dest = Self {
-            size: (h, w).into(),
-            fill: BitVec::repeat(false, self.fill.len()),
-        };
-        let slice = dest.fill.as_mut_bitslice();
+        let mut dest = Shape::new((h, w), false);
+        let slice = &mut dest.fill;
         for y in 0..h {
             for x in 0..w {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
-                slice.set(slot, b);
+                slice[slot] = b;
             }
         }
         dest
     }
 
-    #[allow(dead_code)]
     pub fn rotate180(&self) -> Self {
         let (w, h) = (self.width(), self.height());
-        let mut dest = Self {
-            size: (w, h).into(),
-            fill: BitVec::repeat(false, self.fill.len()),
-        };
-        let slice = dest.fill.as_mut_bitslice();
+        let mut dest = Shape::new((w, h), false);
         for y in 0..h {
             for x in 0..w {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
-                slice.set(slot, b);
+                dest.fill[slot] = b;
             }
         }
         dest
     }
 
-    #[allow(dead_code)]
     pub fn rotate270(&self) -> Self {
         let (w, h) = (self.width(), self.height());
-        let mut dest = Self {
-            size: (h, w).into(),
-            fill: BitVec::repeat(false, self.fill.len()),
-        };
-        let slice = dest.fill.as_mut_bitslice();
+        let mut dest = Shape::new((h, w), false);
         for y in 0..h {
             for x in 0..w {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
-                slice.set(slot, b);
+                dest.fill[slot] = b;
             }
         }
         dest
@@ -263,20 +256,20 @@ mod tests {
 
     #[test]
     fn from_bits() {
-        let shape = Shape::from_bits(2, bits![1, 1, 1, 1]);
+        let shape = Shape::from_ones(2, [1, 1, 1, 1]);
         assert!(shape.height() == 2);
     }
 
     #[test]
     #[should_panic]
-    fn from_bits_non_rect() {
-        let _ = Shape::from_bits(2, bits![1, 1, 1, 1, 1]);
+    fn from_ones_non_rect() {
+        let _ = Shape::from_ones(2, [1, 1, 1, 1, 1]);
     }
 
     #[test]
     fn fits() {
-        let a = Shape::from_bits(4, bits![1, 1, 0, 0, 1, 1, 0, 0]);
-        let b = Shape::from_bits(2, bits![1, 1, 1, 1]);
+        let a = Shape::from_ones(4, [1, 1, 0, 0, 1, 1, 0, 0]);
+        let b = Shape::from_ones(2, [1, 1, 1, 1]);
         assert!(a.fits(&b, a.slot((0, 0))) == false);
         assert!(a.fits(&b, a.slot((1, 0))) == false);
         assert!(a.fits(&b, a.slot((2, 0))) == true);
@@ -285,17 +278,17 @@ mod tests {
 
     #[test]
     fn paint() {
-        let mut a = Shape::from_bits(4, bits![0, 0, 0, 0]);
-        let b = Shape::from_bits(2, bits![1, 1]);
+        let mut a = Shape::from_ones(4, [0, 0, 0, 0]);
+        let b = Shape::from_ones(2, [1, 1]);
         a.paint(&b, 0);
-        assert_eq!(a, Shape::from_bits(4, bits![1, 1, 0, 0]));
+        assert_eq!(a, Shape::from_ones(4, [1, 1, 0, 0]));
     }
 
     #[test]
     fn unpaint() {
-        let mut a = Shape::from_bits(4, bits![0, 1, 1, 1]);
-        let b = Shape::from_bits(2, bits![1, 1]);
-        let res = Shape::from_bits(4, bits![0, 0, 1, 1]);
+        let mut a = Shape::from_ones(4, [0, 1, 1, 1]);
+        let b = Shape::from_ones(2, [1, 1]);
+        let res = Shape::from_ones(4, [0, 0, 1, 1]);
         a.unpaint(&b, 0);
         assert_eq!(a, res);
         a.unpaint(&b, 0);
@@ -304,20 +297,20 @@ mod tests {
 
     #[test]
     fn slots_iter() {
-        let a = Shape::from_bits(2, bits![1, 1, 1, 1]);
-        assert_eq!(a.slots().collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+        let a = Shape::from_ones(2, [1, 1, 1, 1]);
+        itertools::assert_equal(a.slots(), [0, 1, 2, 3]);
     }
 
     #[test]
     fn rotate() {
-        let a = Shape::from_bits(2, bits![1, 0, 0, 0]);
-        assert_eq!(a.rotate90(), Shape::from_bits(2, bits![0, 1, 0, 0]));
-        assert_eq!(a.rotate180(), Shape::from_bits(2, bits![0, 0, 0, 1]));
-        assert_eq!(a.rotate270(), Shape::from_bits(2, bits![0, 0, 1, 0]));
+        let a = Shape::from_ones(2, [1, 0, 0, 0]);
+        assert_eq!(a.rotate90(), Shape::from_ones(2, [0, 1, 0, 0]));
+        assert_eq!(a.rotate180(), Shape::from_ones(2, [0, 0, 0, 1]));
+        assert_eq!(a.rotate270(), Shape::from_ones(2, [0, 0, 1, 0]));
 
-        let a = Shape::from_bits(3, bits![1, 0, 0]);
-        assert_eq!(a.rotate90(), Shape::from_bits(1, bits![1, 0, 0]));
-        assert_eq!(a.rotate180(), Shape::from_bits(3, bits![0, 0, 1]));
-        assert_eq!(a.rotate270(), Shape::from_bits(1, bits![0, 0, 1]));
+        let a = Shape::from_ones(3, [1, 0, 0]);
+        assert_eq!(a.rotate90(), Shape::from_ones(1, [1, 0, 0]));
+        assert_eq!(a.rotate180(), Shape::from_ones(3, [0, 0, 1]));
+        assert_eq!(a.rotate270(), Shape::from_ones(1, [0, 0, 1]));
     }
 }

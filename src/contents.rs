@@ -123,20 +123,32 @@ pub trait Contents {
         //     _ => (), // we could be dragging something else
         // }
 
+        let accepts = drag_item
+            .as_ref()
+            .map(|drag| self.accepts(&drag.item))
+            .unwrap_or_default();
+
+        // Highlight the contents border if we can accept the dragged item.
+        let style = ui.style_mut();
+        if accepts {
+            // TODO move this to settings?
+            style.visuals.widgets.noninteractive.bg_stroke =
+                style.visuals.widgets.hovered.bg_stroke;
+        }
+
         // We have all the information we need to set the style from
         // the MoveData/drag_item, so we could do that internal to
         // with_bg... ItemResponse::Item would need to be
         // preserved. Also, with_item_shadow()?
-        with_bg(ui, |style, mut ui| {
+        egui::Frame::group(style).show(ui, |ui| {
             // The item shadow becomes the target item, not the dragged
             // item, for drag-to-item?
 
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let InnerResponse { inner, response } = self.body(ctx, drag_item, items, &mut ui);
-
-            let min_rect = ui.min_rect();
+            let InnerResponse { inner, response } = self.body(ctx, drag_item, items, ui);
+            let min_rect = response.rect;
 
             // If we are dragging onto another item, check to see if
             // the dragged item will fit anywhere within its contents.
@@ -175,6 +187,19 @@ pub trait Contents {
             // accepts, and only check fits for hover
             let dragging = drag_item.is_some();
 
+            let mut move_data = MoveData {
+                drag: match inner {
+                    // TODO NewDrag?
+                    Some(ItemResponse::Drag(drag)) => Some(drag),
+                    _ => None,
+                },
+                ..Default::default()
+            };
+
+            if !dragging {
+                return move_data;
+            }
+
             // `contains_pointer` does not work for the target because only the dragged items'
             // response will contain the pointer.
             let slot = // response.contains_pointer()
@@ -184,11 +209,6 @@ pub trait Contents {
                 // the hover includes the outer_rect?
                 .filter(|p| min_rect.contains(*p))
                 .map(|p| self.slot(p - min_rect.min));
-
-            let accepts = drag_item
-                .as_ref()
-                .map(|drag| self.accepts(&drag.item))
-                .unwrap_or_default();
 
             let (id, eid, _) = ctx;
 
@@ -210,18 +230,6 @@ pub trait Contents {
                 }
             }
 
-            // Is response.hovered() ever true when dragging?
-            if !(dragging && accepts && response.hovered()) {
-                *style = ui.visuals().widgets.inactive;
-            };
-
-            if dragging && accepts {
-                // gray out:
-                style.bg_fill = tint_color_towards(style.bg_fill, ui.visuals().window_fill());
-                style.bg_stroke.color =
-                    tint_color_towards(style.bg_stroke.color, ui.visuals().window_fill());
-            }
-
             // Only send target on release?
             let released = ui.input(|i| i.pointer.any_released());
             if released && fits && !accepts {
@@ -232,23 +240,17 @@ pub trait Contents {
                 );
             }
 
-            // if released {
-            //     dbg!(dragging, accepts, slot, fits);
-            // }
-
             // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
 
-            MoveData {
-                drag: match inner {
-                    Some(ItemResponse::Drag(drag)) => Some(drag),
-                    _ => None,
-                },
-                // The target eid is unused..? dragging implied...
-                target: (dragging && accepts && fits).then(|| (id, slot.unwrap(), eid)),
-                add_fn: (accepts && fits)
-                    .then(|| self.add(ctx, slot.unwrap()))
-                    .flatten(),
+            match slot {
+                Some(slot) if accepts && fits => {
+                    // The target eid is unused?
+                    move_data.target = Some((id, slot, eid));
+                    move_data.add_fn = self.add(ctx, slot);
+                }
+                _ => (),
             }
+            move_data
         })
     }
 }

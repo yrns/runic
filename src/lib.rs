@@ -251,35 +251,6 @@ impl IntoContext for Context {
     }
 }
 
-// Add contents inside a styled background with a margin. The style is
-// mutable so it can be modified based on the contents.
-pub fn with_bg<R>(
-    ui: &mut egui::Ui,
-    add_contents: impl FnOnce(&mut egui::style::WidgetVisuals, &mut egui::Ui) -> R,
-) -> InnerResponse<R> {
-    let margin = egui::Vec2::splat(4.0);
-    let outer_rect = ui.available_rect_before_wrap();
-    let inner_rect = outer_rect.shrink2(margin);
-
-    // Reserve a shape for the background so it draws first.
-    let bg = ui.painter().add(egui::Shape::Noop);
-    let mut content_ui = ui.child_ui(inner_rect, *ui.layout(), None);
-
-    // Draw contents.
-    let mut style = ui.visuals().widgets.active;
-    let inner = add_contents(&mut style, &mut content_ui);
-
-    let outer_rect = content_ui.min_rect().expand2(margin);
-    let (rect, response) = ui.allocate_exact_size(outer_rect.size(), egui::Sense::hover());
-
-    ui.painter().set(
-        bg,
-        egui::epaint::RectShape::new(rect, style.rounding, style.bg_fill, style.bg_stroke),
-    );
-
-    InnerResponse::new(inner, response)
-}
-
 pub fn find_slot_default<'a, T>(
     contents: &T,
     ctx: Context,

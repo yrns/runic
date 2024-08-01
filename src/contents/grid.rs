@@ -1,6 +1,4 @@
-use egui::ecolor::Color32;
-
-use crate::*;
+use super::*;
 
 #[derive(Clone, Debug)]
 pub struct GridContents {

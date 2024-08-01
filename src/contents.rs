@@ -11,7 +11,7 @@ pub use header::*;
 pub use inline::*;
 pub use section::*;
 
-use egui::ecolor::*;
+use egui::ecolor::{tint_color_towards, Color32};
 
 /// A widget to display the contents of a container.
 pub trait Contents {
@@ -87,7 +87,7 @@ pub trait Contents {
         _drag_item: &Option<DragItem>,
         _items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>> {
+    ) -> InnerResponse<Option<ItemResponse>> {
         // never used
         InnerResponse::new(None, ui.label("❓"))
     }
@@ -105,7 +105,7 @@ pub trait Contents {
         // have items w/o a layout or vice-versa).
         items: &[(usize, Item)],
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<MoveData> {
+    ) -> InnerResponse<MoveData> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
         // dragged_id will be unset before drag_item for one frame.
 
@@ -134,7 +134,7 @@ pub trait Contents {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let egui::InnerResponse { inner, response } = self.body(ctx, drag_item, items, &mut ui);
+            let InnerResponse { inner, response } = self.body(ctx, drag_item, items, &mut ui);
 
             let min_rect = ui.min_rect();
 

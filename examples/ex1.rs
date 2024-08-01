@@ -14,18 +14,18 @@ struct Runic {
 
 fn main() {
     App::new()
-        .insert_resource(WinitSettings::desktop_app())
+        .insert_resource(WinitSettings::default())
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin)
         // .insert_resource(Runic::new())
         .add_systems(Startup, setup)
         .add_systems(Update, update)
-        .add_systems(
-            Last,
-            redraw
-                //.run_if(on_event::<AssetEvent<Image>>())
-                .after(Assets::<Image>::asset_events),
-        )
+        // .add_systems(
+        //     Last,
+        //     redraw
+        //         //.run_if(on_event::<AssetEvent<Image>>())
+        //         .after(Assets::<Image>::asset_events),
+        // )
         .run();
 }
 
@@ -37,7 +37,8 @@ fn setup(
     commands.insert_resource(Runic::new(&*asset_server, &mut *textures));
 }
 
-// This isn't actually reliable, but it helps.
+// This isn't actually reliable.
+#[allow(unused)]
 fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<RequestRedraw>) {
     for _e in events.read() {
         // dbg!(e);

@@ -59,8 +59,7 @@ impl Runic {
         let pouch = Item::new(
             next_id(),
             textures.add_image(asset_server.load("pouch.png")),
-            // TODO: from vec2?
-            Shape::new((2, 2), true),
+            (2, 2),
         )
         // this item is a container
         .with_flags(ItemFlags::Container)
@@ -69,7 +68,7 @@ impl Runic {
         let short_sword = Item::new(
             next_id(),
             textures.add_image(asset_server.load("short-sword.png")),
-            Shape::new((3, 1), true),
+            (3, 1),
         )
         // this item is a weapon
         .with_flags(ItemFlags::Weapon)
@@ -79,7 +78,7 @@ impl Runic {
         let potion = Item::new(
             next_id(),
             textures.add_image(asset_server.load("potion.png")),
-            Shape::new((1, 1), true),
+            (1, 1),
         )
         .with_flags(ItemFlags::Potion)
         .with_name("Potion");

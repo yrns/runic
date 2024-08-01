@@ -31,11 +31,11 @@ pub enum ItemResponse {
 }
 
 impl Item {
-    pub fn new(id: usize, icon: TextureId, shape: shape::Shape) -> Self {
+    pub fn new(id: usize, icon: TextureId, shape: impl Into<Shape>) -> Self {
         Self {
             id,
             rotation: Default::default(),
-            shape,
+            shape: shape.into(),
             icon,
             flags: FlagSet::default(),
             name: Default::default(),

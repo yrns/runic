@@ -250,6 +250,18 @@ impl std::fmt::Display for Shape {
     }
 }
 
+impl From<Vec2> for Shape {
+    fn from(size: Vec2) -> Self {
+        Shape::new(size, true)
+    }
+}
+
+impl From<(usize, usize)> for Shape {
+    fn from(size: (usize, usize)) -> Self {
+        Shape::new(size, true)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

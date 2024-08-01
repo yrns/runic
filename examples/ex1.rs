@@ -1,4 +1,4 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, window::RequestRedraw, winit::WinitSettings};
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
 use egui::Ui;
 use flagset::FlagSet;
@@ -14,11 +14,18 @@ struct Runic {
 
 fn main() {
     App::new()
+        .insert_resource(WinitSettings::desktop_app())
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin)
         // .insert_resource(Runic::new())
         .add_systems(Startup, setup)
         .add_systems(Update, update)
+        .add_systems(
+            Last,
+            redraw
+                //.run_if(on_event::<AssetEvent<Image>>())
+                .after(Assets::<Image>::asset_events),
+        )
         .run();
 }
 
@@ -28,6 +35,14 @@ fn setup(
     mut textures: ResMut<EguiUserTextures>,
 ) {
     commands.insert_resource(Runic::new(&*asset_server, &mut *textures));
+}
+
+// This isn't actually reliable, but it helps.
+fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<RequestRedraw>) {
+    for _e in events.read() {
+        // dbg!(e);
+        redraw.send(RequestRedraw);
+    }
 }
 
 fn update(mut contexts: EguiContexts, mut runic: ResMut<Runic>, mut _move_data: Local<MoveData>) {

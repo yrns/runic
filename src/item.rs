@@ -188,7 +188,7 @@ impl Item {
                     return Some(ItemResponse::NewDrag(self.clone().rotate()));
                 }
                 if response.hovered() {
-                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
                 drag_item
                     .as_ref()
@@ -197,7 +197,7 @@ impl Item {
                 None
             }
         } else {
-            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
+            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
 
             // pos - pos = vec
             // pos + pos = error
@@ -211,14 +211,15 @@ impl Item {
                 Some(p) => {
                     // from egui::containers::show_tooltip_area_dyn
                     let _resp = egui::containers::Area::new(id)
-                        .order(egui::Order::Tooltip)
+                        // .order(egui::Order::Tooltip)
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
                         // item in roughly the same place.
-                        .fixed_pos(p - item_size() * 0.25)
+                        .fixed_pos(p - item_size() * 0.2)
                         .interactable(false)
-                        // Restrict to ContainerShape?
-                        .constrain_to(egui::Rect::EVERYTHING)
+                        .movable(false)
+                        // Restrict to ContainerSpace?
+                        .constrain(true)
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
 
                     // Still allocate the original size for expanding

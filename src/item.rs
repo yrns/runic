@@ -140,7 +140,14 @@ impl Item {
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
         let id = self.eid();
-        let drag = ui.ctx().is_being_dragged(id);
+
+        // This was a bug: "being dragged" is false on the frame in which we release the button.
+        // This means that if we dragged the item onto itself, it would return a hover and prevent a
+        // move.
+        // let drag = ui.ctx().is_being_dragged(id);
+
+        let drag = drag_item.as_ref().is_some_and(|d| d.item.id == self.id);
+
         if !drag {
             // This does not work.
             // ui.push_id(self.id, |ui| self.body(drag_item, ui))
@@ -176,6 +183,10 @@ impl Item {
             if filled {
                 let response = ui.interact(response.rect, id, egui::Sense::drag());
                 let response = response.on_hover_text_at_pointer(format!("{}", self));
+                if response.drag_started() {
+                    // This clones the shape twice...
+                    return Some(ItemResponse::NewDrag(self.clone().rotate()));
+                }
                 if response.hovered() {
                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
                 }
@@ -225,12 +236,7 @@ impl Item {
                 drag_item.is_none() || drag_item.as_ref().map(|drag| drag.item.id) == Some(self.id)
             );
 
-            // Only send back a clone if this is a new drag (drag_item
-            // is empty):
-            drag_item
-                .is_none()
-                // This clones the shape twice...
-                .then(|| ItemResponse::NewDrag(self.clone().rotate()))
+            None
         }
     }
 

@@ -71,7 +71,7 @@ impl Contents for ExpandingContents {
             && ctx
                 .data(|d| d.get_temp::<Filled>(eid).unwrap_or_default())
                 .0;
-        slot == 0 && !filled && drag.item.shape.size.le(&self.max_size)
+        slot == 0 && !filled && drag.item.shape.size.cmple(self.max_size).all()
     }
 
     fn body(

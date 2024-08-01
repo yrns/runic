@@ -1,5 +1,3 @@
-use std::ops::{Add, Sub};
-
 // If the shape is completely filled it never needs to be rotated...
 
 // Need to store slices or make it generic over something? Or all
@@ -10,63 +8,7 @@ use std::ops::{Add, Sub};
 //     fill: bits![1],
 // };
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct Vec2 {
-    pub x: u8,
-    pub y: u8,
-}
-
-impl Vec2 {
-    pub fn len(&self) -> usize {
-        self.x as usize * self.y as usize
-    }
-
-    pub fn le(&self, other: &Self) -> bool {
-        self.x <= other.x && self.y <= other.y
-    }
-}
-
-impl Add for Vec2 {
-    type Output = Self;
-
-    #[inline]
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-}
-
-impl Sub for Vec2 {
-    type Output = Self;
-
-    #[inline]
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x.saturating_sub(rhs.x),
-            y: self.y.saturating_sub(rhs.y),
-        }
-    }
-}
-
-impl From<(usize, usize)> for Vec2 {
-    fn from(from: (usize, usize)) -> Self {
-        Self {
-            x: from.0 as u8,
-            y: from.1 as u8,
-        }
-    }
-}
-
-impl From<Vec2> for egui::Vec2 {
-    fn from(v: Vec2) -> Self {
-        egui::Vec2 {
-            x: v.x as f32,
-            y: v.y as f32,
-        }
-    }
-}
+pub use glam::U16Vec2 as Vec2;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
@@ -81,7 +23,7 @@ impl Shape {
         assert!(size.y > 0, "height greater than zero");
         Self {
             size,
-            fill: vec![fill; size.len()],
+            fill: vec![fill; size.element_product() as usize],
         }
     }
 
@@ -104,7 +46,7 @@ impl Shape {
         let fill: Vec<_> = fill.into_iter().collect();
         assert!(fill.len() % width == 0, "is rect");
         Self {
-            size: (width, fill.len() / width).into(),
+            size: [width as u16, (fill.len() / width) as u16].into(),
             fill,
         }
     }
@@ -127,7 +69,7 @@ impl Shape {
     fn overlay_range(&self, other: &Shape, slot: usize) -> Option<(usize, usize)> {
         let p1 = self.pos(slot);
         let p2 = p1 + other.size;
-        (self.contains(p1) && self.contains(p2)).then(|| (slot, self.slot(p2 - (1, 1).into())))
+        (self.contains(p1) && self.contains(p2)).then(|| (slot, self.slot(p2 - Vec2::ONE)))
     }
 
     pub fn overlay_mut(&mut self, other: &Shape, slot: usize, f: impl Fn(&mut bool, &bool)) {
@@ -175,7 +117,7 @@ impl Shape {
 
     #[inline]
     pub fn pos(&self, slot: usize) -> Vec2 {
-        (slot % self.width(), slot / self.width()).into()
+        [(slot % self.width()) as u16, (slot / self.width()) as u16].into()
     }
 
     /// Returns an iterator over filled slots.
@@ -193,7 +135,7 @@ impl Shape {
     // These are adapted from the image crate: https://github.com/image-rs/image/blob/master/src/imageops/affine.rs.
 
     pub fn rotate90(&self) -> Self {
-        let (w, h) = (self.width(), self.height());
+        let Vec2 { x: w, y: h } = self.size;
         let mut dest = Shape::new((h, w), false);
         let slice = &mut dest.fill;
         for y in 0..h {
@@ -201,35 +143,35 @@ impl Shape {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
-                slice[slot] = b;
+                slice[slot as usize] = b;
             }
         }
         dest
     }
 
     pub fn rotate180(&self) -> Self {
-        let (w, h) = (self.width(), self.height());
+        let Vec2 { x: w, y: h } = self.size;
         let mut dest = Shape::new((w, h), false);
         for y in 0..h {
             for x in 0..w {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
-                dest.fill[slot] = b;
+                dest.fill[slot as usize] = b;
             }
         }
         dest
     }
 
     pub fn rotate270(&self) -> Self {
-        let (w, h) = (self.width(), self.height());
+        let Vec2 { x: w, y: h } = self.size;
         let mut dest = Shape::new((h, w), false);
         for y in 0..h {
             for x in 0..w {
                 let b = self.fill[self.slot((x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
-                dest.fill[slot] = b;
+                dest.fill[slot as usize] = b;
             }
         }
         dest
@@ -257,8 +199,8 @@ impl From<Vec2> for Shape {
 }
 
 impl From<(usize, usize)> for Shape {
-    fn from(size: (usize, usize)) -> Self {
-        Shape::new(size, true)
+    fn from((w, h): (usize, usize)) -> Self {
+        Shape::new(Vec2::new(w as u16, h as u16), true)
     }
 }
 

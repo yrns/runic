@@ -48,7 +48,7 @@ fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
 
 impl Contents for GridContents {
     fn len(&self) -> usize {
-        self.size.len()
+        self.size.element_product() as usize
     }
 
     // ctx and target are the same...
@@ -138,7 +138,7 @@ impl Contents for GridContents {
     ) -> egui::InnerResponse<Option<ItemResponse>> {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
-            egui::Vec2::from(self.size) * ITEM_SIZE,
+            (self.size.as_vec2() * ITEM_SIZE).as_ref().into(),
             egui::Sense::hover(),
         );
 

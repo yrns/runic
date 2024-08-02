@@ -242,7 +242,7 @@ impl Item {
     }
 
     // This returns a clone every time, even if not rotated.
-    fn shape(&self) -> shape::Shape {
+    pub fn shape(&self) -> shape::Shape {
         match self.rotation {
             ItemRotation::None => self.shape.clone(),
             ItemRotation::R90 => self.shape.rotate90(),

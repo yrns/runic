@@ -118,7 +118,7 @@ impl Contents for GridContents {
             items
                 .into_iter()
                 .fold(Shape::new(self.size, false), |mut shape, (slot, item)| {
-                    shape.paint(&item.shape, *slot);
+                    shape.paint(&item.shape(), *slot);
                     shape
                 })
         };
@@ -189,7 +189,7 @@ impl Contents for GridContents {
 
                     // Paint each item and fill our shape if needed.
                     if fill {
-                        shape.paint(&item.shape, slot);
+                        shape.paint(&item.shape(), slot);
                     }
 
                     let item_rect =

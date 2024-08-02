@@ -88,7 +88,7 @@ impl Runic {
         )
         // this item is a weapon
         .with_flags(ItemFlags::Weapon)
-        //.with_rotation(ItemRotation::R90);
+        .with_rotation(ItemRotation::R90)
         .with_name("Short sword");
 
         let potion = Item::new(

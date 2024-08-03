@@ -119,12 +119,14 @@ impl Item {
 
         // Scale down slightly even when not dragging in lieu of baking a border into every item
         // icon. TODO This needs to be configurable.
-        let drag_scale = if dragging { 0.84 } else { 0.94 };
+        let drag_scale = ui
+            .ctx()
+            // ui.id() is diff while dragging...
+            .animate_bool(self.eid().with("scale"), dragging);
 
         if ui.is_rect_visible(rect) {
             // This size is a hint and isn't used since the image is always(?) already loaded.
-            let image =
-                egui::Image::new((self.icon, size)).fit_to_fraction(egui::Vec2::splat(drag_scale));
+            let image = egui::Image::new((self.icon, size));
             let image = if dragging {
                 image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
             } else {
@@ -132,7 +134,10 @@ impl Item {
             };
 
             // Scale down if dragging from center.
-            let rect = egui::Rect::from_center_size(rect.center(), rect.size() * drag_scale);
+            let rect = egui::Rect::from_center_size(
+                rect.center(),
+                rect.size() * egui::lerp(0.98..=0.88, drag_scale),
+            );
 
             // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug
             // in egui...

@@ -54,7 +54,7 @@ impl Contents for GridContents {
     // ctx and target are the same...
     fn add(&self, _ctx: Context, _slot: usize) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, drag, (_c, slot, eid)| {
-            add_shape(ctx, eid, slot, &drag.item.shape)
+            add_shape(ctx, eid, slot, &drag.item.shape())
         }))
     }
 
@@ -65,11 +65,11 @@ impl Contents for GridContents {
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
-        xy(slot, self.size.x as usize) * ITEM_SIZE
+        xy(slot, self.size.x as usize) * SLOT_SIZE
     }
 
     fn slot(&self, p: egui::Vec2) -> usize {
-        let p = p / ITEM_SIZE;
+        let p = p / SLOT_SIZE;
         p.x as usize + p.y as usize * self.size.x as usize
     }
 
@@ -97,7 +97,7 @@ impl Contents for GridContents {
                     _ => &shape,
                 };
 
-                shape.fits(&drag.item.shape, slot)
+                shape.fits(&drag.item.shape(), slot)
             }
             None => {
                 // TODO remove this
@@ -138,7 +138,7 @@ impl Contents for GridContents {
     ) -> egui::InnerResponse<Option<ItemResponse>> {
         // allocate the full container size
         let (rect, response) = ui.allocate_exact_size(
-            (self.size.as_vec2() * ITEM_SIZE).as_ref().into(),
+            (self.size.as_vec2() * SLOT_SIZE).as_ref().into(),
             egui::Sense::hover(),
         );
 
@@ -158,6 +158,7 @@ impl Contents for GridContents {
                 shape::Shape::new(self.size, false)
             });
 
+            // Debug container "shape", AKA filled slots.
             if ui.ctx().debug_on_hover() {
                 if !fill {
                     // Use the cached shape if the dragged item is ours. This
@@ -175,25 +176,40 @@ impl Contents for GridContents {
                         ui.min_rect(),
                         egui::Vec2::ZERO,
                         Color32::DARK_BLUE,
-                        ITEM_SIZE,
+                        SLOT_SIZE,
                     ));
                 }
             }
-
-            let item_size = item_size();
 
             let new_drag = items
                 .iter()
                 .map(|(slot, item)| {
                     let slot = slot - offset;
 
+                    // If this item is being dragged, we want to use the dragged rotation.
+                    // Everything else should be the same.
+                    let (dragged, item) = drag_item
+                        .as_ref()
+                        .filter(|d| d.item.id == item.id)
+                        .map(|d| (true, &d.item))
+                        .unwrap_or((false, item));
+
                     // Paint each item and fill our shape if needed.
-                    if fill {
+                    if !dragged && fill {
                         shape.paint(&item.shape(), slot);
                     }
 
-                    let item_rect =
-                        egui::Rect::from_min_size(ui.min_rect().min + self.pos(slot), item_size);
+                    let item_rect = egui::Rect::from_min_size(
+                        ui.min_rect().min + self.pos(slot),
+                        if dragged {
+                            // Only allocate the slot otherwise we'll blow out the contents if it
+                            // doesn't fit.
+                            slot_size()
+                        } else {
+                            item.size_rotated()
+                        },
+                    );
+
                     // item returns a clone if it's being dragged
                     ui.allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
                         .inner
@@ -218,7 +234,7 @@ impl Contents for GridContents {
                             // The dragged item shape is already rotated. We
                             // clone it to retain the original rotation for
                             // removal.
-                            let item_shape = item.shape.clone();
+                            let item_shape = item.shape();
                             let mut cshape = shape.clone();
                             // We've already cloned the item and we're cloning
                             // the shape again to rotate? Isn't it already rotated?

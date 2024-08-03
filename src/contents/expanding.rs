@@ -114,7 +114,7 @@ impl Contents for ExpandingContents {
             _ => (
                 None,
                 // Should the empty size be some minimum value? Or the max?
-                ui.allocate_exact_size(item_size(), egui::Sense::hover()).1,
+                ui.allocate_exact_size(slot_size(), egui::Sense::hover()).1,
             ),
         };
 

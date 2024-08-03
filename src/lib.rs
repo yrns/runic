@@ -11,11 +11,10 @@ pub use contents::*;
 pub use item::*;
 pub use shape::*;
 
-pub const ITEM_SIZE: f32 = 48.0;
+pub const SLOT_SIZE: f32 = 48.0;
 
-// static? rename slot_size?
-pub fn item_size() -> egui::Vec2 {
-    egui::vec2(ITEM_SIZE, ITEM_SIZE)
+pub const fn slot_size() -> egui::Vec2 {
+    egui::vec2(SLOT_SIZE, SLOT_SIZE)
 }
 
 pub type ContainerId = usize;
@@ -146,13 +145,17 @@ impl ContainerSpace {
         if ui.input(|i| i.key_pressed(egui::Key::R)) {
             if let Some(DragItem { item, .. }) = drag_item.as_mut() {
                 item.rotation = item.rotation.increment();
-                item.shape = item.shape.rotate90();
+                // item.shape = item.shape.rotate90();
             }
         }
 
         // Toggle debug.
         if ui.input(|i| i.key_pressed(egui::Key::D)) {
-            ui.ctx().set_debug_on_hover(!ui.ctx().debug_on_hover());
+            let b = !ui.ctx().debug_on_hover();
+            ui.ctx().style_mut(|s| {
+                s.debug.debug_on_hover = b;
+                s.debug.show_expand_width = b;
+            });
         }
 
         // If the pointer is released, take drag_item.
@@ -188,12 +191,12 @@ pub fn paint_shape(
     let offset = grid_rect.min + offset;
     shape
         .slots()
-        .map(|slot| offset + xy(slot, shape.width()) * ITEM_SIZE)
+        .map(|slot| offset + xy(slot, shape.width()) * SLOT_SIZE)
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
         // It does not matter if we don't use all the shape indices.
         .zip(idxs.iter())
         .for_each(|(p, idx)| {
-            let slot_rect = egui::Rect::from_min_size(p, item_size());
+            let slot_rect = egui::Rect::from_min_size(p, slot_size());
             // ui.painter()
             //     .rect(slot_rect, 0., color, egui::Stroke::none())
             ui.painter()

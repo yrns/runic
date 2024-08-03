@@ -220,14 +220,12 @@ pub trait Contents {
 
             // Paint the dragged item's shadow, showing which slots will
             // be filled.
-            if let Some(drag) = drag_item {
-                if let Some(slot) = slot {
-                    let color = self.shadow_color(accepts, fits, ui);
-                    ui.painter().set(
-                        shadow,
-                        shape_mesh(&drag.item.shape, min_rect, self.pos(slot), color, ITEM_SIZE),
-                    );
-                }
+            if let Some((drag, slot)) = drag_item.as_ref().zip(slot) {
+                let color = self.shadow_color(accepts, fits, ui);
+                // Use the rotated shape.
+                let shape = drag.item.shape();
+                let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
+                ui.painter().set(shadow, mesh);
             }
 
             // Only send target on release?

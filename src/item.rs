@@ -71,17 +71,17 @@ impl Item {
     // TODO check uses of this and make sure the rotation is right
     pub fn size(&self) -> egui::Vec2 {
         egui::Vec2::new(
-            self.shape.width() as f32 * ITEM_SIZE,
-            self.shape.height() as f32 * ITEM_SIZE,
+            self.shape.width() as f32 * SLOT_SIZE,
+            self.shape.height() as f32 * SLOT_SIZE,
         )
     }
 
     // DragItem is already rotated, so this should never be used in
     // that case. It would be nice to enforce this via type.
     pub fn size_rotated(&self) -> egui::Vec2 {
-        match (self.size(), self.rotation) {
-            (egui::Vec2 { x, y }, ItemRotation::R90 | ItemRotation::R270) => egui::vec2(y, x),
-            (size, _) => size,
+        match self.rotation {
+            ItemRotation::R90 | ItemRotation::R270 => self.size().yx(),
+            _ => self.size(),
         }
     }
 
@@ -93,49 +93,46 @@ impl Item {
         }
     }
 
-    pub fn body(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> egui::Vec2 {
-        // the demo adds a context menu here for removing items
-        // check the response id is the item id?
-        //ui.add(egui::Label::new(format!("item {}", self.id)).sense(egui::Sense::click()))
+    const PIVOT: egui::Vec2 = egui::Vec2::splat(0.5);
 
-        let (dragging, rot) = match drag_item.as_ref() {
-            Some(drag) if drag.item.id == self.id => (true, drag.item.rotation),
-            _ => (false, self.rotation),
-        };
-
-        // let image = if dragging {
-        //     image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.5))
-        // } else {
-        //     image
+    pub fn body(
+        &self,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> InnerResponse<egui::Vec2> {
+        // let (dragging, item) = match drag_item.as_ref() {
+        //     Some(drag) if drag.item.id == self.id => (true, &drag.item),
+        //     _ => (false, self),
         // };
+        let dragging = drag_item.as_ref().is_some_and(|d| d.item.id == self.id);
 
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
-        let size = rot.size(self.size());
-        let (rect, _response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let size = self.size_rotated();
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
-        // Image::rotate was problematic for non-square images. Rather
-        // than rotate the mesh, reassign uvs.
         if ui.is_rect_visible(rect) {
-            let mut mesh = egui::Mesh::with_texture(self.icon);
-            // Scale down slightly when dragged to see the
-            // background. Animate this and the drag-shift to cursor?
-            let drag_scale = if dragging { 0.8 } else { 1.0 };
+            // This size is a hint and isn't used since the image is always(?) already loaded.
+            let image = egui::Image::new((self.icon, size));
+            let image = if dragging {
+                image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
+            } else {
+                image
+            };
 
-            mesh.add_rect_with_uv(
-                egui::Rect::from_min_size(rect.min, size * drag_scale),
-                egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1.0, 1.0)),
-                egui::Color32::WHITE,
-            );
-
-            for (v, uv) in mesh.vertices.iter_mut().zip(rot.uvs().iter()) {
-                v.uv = *uv;
-            }
-
-            ui.painter().add(egui::Shape::mesh(mesh));
+            // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug
+            // in egui...
+            match self.rotation {
+                ItemRotation::None => image.paint_at(ui, rect),
+                r @ ItemRotation::R180 => image.rotate(r.angle(), Self::PIVOT).paint_at(ui, rect),
+                r @ _ => image.rotate(r.angle(), Self::PIVOT).paint_at(
+                    ui,
+                    egui::Rect::from_center_size(rect.center(), rect.size().yx()),
+                ),
+            };
         }
 
-        size
+        InnerResponse::new(size, response)
     }
 
     pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
@@ -155,7 +152,8 @@ impl Item {
             //     .interact(egui::Sense::drag())
             //     .on_hover_cursor(egui::CursorIcon::Grab);
 
-            let response = ui.scope(|ui| self.body(drag_item, ui)).response;
+            // let response = ui.scope(|ui| self.body(drag_item, ui)).response;
+            let response = self.body(drag_item, ui).response;
 
             // Figure out what slot we're in, see if it's filled,
             // don't sense drag if not.
@@ -165,7 +163,7 @@ impl Item {
                 .filter(|p| response.rect.contains(*p))
                 .map(|p| {
                     // This is roughly <GridContents as Contents>::slot?
-                    let p = (p - response.rect.min) / ITEM_SIZE;
+                    let p = (p - response.rect.min) / SLOT_SIZE;
                     let slot = p.x as usize + p.y as usize * self.width();
                     self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
                         // FIX This occurs somewhere on drag/mouseover.
@@ -185,7 +183,7 @@ impl Item {
                 let response = response.on_hover_text_at_pointer(format!("{}", self));
                 if response.drag_started() {
                     // This clones the shape twice...
-                    return Some(ItemResponse::NewDrag(self.clone().rotate()));
+                    return Some(ItemResponse::NewDrag(self.clone()));
                 }
                 if response.hovered() {
                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
@@ -197,6 +195,8 @@ impl Item {
                 None
             }
         } else {
+            // Half of these cursors do not work in X11. See about using custom cursors in bevy and
+            // sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
             ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
 
             // pos - pos = vec
@@ -215,11 +215,12 @@ impl Item {
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
                         // item in roughly the same place.
-                        .fixed_pos(p - item_size() * 0.2)
+                        .fixed_pos(p - slot_size() * 0.2)
                         .interactable(false)
                         .movable(false)
                         // Restrict to ContainerSpace?
-                        .constrain(true)
+                        //.constrain(true) // FIX this is wrong
+                        //.default_size(self.size_rotated())
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
 
                     // Still allocate the original size for expanding
@@ -233,9 +234,9 @@ impl Item {
 
             // make sure there is no existing drag_item or it matches
             // our id
-            assert!(
-                drag_item.is_none() || drag_item.as_ref().map(|drag| drag.item.id) == Some(self.id)
-            );
+            // assert!(
+            //     drag_item.is_none() || drag_item.as_ref().map(|drag| drag.item.id) == Some(self.id)
+            // );
 
             None
         }
@@ -252,6 +253,7 @@ impl Item {
     }
 
     // Rotate the (dragged) shape to match the item's rotation.
+    #[allow(unused)]
     fn rotate(mut self) -> Self {
         self.shape = self.shape();
         self

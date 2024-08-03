@@ -44,10 +44,12 @@ impl Contents for ExpandingContents {
     //     // ctx.data().insert_temp(self.eid(), false);
     // }
 
+    // Expanding contents only ever has one slot.
     fn pos(&self, _slot: usize) -> egui::Vec2 {
         egui::Vec2::ZERO
     }
 
+    // Expanding contents only ever has one slot.
     fn slot(&self, _offset: egui::Vec2) -> usize {
         0
     }
@@ -71,31 +73,42 @@ impl Contents for ExpandingContents {
             && ctx
                 .data(|d| d.get_temp::<Filled>(eid).unwrap_or_default())
                 .0;
-        slot == 0 && !filled && drag.item.shape.size.cmple(self.max_size).all()
+        let size = drag.item.shape_size();
+        slot == 0 && !filled && size.cmple(self.max_size).all()
     }
 
     fn body(
         &self,
-        (id, eid, offset): Context,
+        ctx: Context,
         drag_item: &Option<DragItem>,
         items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
         let item = items.first();
 
+        let (id, eid, offset) = ctx;
         ui.data_mut(|d| d.insert_temp(eid, Filled(item.is_some())));
 
         assert!(items.len() <= 1);
 
-        // is_rect_visible?
+        // is_rect_visible? TODO
         let (new_drag, response) = match item {
             Some((slot, item)) => {
                 assert_eq!(*slot, offset);
 
+                let (dragged, item) = drag::item!(drag_item, item);
+
+                // This is kind of a hack. We don't want to blow out the container if it doesn't
+                // fit. We only want to expand if it fits. We've already checked if it does so, so
+                // maybe we should cache that in drag_item?
+                let size = if !dragged || self.fits(ctx, ui.ctx(), drag_item.as_ref().unwrap(), 0) {
+                    item.size_rotated()
+                } else {
+                    slot_size()
+                };
+
                 let InnerResponse { inner, response } =
-                    // item.size() isn't rotated... TODO: test
-                    // non-square containers, review item.size() everywhere
-                    ui.allocate_ui(item.size(), |ui| item.ui(drag_item, ui));
+                    ui.allocate_ui(size, |ui| item.ui(drag_item, ui));
                 (
                     inner.map(|item| match item {
                         ItemResponse::NewDrag(item) => ItemResponse::Drag(DragItem {

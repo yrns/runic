@@ -70,14 +70,10 @@ impl Item {
     /// Size of the (unrotated?) item in pixels.
     // TODO check uses of this and make sure the rotation is right
     pub fn size(&self) -> egui::Vec2 {
-        egui::Vec2::new(
-            self.shape.width() as f32 * SLOT_SIZE,
-            self.shape.height() as f32 * SLOT_SIZE,
-        )
+        (self.shape.size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
 
-    // DragItem is already rotated, so this should never be used in
-    // that case. It would be nice to enforce this via type.
+    /// Rotated size in pixels.
     pub fn size_rotated(&self) -> egui::Vec2 {
         match self.rotation {
             ItemRotation::R90 | ItemRotation::R270 => self.size().yx(),
@@ -85,7 +81,17 @@ impl Item {
         }
     }
 
-    // The width of the item with rotation.
+    /// Rotated shape size (in slots).
+    pub fn shape_size(&self) -> Vec2 {
+        use glam::swizzles::Vec2Swizzles;
+
+        match self.rotation {
+            ItemRotation::R90 | ItemRotation::R270 => self.shape.size.yx(),
+            _ => self.shape.size,
+        }
+    }
+
+    /// The width of the shape (in slots), with rotation.
     pub fn width(&self) -> usize {
         match self.rotation {
             ItemRotation::R90 | ItemRotation::R270 => self.shape.height(),
@@ -162,9 +168,7 @@ impl Item {
                 .pointer_interact_pos()
                 .filter(|p| response.rect.contains(*p))
                 .map(|p| {
-                    // This is roughly <GridContents as Contents>::slot?
-                    let p = (p - response.rect.min) / SLOT_SIZE;
-                    let slot = p.x as usize + p.y as usize * self.width();
+                    let slot = slot(p - response.rect.min, self.width());
                     self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
                         // FIX This occurs somewhere on drag/mouseover.
                         tracing::error!(
@@ -223,11 +227,14 @@ impl Item {
                         //.default_size(self.size_rotated())
                         .show(ui.ctx(), |ui| self.body(drag_item, ui));
 
-                    // Still allocate the original size for expanding
-                    // contents. The response size can be rotated
-                    // (since it's being dragged), so use our
-                    // (rotated) size.
-                    ui.allocate_exact_size(self.rotation.size(self.size()), egui::Sense::hover());
+                    // Still allocate the original size for expanding contents. The response size
+                    // can be rotated (since it's being dragged), so use our (rotated) size.
+
+                    // We no longer know the undragged item size, so this is broken. FIX:
+                    // ui.allocate_exact_size(self.size_rotated(), egui::Sense::hover());
+
+                    // This only works because we're not drawing the original item...
+                    ui.allocate_exact_size(slot_size(), egui::Sense::hover());
                 }
                 _ => tracing::error!("no interact position for drag?"),
             }
@@ -326,14 +333,6 @@ impl ItemRotation {
 
     pub fn rot2(&self) -> egui::emath::Rot2 {
         egui::emath::Rot2::from_angle(self.angle())
-    }
-
-    // Move this into item? TODO
-    pub fn size(&self, size: egui::Vec2) -> egui::Vec2 {
-        match *self {
-            ItemRotation::R90 | ItemRotation::R270 => egui::Vec2::new(size.y, size.x),
-            _ => size,
-        }
     }
 
     pub fn uvs(&self) -> &[egui::Pos2; 4] {

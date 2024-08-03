@@ -69,8 +69,7 @@ impl Contents for GridContents {
     }
 
     fn slot(&self, p: egui::Vec2) -> usize {
-        let p = p / SLOT_SIZE;
-        p.x as usize + p.y as usize * self.size.x as usize
+        slot(p, self.size.x as usize)
     }
 
     fn accepts(&self, item: &Item) -> bool {
@@ -188,11 +187,7 @@ impl Contents for GridContents {
 
                     // If this item is being dragged, we want to use the dragged rotation.
                     // Everything else should be the same.
-                    let (dragged, item) = drag_item
-                        .as_ref()
-                        .filter(|d| d.item.id == item.id)
-                        .map(|d| (true, &d.item))
-                        .unwrap_or((false, item));
+                    let (dragged, item) = drag::item!(drag_item, item);
 
                     // Paint each item and fill our shape if needed.
                     if !dragged && fill {

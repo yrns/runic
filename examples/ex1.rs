@@ -119,8 +119,8 @@ impl Runic {
                 )
                 .boxed(),
                 HeaderContents::new(
-                    "Weapon (2x2 MAX):",
-                    ExpandingContents::new((2, 2)).with_flags(ItemFlags::Weapon), // accepts only weapons
+                    "Weapon (3x2 MAX):",
+                    ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon), // accepts only weapons
                 )
                 .boxed(),
                 HeaderContents::new(

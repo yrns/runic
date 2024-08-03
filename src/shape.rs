@@ -16,6 +16,10 @@ pub struct Shape {
     pub fill: Vec<bool>,
 }
 
+#[allow(unused)]
+const MAX_SLOT: u32 = (u16::MAX as u32).pow(2) - 1;
+const _: () = assert!(MAX_SLOT <= u32::MAX);
+
 impl Shape {
     pub fn new(size: impl Into<Vec2>, fill: bool) -> Self {
         let size = size.into();
@@ -23,7 +27,7 @@ impl Shape {
         assert!(size.y > 0, "height greater than zero");
         Self {
             size,
-            fill: vec![fill; size.element_product() as usize],
+            fill: vec![fill; size.x as usize * size.y as usize],
         }
     }
 
@@ -61,24 +65,24 @@ impl Shape {
         self.size.y as usize
     }
 
-    pub fn contains(&self, pt: impl Into<Vec2>) -> bool {
-        let pt = pt.into();
+    pub fn contains(&self, pt: Vec2) -> bool {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
-    fn overlay_range(&self, other: &Shape, slot: usize) -> Option<(usize, usize)> {
+    fn overlay_range(&self, other: &Shape, slot: usize) -> Option<std::ops::RangeInclusive<usize>> {
         let p1 = self.pos(slot);
         let p2 = p1 + other.size;
-        (self.contains(p1) && self.contains(p2)).then(|| (slot, self.slot(p2 - Vec2::ONE)))
+        (self.contains(p1) && self.contains(p2)).then(|| slot..=self.slot(p2 - Vec2::ONE))
     }
 
     pub fn overlay_mut(&mut self, other: &Shape, slot: usize, f: impl Fn(&mut bool, &bool)) {
-        if let Some((start, end)) = self.overlay_range(other, slot) {
+        if let Some(r) = self.overlay_range(other, slot) {
             let w = self.width();
-            self.fill[start..=end]
+            let w2 = other.width();
+            self.fill[r]
                 .chunks_mut(w)
-                .map(|row| &mut row[..(other.width())])
-                .zip(other.fill.chunks(other.width()))
+                .map(|row| &mut row[..w2])
+                .zip(other.fill.chunks(w2))
                 .for_each(|(r1, r2)| r1.iter_mut().zip(r2.iter()).for_each(|(a, b)| f(a, b)))
         }
     }
@@ -96,11 +100,12 @@ impl Shape {
     }
 
     pub fn fits(&self, other: &Shape, slot: usize) -> bool {
-        if let Some((start, end)) = self.overlay_range(other, slot) {
-            self.fill[start..=end]
+        if let Some(r) = self.overlay_range(other, slot) {
+            let w = other.width();
+            self.fill[r]
                 .chunks(self.width())
-                .map(|row| &row[..(other.width())])
-                .zip(other.fill.chunks(other.width()))
+                .map(|row| &row[..w])
+                .zip(other.fill.chunks(w))
                 // Check that a is empty or b is empty for every cell
                 // pair in the row.
                 .all(|(r1, r2)| r1.iter().zip(r2.iter()).all(|(a, b)| !b || !a))
@@ -109,15 +114,17 @@ impl Shape {
         }
     }
 
+    /// Return slot for position.
     #[inline]
     pub fn slot(&self, pt: impl Into<Vec2>) -> usize {
         let pt = pt.into();
         pt.x as usize + pt.y as usize * self.width()
     }
 
+    /// Return position for slot.
     #[inline]
     pub fn pos(&self, slot: usize) -> Vec2 {
-        [(slot % self.width()) as u16, (slot / self.width()) as u16].into()
+        Vec2::new((slot % self.width()) as u16, (slot / self.width()) as u16)
     }
 
     /// Returns an iterator over filled slots.
@@ -133,6 +140,8 @@ impl Shape {
     }
 
     // These are adapted from the image crate: https://github.com/image-rs/image/blob/master/src/imageops/affine.rs.
+
+    // TODO: These can be done in half the operations in place w/ swapping.
 
     pub fn rotate90(&self) -> Self {
         let Vec2 { x: w, y: h } = self.size;

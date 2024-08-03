@@ -154,11 +154,11 @@ impl Contents for SectionContents {
     }
 
     fn pos(&self, _slot: usize) -> egui::Vec2 {
-        todo!()
+        unimplemented!()
     }
 
     fn slot(&self, _offset: egui::Vec2) -> usize {
-        todo!()
+        unimplemented!()
     }
 
     /// Returns true if any section can accept this item.

@@ -13,8 +13,15 @@ pub use shape::*;
 
 pub const SLOT_SIZE: f32 = 48.0;
 
+/// Single slot dimensions in pixels.
 pub const fn slot_size() -> egui::Vec2 {
-    egui::vec2(SLOT_SIZE, SLOT_SIZE)
+    egui::Vec2::splat(SLOT_SIZE)
+}
+
+/// Return slot for offset in pixels.
+pub fn slot(offset: egui::Vec2, width: usize) -> usize {
+    let p = offset / SLOT_SIZE;
+    p.x as usize + p.y as usize * width
 }
 
 pub type ContainerId = usize;
@@ -44,6 +51,20 @@ impl std::fmt::Debug for DragItem {
             self.item, self.container
         )
     }
+}
+
+mod drag {
+    macro_rules! item {
+        ($drag_item:ident, $item:ident) => {
+            $drag_item
+                .as_ref()
+                .filter(|d| d.item.id == $item.id)
+                .map(|d| (true, &d.item))
+                .unwrap_or((false, $item))
+        };
+    }
+
+    pub(crate) use item;
 }
 
 /// source item -> target container
@@ -158,7 +179,7 @@ impl ContainerSpace {
             });
         }
 
-        // If the pointer is released, take drag_item.
+        // If the pointer is released, take drag_item. TODO: do first?
         ui.input(|i| i.pointer.any_released())
             // If we have both a dragged item and a target, put the
             // item back into the move data and return it.

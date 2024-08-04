@@ -106,13 +106,16 @@ impl Runic {
                 .boxed(),
                 HeaderContents::new(
                     "Section contents 3x1x2:",
-                    // accepts any item TODO: test differing flags for each section
                     SectionContents::new(
                         SectionLayout::Grid(3),
-                        std::iter::repeat(GridContents::new((1, 2)))
-                            .take(3)
-                            .map(Contents::boxed)
-                            .collect(),
+                        vec![
+                            GridContents::new((1, 2)).boxed(),
+                            GridContents::new((1, 2)).boxed(),
+                            // the last section only accepts weapons
+                            GridContents::new((1, 2))
+                                .with_flags(ItemFlags::Weapon)
+                                .boxed(),
+                        ],
                     ),
                 )
                 .boxed(),

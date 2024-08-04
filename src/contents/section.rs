@@ -153,17 +153,20 @@ impl Contents for SectionContents {
             .and_then(|(a, ctx, slot)| a.remove(ctx, slot, shape))
     }
 
+    // Never called.
     fn pos(&self, _slot: usize) -> egui::Vec2 {
         unimplemented!()
     }
 
+    // Never called.
     fn slot(&self, _offset: egui::Vec2) -> usize {
         unimplemented!()
     }
 
-    /// Returns true if any section can accept this item.
-    fn accepts(&self, item: &Item) -> bool {
-        self.sections.iter().any(|a| a.accepts(item))
+    // Never called.
+    fn accepts(&self, _item: &Item) -> bool {
+        // self.sections.iter().any(|a| a.accepts(item)))
+        unimplemented!()
     }
 
     // Unused. We can only fit things in sections.

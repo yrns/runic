@@ -16,14 +16,6 @@ impl<T> HeaderContents<T> {
     }
 }
 
-pub type ContentsStorage = HashMap<
-    usize,
-    (
-        Box<dyn Contents + Send + Sync + 'static>,
-        Vec<(usize, Item)>,
-    ),
->;
-
 impl<T> Contents for HeaderContents<T>
 where
     T: Contents,

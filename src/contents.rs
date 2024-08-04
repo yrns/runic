@@ -13,6 +13,14 @@ pub use section::*;
 
 use egui::ecolor::{tint_color_towards, Color32};
 
+pub type ContentsStorage = HashMap<
+    usize,
+    (
+        Box<dyn Contents + Send + Sync + 'static>,
+        Vec<(usize, Item)>,
+    ),
+>;
+
 /// A widget to display the contents of a container.
 pub trait Contents {
     /// Returns an egui id based on the contents id. Unused, except

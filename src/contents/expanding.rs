@@ -6,18 +6,18 @@ use crate::*;
 #[derive(Clone, Debug)]
 pub struct ExpandingContents {
     pub max_size: shape::Vec2,
-    pub flags: FlagSet<ItemFlags>,
+    pub flags: ItemFlags,
 }
 
 impl ExpandingContents {
     pub fn new(max_size: impl Into<shape::Vec2>) -> Self {
         Self {
             max_size: max_size.into(),
-            flags: Default::default(),
+            flags: ItemFlags::all(),
         }
     }
 
-    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+    pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
         self.flags = flags.into();
         self
     }

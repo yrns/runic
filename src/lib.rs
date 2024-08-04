@@ -5,7 +5,6 @@ mod shape;
 use std::collections::HashMap;
 
 use egui::InnerResponse;
-use flagset::{flags, FlagSet};
 
 pub use contents::*;
 pub use item::*;
@@ -299,14 +298,15 @@ where
 // `Item` itself is a trait that encompasses flags. We only care about
 // accepting items and whether or not something is a container. At a
 // minimum `Item` should be generic over flags. TODO?
-flags! {
-    // What about slots?
-    pub enum ItemFlags: u32 {
-        Weapon,
-        Armor,
-        Potion,
-        TradeGood,
-        Container,
+// What about slots?
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct ItemFlags: u32 {
+        const Weapon = 1;
+        const Armor = 1 << 1;
+        const Potion = 1 << 2;
+        const TradeGood = 1 << 3;
+        const Container = 1 << 4;
     }
 }
 

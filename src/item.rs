@@ -8,7 +8,7 @@ pub struct Item {
     pub rotation: ItemRotation,
     pub shape: shape::Shape,
     pub icon: TextureId,
-    pub flags: FlagSet<ItemFlags>,
+    pub flags: ItemFlags,
     pub name: String, // WidgetText?
 }
 
@@ -37,7 +37,8 @@ impl Item {
             rotation: Default::default(),
             shape: shape.into(),
             icon,
-            flags: FlagSet::default(),
+            // FIX empty? or require default?
+            flags: ItemFlags::empty(),
             name: Default::default(),
         }
     }
@@ -47,7 +48,7 @@ impl Item {
         self
     }
 
-    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+    pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
         self.flags = flags.into();
         self
     }
@@ -284,7 +285,13 @@ impl std::fmt::Display for Item {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.name)?;
         f.write_str(" ")?;
-        f.debug_list().entries(self.flags.into_iter()).finish()
+
+        // FIX: require Display for flags?
+        //f.write_fmt(format_args!("{}", self.flags))
+
+        f.debug_list()
+            .entries(self.flags.iter_names().map(|f| f.0)) // format_args!("{}", f.0)
+            .finish()
     }
 }
 

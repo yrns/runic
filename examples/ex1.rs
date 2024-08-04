@@ -1,7 +1,6 @@
 use bevy::{prelude::*, window::RequestRedraw, winit::WinitSettings};
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
 use egui::Ui;
-use flagset::FlagSet;
 use runic::*;
 
 #[derive(Resource)]
@@ -108,11 +107,8 @@ impl Runic {
         let paper_doll = SectionContents::new(
             SectionLayout::Grid(1),
             vec![
-                HeaderContents::new(
-                    "Bag of any! 4x4:",
-                    GridContents::new((4, 4)).with_flags(FlagSet::full()), // accepts any item
-                )
-                .boxed(),
+                // accepts any item
+                HeaderContents::new("Bag of any! 4x4:", GridContents::new((4, 4))).boxed(),
                 HeaderContents::new(
                     "Only potions! 2x2:",
                     GridContents::new((2, 2)).with_flags(ItemFlags::Potion), // accepts only potions
@@ -125,14 +121,13 @@ impl Runic {
                 .boxed(),
                 HeaderContents::new(
                     "Section contents 3x1x2:",
+                    // accepts any item TODO: test differing flags for each section
                     SectionContents::new(
                         SectionLayout::Grid(3),
-                        std::iter::repeat(
-                            GridContents::new((1, 2)).with_flags(FlagSet::full()), // accepts any item
-                        )
-                        .take(3)
-                        .map(Contents::boxed)
-                        .collect(),
+                        std::iter::repeat(GridContents::new((1, 2)))
+                            .take(3)
+                            .map(Contents::boxed)
+                            .collect(),
                     ),
                 )
                 .boxed(),
@@ -159,7 +154,7 @@ impl Runic {
         contents.insert(pouch.id, (pouch_contents.boxed(), vec![]));
 
         let ground_id = next_id();
-        let ground = GridContents::new((10, 10)).with_flags(FlagSet::full());
+        let ground = GridContents::new((10, 10));
         contents.insert(
             ground_id,
             (

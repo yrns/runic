@@ -3,18 +3,18 @@ use super::*;
 #[derive(Clone, Debug)]
 pub struct GridContents {
     pub size: shape::Vec2,
-    pub flags: FlagSet<ItemFlags>,
+    pub flags: ItemFlags,
 }
 
 impl GridContents {
     pub fn new(size: impl Into<shape::Vec2>) -> Self {
         Self {
             size: size.into(),
-            flags: Default::default(),
+            flags: ItemFlags::all(),
         }
     }
 
-    pub fn with_flags(mut self, flags: impl Into<FlagSet<ItemFlags>>) -> Self {
+    pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
         self.flags = flags.into();
         self
     }

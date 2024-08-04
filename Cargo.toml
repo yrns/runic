@@ -3,14 +3,17 @@ name = "runic"
 version = "0.1.0"
 edition = "2021"
 
+# [patch.crates-io]
+# egui = { path = "../clone/egui/crates/egui" }
+
 [lib]
 
 [[example]]
 name = "ex1"
 
 [dependencies]
+bitflags = "2.6.0"
 egui = "0.28"
-flagset = "0.4"
 glam = "0.27"
 itertools = "0.13"
 tracing = { version = "0.1", default-features = false, features = ["std"] }

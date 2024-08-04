@@ -31,20 +31,32 @@ pub enum ItemResponse {
 }
 
 impl Item {
-    pub fn new(id: usize, icon: TextureId, shape: impl Into<Shape>) -> Self {
+    // Flags are required since the empty (default) flags allow the item to fit any container
+    // regardless of the container's flags.
+    pub fn new(id: usize, flags: ItemFlags) -> Self {
         Self {
             id,
             rotation: Default::default(),
-            shape: shape.into(),
-            icon,
-            // FIX empty? or require default?
-            flags: ItemFlags::empty(),
+            shape: Shape::new([1, 1], true),
+            // TODO better default texture
+            icon: Default::default(),
+            flags,
             name: Default::default(),
         }
     }
 
     pub fn with_id(mut self, id: usize) -> Self {
         self.id = id;
+        self
+    }
+
+    pub fn with_icon(mut self, icon: TextureId) -> Self {
+        self.icon = icon;
+        self
+    }
+
+    pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
+        self.shape = shape.into();
         self
     }
 

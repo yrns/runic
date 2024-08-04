@@ -62,41 +62,26 @@ impl Runic {
             }
         };
 
-        let boomerang = Item::new(
-            next_id(),
-            textures.add_image(asset_server.load("boomerang.png")),
-            Shape::from_ones(2, [1, 1, 1, 0]),
-        )
-        // this item is a weapon
-        .with_flags(ItemFlags::Weapon)
-        .with_name("Boomerang");
+        let boomerang = Item::new(next_id(), ItemFlags::Weapon)
+            .with_icon(textures.add_image(asset_server.load("boomerang.png")))
+            .with_shape(Shape::from_ones(2, [1, 1, 1, 0]))
+            .with_name("Boomerang");
 
-        let pouch = Item::new(
-            next_id(),
-            textures.add_image(asset_server.load("pouch.png")),
-            (2, 2),
-        )
-        // this item is a container
-        .with_flags(ItemFlags::Container)
-        .with_name("Pouch");
+        let pouch = Item::new(next_id(), ItemFlags::Container)
+            .with_icon(textures.add_image(asset_server.load("pouch.png")))
+            .with_shape((2, 2))
+            .with_name("Pouch");
 
-        let short_sword = Item::new(
-            next_id(),
-            textures.add_image(asset_server.load("short-sword.png")),
-            (3, 1),
-        )
-        // this item is a weapon
-        .with_flags(ItemFlags::Weapon)
-        .with_rotation(ItemRotation::R90)
-        .with_name("Short sword");
+        let short_sword = Item::new(next_id(), ItemFlags::Weapon)
+            .with_icon(textures.add_image(asset_server.load("short-sword.png")))
+            .with_shape((3, 1))
+            .with_rotation(ItemRotation::R90)
+            .with_name("Short sword");
 
-        let potion = Item::new(
-            next_id(),
-            textures.add_image(asset_server.load("potion.png")),
-            (1, 1),
-        )
-        .with_flags(ItemFlags::Potion)
-        .with_name("Potion");
+        let potion = Item::new(next_id(), ItemFlags::Potion)
+            .with_icon(textures.add_image(asset_server.load("potion.png")))
+            .with_shape((1, 1))
+            .with_name("Potion");
 
         let potion2 = potion.clone().with_id(next_id()).with_name("Potion 2");
 

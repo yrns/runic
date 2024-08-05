@@ -13,13 +13,9 @@ pub use section::*;
 
 use egui::ecolor::{tint_color_towards, Color32};
 
-pub type ContentsStorage = HashMap<
-    usize,
-    (
-        Box<dyn Contents + Send + Sync + 'static>,
-        Vec<(usize, Item)>,
-    ),
->;
+pub type BoxedContents = Box<dyn Contents + Send + Sync + 'static>;
+
+pub type ContentsStorage = HashMap<usize, (BoxedContents, Vec<(usize, Item)>)>;
 
 /// A widget to display the contents of a container.
 pub trait Contents {

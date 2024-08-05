@@ -96,12 +96,12 @@ impl Runic {
                 HeaderContents::new("Bag of any! 4x4:", GridContents::new((4, 4))).boxed(),
                 HeaderContents::new(
                     "Only potions! 2x2:",
-                    GridContents::new((2, 2)).with_flags(ItemFlags::Potion), // accepts only potions
+                    GridContents::new((2, 2)).with_flags(ItemFlags::Potion),
                 )
                 .boxed(),
                 HeaderContents::new(
                     "Weapon (3x2 MAX):",
-                    ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon), // accepts only weapons
+                    ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon),
                 )
                 .boxed(),
                 HeaderContents::new(
@@ -133,11 +133,16 @@ impl Runic {
         contents.insert(paper_doll_id, (paper_doll.boxed(), vec![]));
 
         let pouch_contents = SectionContents::new(
-            SectionLayout::Grid(4),
-            std::iter::repeat(GridContents::new((1, 1)).with_flags(ItemFlags::Potion))
-                .take(4)
-                .map(Contents::boxed)
-                .collect(),
+            SectionLayout::Grid(2),
+            vec![
+                // Test inline contents with differing flags...
+                GridContents::new((3, 2))
+                    .with_flags(ItemFlags::Weapon)
+                    .boxed(),
+                GridContents::new((1, 1))
+                    .with_flags(ItemFlags::Potion)
+                    .boxed(),
+            ],
         );
         contents.insert(pouch.id, (pouch_contents.boxed(), vec![]));
 

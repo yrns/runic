@@ -11,7 +11,7 @@ pub struct SectionContents {
     pub layout: SectionLayout,
     // This should be generic over Contents but then ContentsLayout
     // will cycle on itself.
-    pub sections: Vec<Box<dyn Contents + Send + Sync + 'static>>,
+    pub sections: Vec<BoxedContents>,
 }
 
 #[derive(Clone)]
@@ -35,10 +35,7 @@ impl std::fmt::Debug for SectionLayout {
 }
 
 impl SectionContents {
-    pub fn new(
-        layout: SectionLayout,
-        sections: Vec<Box<dyn Contents + Send + Sync + 'static>>,
-    ) -> Self {
+    pub fn new(layout: SectionLayout, sections: Vec<BoxedContents>) -> Self {
         Self { layout, sections }
     }
 

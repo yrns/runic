@@ -18,6 +18,8 @@ pub struct SectionContents {
 pub enum SectionLayout {
     // Number of columns...
     Grid(usize),
+    Horizontal,
+    Vertical,
     // Fixed(Vec<(usize, egui::Pos2))
     // Columns?
     // This isn't clonable...
@@ -29,6 +31,8 @@ impl std::fmt::Debug for SectionLayout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
             Self::Grid(cols) => write!(f, "Grid({})", cols),
+            Self::Vertical => write!(f, "Vertical"),
+            Self::Horizontal => write!(f, "Horizontal"),
             Self::Other(_) => write!(f, "Other(...)"),
         }
     }
@@ -219,8 +223,6 @@ impl Contents for SectionContents {
                     self.section_items(ctx.2, items)
                         .enumerate()
                         .map(|(i, (layout, offset, items))| {
-                            //let offset = offset + ctx.2;
-                            // dbg!(i, items.len());
                             let data = layout
                                 .ui(
                                     (id, self.section_eid(ctx, i), offset + ctx.2),
@@ -244,6 +246,28 @@ impl Contents for SectionContents {
                         .unwrap_or_default()
                 })
             }
+            SectionLayout::Vertical => ui.vertical(|ui| {
+                self.section_items(ctx.2, items)
+                    .enumerate()
+                    .map(|(i, (contents, offset, items))| {
+                        let section_ctx = (id, self.section_eid(ctx, i), offset + ctx.2);
+                        let data = contents.ui(section_ctx, q, drag_item, items, ui).inner;
+                        data.map_slots(id, |slot| slot + offset)
+                    })
+                    .reduce(|data, a| data.merge(a))
+                    .unwrap_or_default()
+            }),
+            SectionLayout::Horizontal => ui.horizontal_top(|ui| {
+                self.section_items(ctx.2, items)
+                    .enumerate()
+                    .map(|(i, (contents, offset, items))| {
+                        let section_ctx = (id, self.section_eid(ctx, i), offset + ctx.2);
+                        let data = contents.ui(section_ctx, q, drag_item, items, ui).inner;
+                        data.map_slots(id, |slot| slot + offset)
+                    })
+                    .reduce(|data, a| data.merge(a))
+                    .unwrap_or_default()
+            }),
             SectionLayout::Other(f) => f(ui),
         }
     }

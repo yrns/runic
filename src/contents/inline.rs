@@ -44,8 +44,10 @@ impl Contents for InlineContents {
         let inline_id = items.first().map(|(_, item)| item.id);
 
         // TODO: InlineLayout?
-        ui.horizontal(|ui| {
+        ui.horizontal_top(|ui| {
             let data = self.0.ui(ctx, q, drag_item, items, ui).inner;
+
+            // ui.label("Inline contents:");
 
             if let Some(id) = inline_id {
                 // Don't add contents if the container is being dragged.

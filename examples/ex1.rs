@@ -92,7 +92,7 @@ impl Runic {
         // into many sections.
         let paper_doll_id = next_id();
         let paper_doll = SectionContents::new(
-            SectionLayout::Grid(1),
+            SectionLayout::Vertical,
             vec![
                 // accepts any item
                 HeaderContents::new("Bag of any! 4x4:", GridContents::new((4, 4))).boxed(),
@@ -109,7 +109,7 @@ impl Runic {
                 HeaderContents::new(
                     "Section contents 3x1x2:",
                     SectionContents::new(
-                        SectionLayout::Grid(3),
+                        SectionLayout::Horizontal,
                         vec![
                             GridContents::new((1, 2)).boxed(),
                             GridContents::new((1, 2)).boxed(),

@@ -5,6 +5,7 @@ use crate::*;
 // one item can go and the size varies.
 #[derive(Clone, Debug)]
 pub struct ExpandingContents {
+    // TODO this needs an "empty size" as well
     pub max_size: shape::Vec2,
     pub flags: ItemFlags,
 }

@@ -1,5 +1,6 @@
 mod contents;
 mod item;
+mod min_frame;
 mod shape;
 
 use std::collections::HashMap;
@@ -174,7 +175,10 @@ impl ContainerSpace {
             let b = !ui.ctx().debug_on_hover();
             ui.ctx().style_mut(|s| {
                 s.debug.debug_on_hover = b;
-                s.debug.show_expand_width = b;
+                s.debug.hover_shows_next = b;
+                // s.debug.show_expand_width = b;
+                // s.debug.show_expand_height = b;
+                // s.debug.show_widget_hits = b;
             });
         }
 
@@ -187,10 +191,11 @@ impl ContainerSpace {
                     assert!(data.drag.replace(drag).is_none());
                     Some(data)
                 }
-                (drag_item, target) => {
-                    tracing::warn!(?target, drag_item = drag_item.map(|i| i.item.name));
+                (Some(drag_item), false) => {
+                    tracing::warn!(drag_item = drag_item.item.name, "no target");
                     None
                 }
+                _ => None,
             })
             .flatten()
     }

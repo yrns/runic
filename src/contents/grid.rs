@@ -18,6 +18,51 @@ impl GridContents {
         self.flags = flags.into();
         self
     }
+
+    pub fn grid_size(&self) -> egui::Vec2 {
+        (self.size.as_vec2() * SLOT_SIZE).as_ref().into()
+    }
+
+    // Grid lines shape.
+    pub fn shape(&self, style: &egui::Style) -> egui::Shape {
+        let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
+        let mut stroke2 = stroke1.clone();
+        stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
+        let stroke2 = egui::epaint::PathStroke::from(stroke2);
+
+        let size = self.grid_size();
+        let egui::Vec2 { x: w, y: h } = size;
+
+        let mut lines = vec![];
+
+        // Don't draw the outside edge.
+        lines.extend((1..(self.size.x)).map(|x| {
+            let x = x as f32 * SLOT_SIZE;
+            egui::Shape::LineSegment {
+                points: [egui::Pos2::new(x, 0.0), egui::Pos2::new(x, h)],
+                stroke: stroke2.clone(),
+            }
+        }));
+
+        lines.extend((1..(self.size.y)).map(|y| {
+            let y = y as f32 * SLOT_SIZE;
+            egui::Shape::LineSegment {
+                points: [egui::Pos2::new(0.0, y), egui::Pos2::new(w, y)],
+                stroke: stroke2.clone(),
+            }
+        }));
+
+        lines.push(egui::Shape::Rect(egui::epaint::RectShape::new(
+            egui::Rect::from_min_size(egui::Pos2::ZERO, size),
+            style.visuals.widgets.noninteractive.rounding,
+            // style.visuals.window_rounding,
+            Color32::TRANSPARENT,
+            // style.visuals.window_fill,
+            stroke1,
+        )));
+
+        egui::Shape::Vec(lines)
+    }
 }
 
 fn update_state<T: 'static + Clone + Send + Sync>(
@@ -135,15 +180,15 @@ impl Contents for GridContents {
         items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
-        // allocate the full container size
-        let (rect, response) = ui.allocate_exact_size(
-            (self.size.as_vec2() * SLOT_SIZE).as_ref().into(),
-            egui::Sense::hover(),
-        );
+        // Allocate the full grid size. Note ui.min_rect() may differ from from the allocated rect
+        // due to layout. So position items based on the latter.
 
-        let (id, eid, offset) = ctx;
+        let (rect, response) = ui.allocate_exact_size(self.grid_size(), egui::Sense::hover());
 
         let new_drag = if ui.is_rect_visible(rect) {
+            let (id, eid, offset) = ctx;
+            let grid_shape = ui.painter().add(egui::Shape::Noop);
+
             // Skip this if the container is empty? Only if dragging into
             // this container? Only if visible? What if we are dragging to
             // a container w/o the contents visible/open? Is it possible
@@ -172,7 +217,7 @@ impl Contents for GridContents {
                     // slots)
                     ui.painter().add(shape_mesh(
                         shape,
-                        ui.min_rect(),
+                        rect,
                         egui::Vec2::ZERO,
                         Color32::DARK_BLUE,
                         SLOT_SIZE,
@@ -195,7 +240,7 @@ impl Contents for GridContents {
                     }
 
                     let item_rect = egui::Rect::from_min_size(
-                        ui.min_rect().min + self.pos(slot),
+                        rect.min + self.pos(slot),
                         if dragged {
                             // Only allocate the slot otherwise we'll blow out the contents if it
                             // doesn't fit.
@@ -247,6 +292,10 @@ impl Contents for GridContents {
                         _ => item,
                     }
                 });
+
+            let mut grid = self.shape(ui.style());
+            grid.translate(rect.min.to_vec2());
+            ui.painter().set(grid_shape, grid);
 
             // Write out the new shape.
             if fill {

@@ -47,9 +47,11 @@ fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<Re
 
 fn update(mut contexts: EguiContexts, mut runic: ResMut<Runic>, mut _move_data: Local<MoveData>) {
     //egui::CentralPanel::default().show(ctx, |ui| {});
-    egui::Window::new("runic - ex1").show(contexts.ctx_mut(), |ui| {
-        runic.update(ui); //, &mut *move_data);
-    });
+    egui::Window::new("runic - ex1")
+        .resizable(false)
+        .show(contexts.ctx_mut(), |ui| {
+            runic.update(ui); //, &mut *move_data);
+        });
 }
 
 impl Runic {

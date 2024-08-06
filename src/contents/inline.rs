@@ -47,15 +47,17 @@ impl Contents for InlineContents {
         ui.horizontal(|ui| {
             let data = self.0.ui(ctx, q, drag_item, items, ui).inner;
 
-            // Don't add contents if the container is being dragged?
-
-            match inline_id.and_then(|id| {
-                q.get(&id)
-                    .map(|(contents, items)| contents.ui(id.into_ctx(), q, drag_item, items, ui))
-            }) {
-                Some(resp) => data.merge(resp.inner),
-                None => data,
+            if let Some(id) = inline_id {
+                // Don't add contents if the container is being dragged.
+                if !drag_item.as_ref().is_some_and(|d| d.item.id == id) {
+                    if let Some((contents, items)) = q.get(&id) {
+                        return data
+                            .merge(contents.ui(id.into_ctx(), q, drag_item, items, ui).inner);
+                    }
+                }
             }
+
+            data
         })
     }
 }

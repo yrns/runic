@@ -92,7 +92,7 @@ pub trait Contents {
         _items: &[(usize, Item)],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ItemResponse>> {
-        // never used
+        // Never used: header, inline, sectioned contents don't call body.
         InnerResponse::new(None, ui.label("❓"))
     }
 
@@ -127,47 +127,29 @@ pub trait Contents {
         //     _ => (), // we could be dragging something else
         // }
 
-        let accepts = drag_item
-            .as_ref()
-            .map(|drag| self.accepts(&drag.item))
-            .unwrap_or_default();
-
-        // Highlight the contents border if we can accept the dragged item.
-        let style = ui.style_mut();
-        if accepts {
-            // TODO move this to settings?
-            style.visuals.widgets.noninteractive.bg_stroke =
-                style.visuals.widgets.hovered.bg_stroke;
-        }
-
-        // We have all the information we need to set the style from
-        // the MoveData/drag_item, so we could do that internal to
-        // with_bg... ItemResponse::Item would need to be
-        // preserved. Also, with_item_shadow()?
-        egui::Frame::group(style).show(ui, |ui| {
-            // The item shadow becomes the target item, not the dragged
-            // item, for drag-to-item?
-
+        // Go back to with_bg/min_frame since egui::Frame takes up all available space.
+        crate::min_frame::min_frame(ui, |style, ui| {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
             let InnerResponse { inner, response } = self.body(ctx, drag_item, items, ui);
             let min_rect = response.rect;
 
+            // TODO move everything into the match
+
             // If we are dragging onto another item, check to see if
             // the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
-                // hover ⇒ dragging
                 (Some(drag), Some(ItemResponse::Hover((slot, item)))) => {
                     if let Some((contents, items)) = q.get(&item.id) {
                         let ctx = item.id.into_ctx();
                         let target = contents.find_slot(ctx, ui.ctx(), drag, items.as_slice());
 
-                        // TODO fits && !accepts?
+                        // The item shadow becomes the target item, not the dragged item, for
+                        // drag-to-item. TODO just use rect
                         let color = self.shadow_color(true, target.is_some(), ui);
                         let mut mesh = egui::Mesh::default();
                         mesh.add_colored_rect(
-                            // TODO make sure slot is correct for sections
                             egui::Rect::from_min_size(
                                 min_rect.min + self.pos(*slot),
                                 item.size_rotated(),
@@ -176,11 +158,14 @@ pub trait Contents {
                         );
                         ui.painter().set(shadow, mesh);
 
-                        return MoveData {
-                            drag: None,
-                            target, //: (id, slot, eid),
-                            add_fn: target.and_then(|t| contents.add(ctx, t.1)),
-                        };
+                        return InnerResponse::new(
+                            MoveData {
+                                drag: None,
+                                target, //: (id, slot, eid),
+                                add_fn: target.and_then(|t| contents.add(ctx, t.1)),
+                            },
+                            response,
+                        );
                     }
                 }
                 _ => (),
@@ -201,7 +186,18 @@ pub trait Contents {
             };
 
             if !dragging {
-                return move_data;
+                return InnerResponse::new(move_data, response);
+            }
+
+            let accepts = drag_item
+                .as_ref()
+                .map(|drag| self.accepts(&drag.item))
+                .unwrap_or_default();
+
+            // Highlight the contents border if we can accept the dragged item.
+            if accepts {
+                // TODO move this to settings?
+                style.bg_stroke = ui.visuals().widgets.hovered.bg_stroke;
             }
 
             // `contains_pointer` does not work for the target because only the dragged items'
@@ -252,7 +248,7 @@ pub trait Contents {
                 }
                 _ => (),
             }
-            move_data
+            InnerResponse::new(move_data, response)
         })
     }
 }

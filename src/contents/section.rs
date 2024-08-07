@@ -193,7 +193,7 @@ impl Contents for SectionContents {
         self.section_items(ctx.2, items)
             .enumerate()
             .find_map(|(i, (layout, offset, items))| {
-                let ctx = (ctx.0, self.section_eid(ctx, i), offset);
+                let ctx = (ctx.0, self.section_eid(ctx, i), offset); // + ctx.2??
                 layout
                     .find_slot(ctx, egui_ctx, item, items)
                     .map(|(id, slot, eid)| (id, (slot + offset), eid))

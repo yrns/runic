@@ -84,19 +84,23 @@ impl Shape {
                 .map(|row| &mut row[..w2])
                 .zip(other.fill.chunks(w2))
                 .for_each(|(r1, r2)| r1.iter_mut().zip(r2.iter()).for_each(|(a, b)| f(a, b)))
+        } else {
+            tracing::error!("overlay_mut range is empty!")
         }
     }
 
     pub fn paint(&mut self, other: &Shape, slot: usize) {
-        //print!("{}+\n{}=\n", &self, other);
+        // print!("{}+\n{}=\n", &self, other);
+        assert!(slot <= self.fill.len(), "paint slot {slot} in range");
         self.overlay_mut(other, slot, |a, b| *a = *a || *b);
-        //println!("{}", &self);
+        // println!("{}", &self);
     }
 
     pub fn unpaint(&mut self, other: &Shape, slot: usize) {
-        //print!("{}-\n{}=\n", &self, other);
+        // print!("{}-\n{}=\n", &self, other);
+        assert!(slot <= self.fill.len(), "unpaint slot {slot} in range");
         self.overlay_mut(other, slot, |a, b| *a = *a && !*b);
-        //println!("{}", &self);
+        // println!("{}", &self);
     }
 
     pub fn fits(&self, other: &Shape, slot: usize) -> bool {

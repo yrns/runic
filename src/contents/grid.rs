@@ -96,15 +96,15 @@ impl Contents for GridContents {
         self.size.element_product() as usize
     }
 
-    // ctx and target are the same...
-    fn add(&self, _ctx: Context, _slot: usize) -> Option<ResolveFn> {
-        Some(Box::new(move |ctx, drag, (_c, slot, eid)| {
+    // `slot` is remapped for sections. The target is not...
+    fn add(&self, _ctx: Context, slot: usize) -> Option<ResolveFn> {
+        Some(Box::new(move |ctx, drag, (.., eid)| {
             add_shape(ctx, eid, slot, &drag.item.shape())
         }))
     }
 
     fn remove(&self, (_, eid, _): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
-        Some(Box::new(move |ctx, _drag, _target| {
+        Some(Box::new(move |ctx, _, _| {
             remove_shape(ctx, eid, slot, &shape)
         }))
     }
@@ -167,7 +167,8 @@ impl Contents for GridContents {
                 })
         };
 
-        // Prime the container shape. Normally `body` does this.
+        // Prime the container shape. Normally `body` does this. This is here so we can call `fits`,
+        // which requires a filled shape, before we draw the contents (drag to item).
         egui_ctx.data_mut(|d| _ = d.get_temp_mut_or_insert_with(ctx.1, new_shape));
 
         find_slot_default(self, ctx, egui_ctx, item, items)

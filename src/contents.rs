@@ -63,6 +63,7 @@ pub trait Contents {
     fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
+    #[allow(unused)]
     fn find_slot(
         &self,
         ctx: Context,
@@ -70,7 +71,11 @@ pub trait Contents {
         item: &DragItem,
         items: &[(usize, Item)],
     ) -> Option<(usize, usize, egui::Id)> {
-        find_slot_default(self, ctx, egui_ctx, item, items)
+        // Expanding, header, inline contents never call this. This is only called on drag to
+        // (container) item. TODO: This is only a trait method since it uses the grid contents
+        // shape?
+        unimplemented!();
+        // find_slot_default(self, ctx, egui_ctx, item, items)
     }
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
@@ -162,7 +167,7 @@ pub trait Contents {
                             MoveData {
                                 drag: None,
                                 target, //: (id, slot, eid),
-                                add_fn: target.and_then(|t| contents.add(ctx, t.1)),
+                                add_fn: target.and_then(|(_, slot, ..)| contents.add(ctx, slot)),
                             },
                             response,
                         );

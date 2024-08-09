@@ -3,8 +3,7 @@ mod item;
 mod min_frame;
 mod shape;
 
-use std::collections::HashMap;
-
+use bevy_ecs::prelude::Entity;
 use egui::InnerResponse;
 
 pub use contents::*;
@@ -24,7 +23,7 @@ pub fn slot(offset: egui::Vec2, width: usize) -> usize {
     p.x as usize + p.y as usize * width
 }
 
-pub type ContainerId = usize;
+pub type ContainerId = Entity;
 
 /// Target container id, slot, and egui::Id (which is unique to sections).
 pub type ContainerData = (ContainerId, usize, egui::Id);
@@ -33,6 +32,7 @@ pub type ResolveFn =
     Box<dyn FnMut(&egui::Context, &DragItem, ContainerData) + Send + Sync + 'static>;
 
 pub struct DragItem {
+    pub id: Entity,
     /// A clone of the original item with rotation applied.
     pub item: Item,
     /// Source location.
@@ -55,10 +55,10 @@ impl std::fmt::Debug for DragItem {
 
 mod drag {
     macro_rules! item {
-        ($drag_item:ident, $item:ident) => {
+        ($drag_item:ident, $id:expr, $item:expr) => {
             $drag_item
                 .as_ref()
-                .filter(|d| d.item.id == $item.id)
+                .filter(|d| d.id == $id)
                 .map(|d| (true, &d.item))
                 .unwrap_or((false, $item))
         };
@@ -80,11 +80,7 @@ impl MoveData {
     pub fn merge(self, other: Self) -> Self {
         //let Self { item, container } = self;
         if let (Some(drag), Some(other)) = (self.drag.as_ref(), other.drag.as_ref()) {
-            tracing::error!(
-                "multiple items! ({:?} and {:?})",
-                drag.item.id,
-                other.item.id
-            )
+            tracing::error!("multiple items! ({:?} and {:?})", drag.id, other.id)
         }
         if let (Some((c, _, _)), Some((other, _, _))) =
             (self.target.as_ref(), other.target.as_ref())
@@ -98,7 +94,7 @@ impl MoveData {
         }
     }
 
-    pub fn map_slots<F>(self, id: usize, f: F) -> Self
+    pub fn map_slots<F>(self, id: Entity, f: F) -> Self
     where
         F: Fn(usize) -> usize,
     {
@@ -192,7 +188,8 @@ impl ContainerSpace {
                     Some(data)
                 }
                 (Some(drag_item), false) => {
-                    tracing::warn!(drag_item = drag_item.item.name, "no target");
+                    // FIX name?
+                    tracing::warn!(drag_item = ?drag_item.id, "no target");
                     None
                 }
                 _ => None,
@@ -255,37 +252,41 @@ pub fn shape_mesh(
     mesh
 }
 
-// Is this a trait or generic struct?
-// pub trait Item {
-//     type Id;
-// }
-
 // Container id, egui id, item slot offset (for sectioned containers).
-pub type Context = (usize, egui::Id, usize);
-
-pub trait IntoContext {
-    fn into_ctx(self) -> Context;
+#[derive(Clone, Debug)]
+pub struct Context {
+    container_id: Entity,
+    container_eid: egui::Id,
+    slot_offset: usize,
 }
 
-impl IntoContext for usize {
-    fn into_ctx(self) -> Context {
-        (self, egui::Id::new("contents").with(self), 0)
+impl Context {
+    fn with_container_eid(&self, container_eid: egui::Id) -> Context {
+        Self {
+            container_id: self.container_id,
+            container_eid,
+            slot_offset: self.slot_offset,
+        }
     }
 }
 
-impl IntoContext for Context {
-    fn into_ctx(self) -> Context {
-        self
+impl From<Entity> for Context {
+    fn from(container_id: Entity) -> Self {
+        Self {
+            container_id,
+            container_eid: egui::Id::new("contents").with(container_id),
+            slot_offset: 0,
+        }
     }
 }
 
 pub fn find_slot_default<'a, T>(
     contents: &T,
-    ctx: Context,
+    ctx: &Context,
     egui_ctx: &egui::Context,
     drag: &DragItem,
-    _items: &[(usize, Item)],
-) -> Option<(usize, usize, egui::Id)>
+    _items: Items,
+) -> Option<(Entity, usize, egui::Id)>
 where
     T: Contents + ?Sized,
 {
@@ -293,10 +294,16 @@ where
         return None;
     }
 
+    let &Context {
+        container_id,
+        container_eid,
+        ..
+    } = ctx;
+
     // TODO test multiple rotations (if non-square) and return it?
     (0..contents.len())
         .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
-        .map(|slot| (ctx.0, slot, ctx.1))
+        .map(|slot| (container_id, slot, container_eid))
 }
 
 // Maybe this should be a trait instead of requiring flagset. Or maybe
@@ -336,17 +343,6 @@ bitflags::bitflags! {
 //         self(id)
 //     }
 // }
-
-// Use ContentsQuery to query a layout and contents, then show it.
-pub fn show_contents(
-    q: &ContentsStorage,
-    id: usize,
-    drag_item: &Option<DragItem>,
-    ui: &mut egui::Ui,
-) -> Option<InnerResponse<MoveData>> {
-    q.get(&id)
-        .map(|(layout, items)| layout.ui(id.into_ctx(), q, drag_item, items, ui))
-}
 
 #[cfg(test)]
 mod tests {

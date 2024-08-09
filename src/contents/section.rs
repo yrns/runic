@@ -59,20 +59,20 @@ impl SectionContents {
         })
     }
 
-    fn section_eid(&self, (_id, eid, _): Context, sid: usize) -> egui::Id {
-        egui::Id::new(eid.with("section").with(sid))
+    fn section_eid(&self, ctx: &Context, sid: usize) -> egui::Id {
+        egui::Id::new(ctx.container_eid.with("section").with(sid))
     }
 
     // (ctx, slot) -> (section, section ctx, section slot)
     fn section(
         &self,
-        ctx: Context,
+        ctx: &Context,
         slot: usize,
     ) -> Option<(&(dyn Contents + Send + Sync), Context, usize)> {
         self.section_slot(slot).map(|(i, slot)| {
             (
                 self.sections[i].as_ref(),
-                (ctx.0, self.section_eid(ctx, i), ctx.2),
+                ctx.with_container_eid(self.section_eid(&ctx, i)),
                 slot,
             )
         })
@@ -82,8 +82,8 @@ impl SectionContents {
     fn split_items<'a>(
         &'a self,
         offset: usize,
-        mut items: &'a [(usize, Item)],
-    ) -> impl Iterator<Item = (usize, &'a [(usize, Item)])> {
+        mut items: Items<'a>,
+    ) -> impl Iterator<Item = (usize, Items)> {
         let mut ranges = self.section_ranges();
 
         // This is more complicated than it needs to be, but we want to catch the assertions.
@@ -100,7 +100,7 @@ impl SectionContents {
             // `split_once` is nightly...
             let l = items
                 .iter()
-                .position(|(slot, _)| (slot - offset) >= r.end)
+                .position(|((slot, _), ..)| (slot - offset) >= r.end)
                 .unwrap_or_else(|| items.len());
             let (head, tail) = items.split_at(l);
 
@@ -108,7 +108,8 @@ impl SectionContents {
 
             // TODO `is_sorted` is nightly...
             assert!(
-                head.iter().all(|(slot, _)| r.contains(&(slot - offset))),
+                head.iter()
+                    .all(|((slot, _), ..)| r.contains(&(slot - offset))),
                 "item slot in range (is `items` sorted by slot?)"
             );
             Some((r.start, head))
@@ -118,8 +119,8 @@ impl SectionContents {
     fn section_items<'a>(
         &'a self,
         offset: usize,
-        items: &'a [(usize, Item)],
-    ) -> impl Iterator<Item = (&(dyn Contents + Send + Sync), usize, &'a [(usize, Item)])> {
+        items: Items<'a>,
+    ) -> impl Iterator<Item = (&(dyn Contents + Send + Sync), usize, Items)> {
         self.split_items(offset, items)
             .zip(&self.sections)
             .map(|((start, items), l)| (l.as_ref(), start, items))
@@ -144,14 +145,14 @@ impl Contents for SectionContents {
     }
 
     // Forward to section.
-    fn add(&self, ctx: Context, slot: usize) -> Option<ResolveFn> {
+    fn add(&self, ctx: &Context, slot: usize) -> Option<ResolveFn> {
         self.section(ctx, slot)
-            .and_then(|(a, ctx, slot)| a.add(ctx, slot))
+            .and_then(|(a, ctx, slot)| a.add(&ctx, slot))
     }
 
-    fn remove(&self, ctx: Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, ctx: &Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
         self.section(ctx, slot)
-            .and_then(|(a, ctx, slot)| a.remove(ctx, slot, shape))
+            .and_then(|(a, ctx, slot)| a.remove(&ctx, slot, shape))
     }
 
     // Never called.
@@ -173,7 +174,7 @@ impl Contents for SectionContents {
     // Unused. We can only fit things in sections.
     fn fits(
         &self,
-        _ctx: Context,
+        _ctx: &Context,
         _egui_ctx: &egui::Context,
         _item: &DragItem,
         _slot: usize,
@@ -184,31 +185,35 @@ impl Contents for SectionContents {
     // Add start slot to find_slot or move slot into item. We need to modify the slot without the item reference being changed.
     fn find_slot(
         &self,
-        ctx: Context,
+        ctx: &Context,
         egui_ctx: &egui::Context,
         item: &DragItem,
-        items: &[(usize, Item)],
+        items: Items,
         // id, slot, ...
-    ) -> Option<(usize, usize, egui::Id)> {
-        self.section_items(ctx.2, items)
+    ) -> Option<(Entity, usize, egui::Id)> {
+        self.section_items(ctx.slot_offset, items)
             .enumerate()
             .find_map(|(i, (layout, offset, items))| {
-                let ctx = (ctx.0, self.section_eid(ctx, i), offset); // + ctx.2??
+                let ctx = Context {
+                    container_id: ctx.container_id,
+                    container_eid: self.section_eid(&ctx, i),
+                    slot_offset: offset, // + ctx.2??
+                };
                 layout
-                    .find_slot(ctx, egui_ctx, item, items)
+                    .find_slot(&ctx, egui_ctx, item, items)
                     .map(|(id, slot, eid)| (id, (slot + offset), eid))
             })
     }
 
     fn ui(
         &self,
-        ctx: Context,
+        ctx: &Context,
         q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
+        items: Items,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
-        let id = ctx.0;
+        let id = ctx.container_id;
 
         // if !items.is_empty() {
         //     items
@@ -219,50 +224,64 @@ impl Contents for SectionContents {
 
         match self.layout {
             SectionLayout::Grid(width) => {
-                egui::Grid::new(id).num_columns(width).show(ui, |ui| {
-                    self.section_items(ctx.2, items)
-                        .enumerate()
-                        .map(|(i, (layout, offset, items))| {
-                            let data = layout
-                                .ui(
-                                    (id, self.section_eid(ctx, i), offset + ctx.2),
-                                    q,
-                                    drag_item,
-                                    items,
-                                    ui,
-                                )
-                                .inner;
+                egui::Grid::new(ctx.container_eid)
+                    .num_columns(width)
+                    .show(ui, |ui| {
+                        self.section_items(ctx.slot_offset, items)
+                            .enumerate()
+                            .map(|(i, (layout, offset, items))| {
+                                let data = layout
+                                    .ui(
+                                        &Context {
+                                            container_id: ctx.container_id,
+                                            container_eid: self.section_eid(&ctx, i),
+                                            slot_offset: offset + ctx.slot_offset,
+                                        },
+                                        q,
+                                        drag_item,
+                                        items,
+                                        ui,
+                                    )
+                                    .inner;
 
-                            if (i + 1) % width == 0 {
-                                ui.end_row();
-                            }
+                                if (i + 1) % width == 0 {
+                                    ui.end_row();
+                                }
 
-                            // Remap slots. Only if we are the subject
-                            // of the drag or target. Nested containers
-                            // will have a different id.
-                            data.map_slots(id, |slot| slot + offset)
-                        })
-                        .reduce(|acc, a| acc.merge(a))
-                        .unwrap_or_default()
-                })
+                                // Remap slots. Only if we are the subject
+                                // of the drag or target. Nested containers
+                                // will have a different id.
+                                data.map_slots(id, |slot| slot + offset)
+                            })
+                            .reduce(|acc, a| acc.merge(a))
+                            .unwrap_or_default()
+                    })
             }
             SectionLayout::Vertical => ui.vertical(|ui| {
-                self.section_items(ctx.2, items)
+                self.section_items(ctx.slot_offset, items)
                     .enumerate()
                     .map(|(i, (contents, offset, items))| {
-                        let section_ctx = (id, self.section_eid(ctx, i), offset + ctx.2);
-                        let data = contents.ui(section_ctx, q, drag_item, items, ui).inner;
+                        let section_ctx = Context {
+                            container_id: id,
+                            container_eid: self.section_eid(&ctx, i),
+                            slot_offset: offset + ctx.slot_offset,
+                        };
+                        let data = contents.ui(&section_ctx, q, drag_item, items, ui).inner;
                         data.map_slots(id, |slot| slot + offset)
                     })
                     .reduce(|data, a| data.merge(a))
                     .unwrap_or_default()
             }),
             SectionLayout::Horizontal => ui.horizontal_top(|ui| {
-                self.section_items(ctx.2, items)
+                self.section_items(ctx.slot_offset, items)
                     .enumerate()
                     .map(|(i, (contents, offset, items))| {
-                        let section_ctx = (id, self.section_eid(ctx, i), offset + ctx.2);
-                        let data = contents.ui(section_ctx, q, drag_item, items, ui).inner;
+                        let section_ctx = Context {
+                            container_id: id,
+                            container_eid: self.section_eid(&ctx, i),
+                            slot_offset: offset + ctx.slot_offset,
+                        };
+                        let data = contents.ui(&section_ctx, q, drag_item, items, ui).inner;
                         data.map_slots(id, |slot| slot + offset)
                     })
                     .reduce(|data, a| data.merge(a))

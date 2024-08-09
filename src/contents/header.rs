@@ -36,16 +36,16 @@ where
         self.contents.accepts(item)
     }
 
-    fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
         self.contents.fits(ctx, egui_ctx, item, slot)
     }
 
     fn ui(
         &self,
-        ctx: Context,
+        ctx: &Context,
         q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
+        items: Items,
         ui: &mut egui::Ui,
     ) -> InnerResponse<MoveData> {
         // Is InnerResponse really useful?

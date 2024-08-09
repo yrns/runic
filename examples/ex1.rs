@@ -6,9 +6,8 @@ use runic::*;
 #[derive(Resource)]
 struct Runic {
     drag_item: Option<DragItem>,
-    contents: ContentsStorage,
-    paper_doll_id: usize,
-    ground_id: usize,
+    paper_doll: Entity,
+    ground: Entity,
 }
 
 fn main() {
@@ -33,7 +32,8 @@ fn setup(
     asset_server: Res<AssetServer>,
     mut textures: ResMut<EguiUserTextures>,
 ) {
-    commands.insert_resource(Runic::new(&*asset_server, &mut *textures));
+    let runic = Runic::new(&mut commands, &*asset_server, &mut *textures);
+    commands.insert_resource(runic);
 }
 
 // This isn't actually reliable.
@@ -45,52 +45,66 @@ fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<Re
     }
 }
 
-fn update(mut contexts: EguiContexts, mut runic: ResMut<Runic>, mut _move_data: Local<MoveData>) {
+fn update(
+    mut contexts: EguiContexts,
+    mut runic: ResMut<Runic>,
+    contents: ContentsStorage,
+    // mut _move_data: Local<MoveData>,
+) {
     //egui::CentralPanel::default().show(ctx, |ui| {});
     egui::Window::new("runic - ex1")
         .resizable(false)
         .show(contexts.ctx_mut(), |ui| {
-            runic.update(ui); //, &mut *move_data);
+            runic.update(contents, ui); //, &mut *move_data);
         });
 }
 
 impl Runic {
-    fn new(asset_server: &AssetServer, textures: &mut EguiUserTextures) -> Self {
-        let mut next_id = {
-            let mut id = 0;
-            move || {
-                id += 1;
-                id
-            }
-        };
+    fn new(
+        commands: &mut Commands,
+        asset_server: &AssetServer,
+        textures: &mut EguiUserTextures,
+    ) -> Self {
+        let boomerang = commands
+            .spawn((
+                Item::new(ItemFlags::Weapon)
+                    .with_icon(textures.add_image(asset_server.load("boomerang.png")))
+                    .with_shape(Shape::from_ones(2, [1, 1, 1, 0])),
+                Name::from("Boomerang"),
+            ))
+            .id();
 
-        let boomerang = Item::new(next_id(), ItemFlags::Weapon)
-            .with_icon(textures.add_image(asset_server.load("boomerang.png")))
-            .with_shape(Shape::from_ones(2, [1, 1, 1, 0]))
-            .with_name("Boomerang");
+        let pouch = commands
+            .spawn((
+                Item::new(ItemFlags::Container)
+                    .with_icon(textures.add_image(asset_server.load("pouch.png")))
+                    .with_shape((2, 2)),
+                Name::from("Pouch"),
+            ))
+            .id();
 
-        let pouch = Item::new(next_id(), ItemFlags::Container)
-            .with_icon(textures.add_image(asset_server.load("pouch.png")))
-            .with_shape((2, 2))
-            .with_name("Pouch");
+        let short_sword = commands
+            .spawn((
+                Item::new(ItemFlags::Weapon)
+                    .with_icon(textures.add_image(asset_server.load("short-sword.png")))
+                    .with_shape((3, 1))
+                    .with_rotation(ItemRotation::R90),
+                Name::from("Short sword"),
+            ))
+            .id();
 
-        let short_sword = Item::new(next_id(), ItemFlags::Weapon)
-            .with_icon(textures.add_image(asset_server.load("short-sword.png")))
-            .with_shape((3, 1))
-            .with_rotation(ItemRotation::R90)
-            .with_name("Short sword");
-
-        let potion = Item::new(next_id(), ItemFlags::Potion)
+        let potion = Item::new(ItemFlags::Potion)
             .with_icon(textures.add_image(asset_server.load("potion.png")))
-            .with_shape((1, 1))
-            .with_name("Potion");
+            .with_shape((1, 1));
 
-        let potion2 = potion.clone().with_id(next_id()).with_name("Potion 2");
+        let potion1 = commands
+            .spawn((potion.clone(), Name::from("Potion 1")))
+            .id();
+        let potion2 = commands.spawn((potion, Name::from("Potion 2"))).id();
 
         // Setup containers. It's important to note here that there are only three containers,
         // the paper doll, the ground, and the pouch. Sectioned contents is one container split
         // into many sections.
-        let paper_doll_id = next_id();
         let paper_doll = SectionContents::new(
             SectionLayout::Vertical,
             vec![
@@ -131,8 +145,9 @@ impl Runic {
             ],
         );
 
-        let mut contents = ContentsStorage::new();
-        contents.insert(paper_doll_id, (paper_doll.boxed(), vec![]));
+        let paper_doll = commands
+            .spawn((ContentsLayout(paper_doll.boxed()), ContentsItems(vec![])))
+            .id();
 
         let pouch_contents = SectionContents::new(
             SectionLayout::Grid(2),
@@ -146,39 +161,37 @@ impl Runic {
                     .boxed(),
             ],
         );
-        contents.insert(pouch.id, (pouch_contents.boxed(), vec![]));
+        commands.entity(pouch).insert((
+            ContentsLayout(pouch_contents.boxed()),
+            ContentsItems(vec![]),
+        ));
 
-        let ground_id = next_id();
-        let ground = GridContents::new((10, 10));
-        contents.insert(
-            ground_id,
-            (
-                Box::new(ground),
-                // MUST BE SORTED BY SLOT
-                vec![
+        let ground = commands
+            .spawn((
+                ContentsLayout(GridContents::new((10, 10)).boxed()),
+                ContentsItems(vec![
+                    // MUST BE SORTED BY SLOT
                     (0, boomerang),
                     (2, pouch),
                     (4, short_sword),
-                    (7, potion),
+                    (7, potion1),
                     (8, potion2),
-                ],
-            ),
-        );
+                ]),
+            ))
+            .id();
 
         Runic {
             drag_item: None,
-            contents,
-            paper_doll_id,
-            ground_id,
+            paper_doll,
+            ground,
         }
     }
 
-    fn update(&mut self, ui: &mut Ui) {
+    fn update(&mut self, mut q: ContentsStorage, ui: &mut Ui) {
         // No go.
         //let drag_item = ui.ctx().data_mut(|d| d.get_temp_mut_or_default(ui.id()));
 
         let drag_item = &mut self.drag_item;
-        let q = &self.contents;
 
         let move_data = ContainerSpace::show(drag_item, ui, |drag_item, ui| {
             let data = MoveData::default();
@@ -186,14 +199,14 @@ impl Runic {
             let data = ui.columns(2, |cols| {
                 cols[0].label("Paper doll:");
                 let data = data.merge(
-                    show_contents(q, self.paper_doll_id, drag_item, &mut cols[0])
+                    q.show_contents(self.paper_doll, drag_item, &mut cols[0])
                         .unwrap()
                         .inner,
                 );
 
                 cols[1].label("Ground 10x10:");
                 let data = data.merge(
-                    show_contents(q, self.ground_id, drag_item, &mut cols[1])
+                    q.show_contents(self.ground, drag_item, &mut cols[1])
                         .unwrap()
                         .inner,
                 );
@@ -203,69 +216,8 @@ impl Runic {
             data
         });
 
-        if let Some(move_data) = move_data {
-            let mut resolve = false;
-            if let MoveData {
-                drag: Some(ref drag),
-                target: Some((container, slot, _eid)),
-                ..
-            } = move_data
-            {
-                // In lieu of an efficient way to do an exhaustive check for cycles:
-                if drag.item.id == container {
-                    tracing::info!("cannot move an item inside itself: {}", drag.item.id);
-                } else {
-                    tracing::info!(
-                        "moving item {} {:?} -> container {} slot {}",
-                        drag.item.id,
-                        drag.item.rotation,
-                        container,
-                        slot
-                    );
-
-                    // Using indexmap or something else to get two mutable
-                    // refs would make this transactable.
-                    match self
-                        .contents
-                        .get_mut(&drag.container.0)
-                        .and_then(|(_, items)| {
-                            let idx = items.iter().position(|(_, item)| item.id == drag.item.id);
-                            idx.map(|idx| items.remove(idx).1)
-                        }) {
-                        Some(mut item) => {
-                            //tracing::info!("new rot {:?} --> {:?}", item.rotation, drag.item.rotation);
-
-                            // Copy the rotation.
-                            item.rotation = drag.item.rotation;
-
-                            // Insert item. The contents must exist
-                            // already to insert an item?
-                            match self.contents.get_mut(&container) {
-                                Some((_, items)) => {
-                                    // Items must be ordered by slot in order for section contents to work.
-                                    let i = items
-                                        .binary_search_by_key(&slot, |&(slot, _)| slot)
-                                        .expect_err("item slot free");
-                                    items.insert(i, (slot, item));
-                                }
-                                None => tracing::error!(
-                                    "could not find container {} to add to",
-                                    container
-                                ),
-                            }
-
-                            resolve = true;
-                        }
-                        None => tracing::error!(
-                            "could not find container {} to remove from",
-                            drag.container.0
-                        ),
-                    }
-                }
-            }
-            if resolve {
-                move_data.resolve(ui.ctx());
-            }
+        if let Some(data) = move_data {
+            q.resolve_move(data, ui.ctx())
         }
     }
 }

@@ -97,15 +97,20 @@ impl Contents for GridContents {
     }
 
     // `slot` is remapped for sections. The target is not...
-    fn add(&self, _ctx: Context, slot: usize) -> Option<ResolveFn> {
+    fn add(&self, _ctx: &Context, slot: usize) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, drag, (.., eid)| {
             add_shape(ctx, eid, slot, &drag.item.shape())
         }))
     }
 
-    fn remove(&self, (_, eid, _): Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(
+        &self,
+        &Context { container_eid, .. }: &Context,
+        slot: usize,
+        shape: shape::Shape,
+    ) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, _, _| {
-            remove_shape(ctx, eid, slot, &shape)
+            remove_shape(ctx, container_eid, slot, &shape)
         }))
     }
 
@@ -123,7 +128,9 @@ impl Contents for GridContents {
 
     fn fits(
         &self,
-        (_, eid, _): Context,
+        &Context {
+            container_eid: eid, ..
+        }: &Context,
         ctx: &egui::Context,
         drag: &DragItem,
         slot: usize,
@@ -153,32 +160,33 @@ impl Contents for GridContents {
 
     fn find_slot(
         &self,
-        ctx: Context,
+        ctx: &Context,
         egui_ctx: &egui::Context,
         item: &DragItem,
-        items: &[(usize, Item)],
-    ) -> Option<(usize, usize, egui::Id)> {
+        items: Items,
+    ) -> Option<(Entity, usize, egui::Id)> {
         let new_shape = || {
-            items
-                .into_iter()
-                .fold(Shape::new(self.size, false), |mut shape, (slot, item)| {
+            items.into_iter().fold(
+                Shape::new(self.size, false),
+                |mut shape, ((slot, _), (_, item))| {
                     shape.paint(&item.shape(), *slot);
                     shape
-                })
+                },
+            )
         };
 
         // Prime the container shape. Normally `body` does this. This is here so we can call `fits`,
         // which requires a filled shape, before we draw the contents (drag to item).
-        egui_ctx.data_mut(|d| _ = d.get_temp_mut_or_insert_with(ctx.1, new_shape));
+        egui_ctx.data_mut(|d| _ = d.get_temp_mut_or_insert_with(ctx.container_eid, new_shape));
 
         find_slot_default(self, ctx, egui_ctx, item, items)
     }
 
     fn body(
         &self,
-        ctx: Context,
+        ctx: &Context,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
+        items: Items,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
         // Allocate the full grid size. Note ui.min_rect() may differ from from the allocated rect
@@ -187,7 +195,11 @@ impl Contents for GridContents {
         let (rect, response) = ui.allocate_exact_size(self.grid_size(), egui::Sense::hover());
 
         let new_drag = if ui.is_rect_visible(rect) {
-            let (id, eid, offset) = ctx;
+            let &Context {
+                container_id: id,
+                container_eid: eid,
+                slot_offset: offset,
+            } = ctx;
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             // Skip this if the container is empty? Only if dragging into
@@ -228,12 +240,12 @@ impl Contents for GridContents {
 
             let new_drag = items
                 .iter()
-                .map(|(slot, item)| {
+                .map(|((slot, id), (name, item))| {
                     let slot = slot - offset;
 
                     // If this item is being dragged, we want to use the dragged rotation.
                     // Everything else should be the same.
-                    let (dragged, item) = drag::item!(drag_item, item);
+                    let (dragged, item) = drag::item!(drag_item, *id, item);
 
                     // Paint each item and fill our shape if needed.
                     if !dragged && fill {
@@ -252,7 +264,7 @@ impl Contents for GridContents {
                     );
 
                     // item returns a clone if it's being dragged
-                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(drag_item, ui))
+                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(*id, name, drag_item, ui))
                         .inner
                         .map(|new_drag| (slot, new_drag))
                 })
@@ -271,7 +283,7 @@ impl Contents for GridContents {
                 .map(|(slot, item)| {
                     // let slot = slot - offset;
                     match item {
-                        ItemResponse::NewDrag(item) => {
+                        ItemResponse::NewDrag(drag_id, item) => {
                             // The dragged item shape is already rotated. We
                             // clone it to retain the original rotation for
                             // removal.
@@ -281,6 +293,7 @@ impl Contents for GridContents {
                             // the shape again to rotate? Isn't it already rotated?
                             cshape.unpaint(&item_shape, slot);
                             ItemResponse::Drag(DragItem {
+                                id: drag_id,
                                 item,
                                 // FIX just use ctx?
                                 container: (id, slot, eid),
@@ -289,7 +302,9 @@ impl Contents for GridContents {
                             })
                         }
                         // Update the slot.
-                        ItemResponse::Hover((_, item)) => ItemResponse::Hover((slot, item)),
+                        ItemResponse::Hover((_slot, id, item)) => {
+                            ItemResponse::Hover((slot, id, item))
+                        }
                         _ => item,
                     }
                 });

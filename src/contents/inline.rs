@@ -28,20 +28,20 @@ impl Contents for InlineContents {
         self.0.accepts(item)
     }
 
-    fn fits(&self, ctx: Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
         self.0.fits(ctx, egui_ctx, item, slot)
     }
 
     fn ui(
         &self,
-        ctx: Context,
+        ctx: &Context,
         q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: &[(usize, Item)],
+        items: Items,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<MoveData> {
         // get the layout and contents of the contained item (if any)
-        let inline_id = items.first().map(|(_, item)| item.id);
+        let inline_id = items.first().map(|((_, id), ..)| *id);
 
         // TODO: InlineLayout?
         ui.horizontal_top(|ui| {
@@ -51,10 +51,9 @@ impl Contents for InlineContents {
 
             if let Some(id) = inline_id {
                 // Don't add contents if the container is being dragged.
-                if !drag_item.as_ref().is_some_and(|d| d.item.id == id) {
-                    if let Some((contents, items)) = q.get(&id) {
-                        return data
-                            .merge(contents.ui(id.into_ctx(), q, drag_item, items, ui).inner);
+                if !drag_item.as_ref().is_some_and(|d| d.id == id) {
+                    if let Some(inline_data) = q.show_contents(id, drag_item, ui) {
+                        return data.merge(inline_data.inner);
                     }
                 }
             }

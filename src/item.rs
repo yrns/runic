@@ -1,15 +1,14 @@
 use egui::TextureId;
 
 use crate::*;
+use bevy_ecs::prelude::*;
 
-#[derive(Clone, Debug)]
+#[derive(Component, Clone, Debug)]
 pub struct Item {
-    pub id: usize,
     pub rotation: ItemRotation,
     pub shape: shape::Shape,
     pub icon: TextureId,
     pub flags: ItemFlags,
-    pub name: String, // WidgetText?
 }
 
 // pub fn item(
@@ -25,29 +24,22 @@ pub struct Item {
 
 #[derive(Debug)]
 pub enum ItemResponse {
-    Hover((usize, Item)),
-    NewDrag(Item),
+    Hover((usize, Entity, Item)),
+    NewDrag(Entity, Item),
     Drag(DragItem),
 }
 
 impl Item {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
-    pub fn new(id: usize, flags: ItemFlags) -> Self {
+    pub fn new(flags: ItemFlags) -> Self {
         Self {
-            id,
             rotation: Default::default(),
             shape: Shape::new([1, 1], true),
             // TODO better default texture
             icon: Default::default(),
             flags,
-            name: Default::default(),
         }
-    }
-
-    pub fn with_id(mut self, id: usize) -> Self {
-        self.id = id;
-        self
     }
 
     pub fn with_icon(mut self, icon: TextureId) -> Self {
@@ -65,19 +57,9 @@ impl Item {
         self
     }
 
-    pub fn with_name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
     pub fn with_rotation(mut self, r: ItemRotation) -> Self {
         self.rotation = r;
         self
-    }
-
-    /// Returns an egui id based on the item id.
-    pub fn eid(&self) -> egui::Id {
-        egui::Id::new(self.id)
     }
 
     /// Size of the (unrotated?) item in pixels.
@@ -116,14 +98,17 @@ impl Item {
 
     pub fn body(
         &self,
+        id: Entity,
         drag_item: &Option<DragItem>,
         ui: &mut egui::Ui,
     ) -> InnerResponse<egui::Vec2> {
+        let eid = egui::Id::new(id);
+
         // let (dragging, item) = match drag_item.as_ref() {
         //     Some(drag) if drag.item.id == self.id => (true, &drag.item),
         //     _ => (false, self),
         // };
-        let dragging = drag_item.as_ref().is_some_and(|d| d.item.id == self.id);
+        let dragging = drag_item.as_ref().is_some_and(|d| d.id == id);
 
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
@@ -135,7 +120,7 @@ impl Item {
         let drag_scale = ui
             .ctx()
             // ui.id() is diff while dragging...
-            .animate_bool(self.eid().with("scale"), dragging);
+            .animate_bool(eid.with("scale"), dragging);
 
         if ui.is_rect_visible(rect) {
             // This size is a hint and isn't used since the image is always(?) already loaded.
@@ -167,15 +152,21 @@ impl Item {
         InnerResponse::new(size, response)
     }
 
-    pub fn ui(&self, drag_item: &Option<DragItem>, ui: &mut egui::Ui) -> Option<ItemResponse> {
-        let id = self.eid();
+    pub fn ui(
+        &self,
+        id: Entity,
+        name: &str,
+        drag_item: &Option<DragItem>,
+        ui: &mut egui::Ui,
+    ) -> Option<ItemResponse> {
+        let eid = egui::Id::new(id);
 
         // This was a bug: "being dragged" is false on the frame in which we release the button.
         // This means that if we dragged the item onto itself, it would return a hover and prevent a
         // move.
         // let drag = ui.ctx().is_being_dragged(id);
 
-        let drag = drag_item.as_ref().is_some_and(|d| d.item.id == self.id);
+        let drag = drag_item.as_ref().is_some_and(|d| d.id == id);
 
         if !drag {
             // This does not work.
@@ -185,7 +176,7 @@ impl Item {
             //     .on_hover_cursor(egui::CursorIcon::Grab);
 
             // let response = ui.scope(|ui| self.body(drag_item, ui)).response;
-            let response = self.body(drag_item, ui).response;
+            let response = self.body(id, drag_item, ui).response;
 
             // Figure out what slot we're in, see if it's filled,
             // don't sense drag if not.
@@ -209,18 +200,18 @@ impl Item {
                 .unwrap_or_default();
 
             if filled {
-                let response = ui.interact(response.rect, id, egui::Sense::drag());
-                let response = response.on_hover_text_at_pointer(format!("{}", self));
+                let response = ui.interact(response.rect, eid, egui::Sense::drag());
+                let response = response.on_hover_text_at_pointer(name);
                 if response.drag_started() {
                     // This clones the shape twice...
-                    return Some(ItemResponse::NewDrag(self.clone()));
+                    return Some(ItemResponse::NewDrag(id, self.clone()));
                 }
                 if response.hovered() {
                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
                 drag_item
                     .as_ref()
-                    .map(|_| ItemResponse::Hover((0, self.clone())))
+                    .map(|_| ItemResponse::Hover((0, id, self.clone()))) // TODO use a ref?
             } else {
                 None
             }
@@ -240,7 +231,7 @@ impl Item {
             match ui.ctx().pointer_interact_pos() {
                 Some(p) => {
                     // from egui::containers::show_tooltip_area_dyn
-                    let _resp = egui::containers::Area::new(id)
+                    let _resp = egui::containers::Area::new(eid)
                         // .order(egui::Order::Tooltip)
                         // The cursor is placing the first slot (upper
                         // left) when dragging, so draw the dragged
@@ -251,7 +242,7 @@ impl Item {
                         // Restrict to ContainerSpace?
                         //.constrain(true) // FIX this is wrong
                         //.default_size(self.size_rotated())
-                        .show(ui.ctx(), |ui| self.body(drag_item, ui));
+                        .show(ui.ctx(), |ui| self.body(id, drag_item, ui));
 
                     // Still allocate the original size for expanding contents. The response size
                     // can be rotated (since it's being dragged), so use our (rotated) size.
@@ -293,21 +284,21 @@ impl Item {
     }
 }
 
-impl std::fmt::Display for Item {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name)?;
-        f.write_str(" ")?;
+// impl std::fmt::Display for Item {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.write_str(&self.name)?;
+//         f.write_str(" ")?;
 
-        // FIX: require Display for flags?
-        //f.write_fmt(format_args!("{}", self.flags))
+//         // FIX: require Display for flags?
+//         //f.write_fmt(format_args!("{}", self.flags))
 
-        f.debug_list()
-            .entries(self.flags.iter_names().map(|f| f.0)) // format_args!("{}", f.0)
-            .finish()
-    }
-}
+//         f.debug_list()
+//             .entries(self.flags.iter_names().map(|f| f.0)) // format_args!("{}", f.0)
+//             .finish()
+//     }
+// }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ItemRotation {
     #[default]
     None,
@@ -374,23 +365,5 @@ impl ItemRotation {
             ItemRotation::R180 => &Self::R180_UVS,
             ItemRotation::R270 => &Self::R270_UVS,
         }
-    }
-}
-
-// This might be useful to get generic over item iterators, but it
-// would require adding another parameter to `Contents::ui`.
-pub trait SlotItem {
-    fn slot_item(&self) -> (usize, &Item);
-}
-
-impl SlotItem for (usize, Item) {
-    fn slot_item(&self) -> (usize, &Item) {
-        (self.0, &self.1)
-    }
-}
-
-impl SlotItem for (usize, &Item) {
-    fn slot_item(&self) -> (usize, &Item) {
-        *self
     }
 }

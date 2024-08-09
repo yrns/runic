@@ -12,6 +12,8 @@ edition = "2021"
 name = "ex1"
 
 [dependencies]
+bevy_core = "0.14"
+bevy_ecs = "0.14"
 bitflags = "2.6.0"
 # egui = { version = "0.28", features = ["callstack"] }
 egui = "0.28"

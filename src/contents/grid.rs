@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Clone, Debug)]
 pub struct GridContents {
+    pub header: Option<String>,
     pub size: shape::Vec2,
     pub flags: ItemFlags,
 }
@@ -9,6 +10,7 @@ pub struct GridContents {
 impl GridContents {
     pub fn new(size: impl Into<shape::Vec2>) -> Self {
         Self {
+            header: None,
             size: size.into(),
             flags: ItemFlags::all(),
         }
@@ -16,6 +18,11 @@ impl GridContents {
 
     pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
         self.flags = flags.into();
+        self
+    }
+
+    pub fn with_header(mut self, header: impl Into<String>) -> Self {
+        self.header = Some(header.into());
         self
     }
 
@@ -282,7 +289,7 @@ impl Contents for GridContents {
                         ItemResponse::NewDrag(drag_id, item) => {
                             // The dragged item shape is already rotated. We
                             // clone it to retain the original rotation for
-                            // removal.
+                            // removal. FIX:?
                             let item_shape = item.shape();
                             let mut cshape = shape.clone();
                             // We've already cloned the item and we're cloning
@@ -319,5 +326,171 @@ impl Contents for GridContents {
         };
 
         InnerResponse::new(new_drag, response)
+    }
+
+    fn ui(
+        &self,
+        ctx: &Context,
+        q: &ContentsStorage,
+        drag_item: &Option<DragItem>,
+        // TODO: fetch in body?
+        items: Items<'_>,
+        ui: &mut egui::Ui,
+    ) -> InnerResponse<MoveData> {
+        // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
+        // dragged_id will be unset before drag_item for one frame.
+
+        // match drag_item.as_ref().map(|d| d.item.eid()) {
+        //     Some(id) => {
+        //         assert_eq!(ui.ctx().dragged_id(), Some(id));
+        //         // if ui.ctx().dragged_id() != Some(id) {
+        //         //     tracing::warn!(
+        //         //         "drag_item eid {:?} != dragged_id {:?}",
+        //         //         id,
+        //         //         ui.ctx().dragged_id()
+        //         //     )
+        //         // }
+        //     }
+        //     _ => (), // we could be dragging something else
+        // }
+
+        // Go back to with_bg/min_frame since egui::Frame takes up all available space.
+        crate::min_frame::min_frame(ui, |style, ui| {
+            // Reserve shape for the dragged item's shadow.
+            let shadow = ui.painter().add(egui::Shape::Noop);
+
+            let InnerResponse { inner, response } = match self.header.as_ref() {
+                Some(header) => {
+                    ui.vertical(|ui| {
+                        ui.label(header);
+                        self.body(ctx, drag_item, items, ui)
+                    })
+                    .inner
+                }
+                None => self.body(ctx, drag_item, items, ui),
+            };
+            let min_rect = response.rect;
+
+            // TODO move everything into the match
+
+            // If we are dragging onto another item, check to see if
+            // the dragged item will fit anywhere within its contents.
+            match (drag_item, inner.as_ref()) {
+                (Some(drag), Some(ItemResponse::Hover((slot, id, item)))) => {
+                    if let Some((contents, items)) = q.get(*id) {
+                        let ctx = Context::from(*id);
+                        let target = contents.0.find_slot(&ctx, ui.ctx(), drag, &items);
+
+                        // The item shadow becomes the target item, not the dragged item, for
+                        // drag-to-item. TODO just use rect
+                        let color = self.shadow_color(true, target.is_some(), ui);
+                        let mut mesh = egui::Mesh::default();
+                        mesh.add_colored_rect(
+                            egui::Rect::from_min_size(
+                                min_rect.min + self.pos(*slot),
+                                item.size_rotated(),
+                            ),
+                            color,
+                        );
+                        ui.painter().set(shadow, mesh);
+
+                        return InnerResponse::new(
+                            MoveData {
+                                drag: None,
+                                target, //: (id, slot, eid),
+                                add_fn: target.and_then(|(_, slot, ..)| {
+                                    contents.0.add(&ctx, ctx.local_slot(slot))
+                                }),
+                            },
+                            response,
+                        );
+                    }
+                }
+                _ => (),
+            }
+
+            // tarkov also checks if containers are full, even if not
+            // hovering -- maybe track min size free? TODO just do
+            // accepts, and only check fits for hover
+            let dragging = drag_item.is_some();
+
+            let mut move_data = MoveData {
+                drag: match inner {
+                    // TODO NewDrag?
+                    Some(ItemResponse::Drag(drag)) => Some(drag),
+                    _ => None,
+                },
+                ..Default::default()
+            };
+
+            if !dragging {
+                return InnerResponse::new(move_data, response);
+            }
+
+            let accepts = drag_item
+                .as_ref()
+                .map(|drag| self.accepts(&drag.item))
+                .unwrap_or_default();
+
+            // Highlight the contents border if we can accept the dragged item.
+            if accepts {
+                // TODO move this to settings?
+                style.bg_stroke = ui.visuals().widgets.hovered.bg_stroke;
+            }
+
+            // `contains_pointer` does not work for the target because only the dragged items'
+            // response will contain the pointer.
+            let slot = ui
+                .ctx()
+                .pointer_latest_pos()
+                // the hover includes the outer_rect?
+                .filter(|p| min_rect.contains(*p))
+                .map(|p| self.slot(p - min_rect.min));
+
+            let Context {
+                container_id: id,
+                container_eid: eid,
+                ..
+            } = *ctx;
+
+            let fits = drag_item
+                .as_ref()
+                .zip(slot)
+                .map(|(item, slot)| self.fits(ctx, ui.ctx(), item, slot))
+                .unwrap_or_default();
+
+            // Paint the dragged item's shadow, showing which slots will
+            // be filled.
+            if let Some((drag, slot)) = drag_item.as_ref().zip(slot) {
+                let color = self.shadow_color(accepts, fits, ui);
+                // Use the rotated shape.
+                let shape = drag.item.shape();
+                let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
+                ui.painter().set(shadow, mesh);
+            }
+
+            // Only send target on release?
+            let released = ui.input(|i| i.pointer.any_released());
+            if released && fits && !accepts {
+                tracing::info!(
+                    "container {:?} does not accept item {:?}!",
+                    id,
+                    drag_item.as_ref().map(|drag| drag.item.flags)
+                );
+            }
+
+            // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
+
+            match slot {
+                Some(slot) if accepts && fits => {
+                    // The target eid is unused?
+                    // dbg!(slot.0, ctx.slot_offset);
+                    move_data.target = Some((id, slot.0 + ctx.slot_offset, eid));
+                    move_data.add_fn = self.add(ctx, slot);
+                }
+                _ => (),
+            }
+            InnerResponse::new(move_data, response)
+        })
     }
 }

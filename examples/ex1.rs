@@ -116,11 +116,11 @@ impl Runic {
                     GridContents::new((2, 2)).with_flags(ItemFlags::Potion),
                 )
                 .boxed(),
-                HeaderContents::new(
-                    "Weapon (3x2 MAX):",
-                    ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon),
-                )
-                .boxed(),
+                // HeaderContents::new(
+                //     "Weapon (3x2 MAX):",
+                //     ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon),
+                // )
+                // .boxed(),
                 HeaderContents::new(
                     "Section contents 3x1x2:",
                     SectionContents::new(
@@ -136,13 +136,13 @@ impl Runic {
                     ),
                 )
                 .boxed(),
-                HeaderContents::new(
-                    "Holds a container:",
-                    InlineContents::new(
-                        ExpandingContents::new((2, 2)).with_flags(ItemFlags::Container), // we only accept containers
-                    ),
-                )
-                .boxed(),
+                // HeaderContents::new(
+                //     "Holds a container:",
+                //     InlineContents::new(
+                //         ExpandingContents::new((2, 2)).with_flags(ItemFlags::Container), // we only accept containers
+                //     ),
+                // )
+                // .boxed(),
             ],
         );
 

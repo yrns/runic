@@ -143,4 +143,15 @@ impl Contents for ExpandingContents {
 
         InnerResponse::new(new_drag, response)
     }
+
+    fn ui(
+        &self,
+        ctx: &Context,
+        q: &ContentsStorage,
+        drag_item: &Option<DragItem>,
+        items: Items<'_>,
+        ui: &mut egui::Ui,
+    ) -> InnerResponse<MoveData> {
+        todo!()
+    }
 }

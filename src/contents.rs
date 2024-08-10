@@ -131,6 +131,10 @@ impl<'w, 's> ContentsStorage<'w, 's> {
     }
 }
 
+/// Local slot (slot - offset).
+#[derive(Copy, Clone, Debug)]
+pub struct LocalSlot(pub usize);
+
 /// A widget to display the contents of a container.
 pub trait Contents {
     /// Returns an egui id based on the contents id. Unused, except

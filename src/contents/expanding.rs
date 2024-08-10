@@ -46,13 +46,13 @@ impl Contents for ExpandingContents {
     // }
 
     // Expanding contents only ever has one slot.
-    fn pos(&self, _slot: usize) -> egui::Vec2 {
+    fn pos(&self, _slot: LocalSlot) -> egui::Vec2 {
         egui::Vec2::ZERO
     }
 
     // Expanding contents only ever has one slot.
-    fn slot(&self, _offset: egui::Vec2) -> usize {
-        0
+    fn slot(&self, _offset: egui::Vec2) -> LocalSlot {
+        LocalSlot(0)
     }
 
     fn accepts(&self, item: &Item) -> bool {
@@ -61,7 +61,13 @@ impl Contents for ExpandingContents {
 
     // How do we visually show if the item is too big? What if the
     // item is rotated and oblong, and only fits one way?
-    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, drag: &DragItem, slot: usize) -> bool {
+    fn fits(
+        &self,
+        ctx: &Context,
+        egui_ctx: &egui::Context,
+        drag: &DragItem,
+        slot: LocalSlot,
+    ) -> bool {
         // Allow rotating in place.
         let current_item = ctx.container_eid == drag.container.2;
         let filled = !current_item
@@ -69,7 +75,8 @@ impl Contents for ExpandingContents {
                 .data(|d| d.get_temp::<Filled>(ctx.container_eid).unwrap_or_default())
                 .0;
         let size = drag.item.shape_size();
-        slot == 0 && !filled && size.cmple(self.max_size).all()
+        assert_eq!(slot.0, 0);
+        !filled && size.cmple(self.max_size).all()
     }
 
     fn body(
@@ -93,28 +100,30 @@ impl Contents for ExpandingContents {
 
         // is_rect_visible? TODO
         let (new_drag, response) = match item {
-            Some(((slot, id), (name, item))) => {
-                assert_eq!(*slot, slot_offset);
+            Some(&((slot, id), (name, item))) => {
+                assert_eq!(slot, slot_offset); // local_slot == 0
 
-                let (dragged, item) = drag::item!(drag_item, *id, item);
+                let (dragged, item) = drag::item!(drag_item, id, item);
 
                 // This is kind of a hack. We don't want to blow out the container if it doesn't
                 // fit. We only want to expand if it fits. We've already checked if it does so, so
                 // maybe we should cache that in drag_item?
-                let size = if !dragged || self.fits(ctx, ui.ctx(), drag_item.as_ref().unwrap(), 0) {
+                let size = if !dragged
+                    || self.fits(ctx, ui.ctx(), drag_item.as_ref().unwrap(), LocalSlot(0))
+                {
                     item.size_rotated()
                 } else {
                     slot_size()
                 };
 
                 let InnerResponse { inner, response } =
-                    ui.allocate_ui(size, |ui| item.ui(*id, name, drag_item, ui));
+                    ui.allocate_ui(size, |ui| item.ui(id, name, drag_item, ui));
                 (
                     inner.map(|item| match item {
                         ItemResponse::NewDrag(drag_id, item) => ItemResponse::Drag(DragItem {
                             id: drag_id,
                             item,
-                            container: (container_id, *slot, container_eid),
+                            container: (container_id, slot, container_eid),
                             cshape: None,
                             remove_fn: None,
                         }),

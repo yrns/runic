@@ -54,6 +54,7 @@ fn update(
     //egui::CentralPanel::default().show(ctx, |ui| {});
     egui::Window::new("runic - ex1")
         .resizable(false)
+        .movable(false)
         .show(contexts.ctx_mut(), |ui| {
             runic.update(contents, ui); //, &mut *move_data);
         });

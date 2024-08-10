@@ -16,11 +16,11 @@ impl Contents for InlineContents {
         self.0.len()
     }
 
-    fn pos(&self, slot: usize) -> egui::Vec2 {
+    fn pos(&self, slot: LocalSlot) -> egui::Vec2 {
         self.0.pos(slot)
     }
 
-    fn slot(&self, offset: egui::Vec2) -> usize {
+    fn slot(&self, offset: egui::Vec2) -> LocalSlot {
         self.0.slot(offset)
     }
 
@@ -28,7 +28,13 @@ impl Contents for InlineContents {
         self.0.accepts(item)
     }
 
-    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+    fn fits(
+        &self,
+        ctx: &Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        slot: LocalSlot,
+    ) -> bool {
         self.0.fits(ctx, egui_ctx, item, slot)
     }
 

@@ -24,11 +24,11 @@ where
         self.contents.len()
     }
 
-    fn pos(&self, slot: usize) -> egui::Vec2 {
+    fn pos(&self, slot: LocalSlot) -> egui::Vec2 {
         self.contents.pos(slot)
     }
 
-    fn slot(&self, offset: egui::Vec2) -> usize {
+    fn slot(&self, offset: egui::Vec2) -> LocalSlot {
         self.contents.slot(offset)
     }
 
@@ -36,7 +36,13 @@ where
         self.contents.accepts(item)
     }
 
-    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool {
+    fn fits(
+        &self,
+        ctx: &Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        slot: LocalSlot,
+    ) -> bool {
         self.contents.fits(ctx, egui_ctx, item, slot)
     }
 

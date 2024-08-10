@@ -94,32 +94,6 @@ impl MoveData {
         }
     }
 
-    pub fn map_slots<F>(self, id: Entity, f: F) -> Self
-    where
-        F: Fn(usize) -> usize,
-    {
-        let Self {
-            drag,
-            target,
-            add_fn,
-        } = self;
-        Self {
-            drag: drag.map(|mut drag| {
-                if drag.container.0 == id {
-                    drag.container.1 = f(drag.container.1);
-                }
-                drag
-            }),
-            target: target.map(|mut t| {
-                if t.0 == id {
-                    t.1 = f(t.1);
-                }
-                t
-            }),
-            add_fn,
-        }
-    }
-
     pub fn zip(&self) -> Option<(&DragItem, &ContainerData)> {
         self.drag.as_ref().zip(self.target.as_ref())
     }
@@ -263,10 +237,13 @@ pub struct Context {
 impl Context {
     fn with_container_eid(&self, container_eid: egui::Id) -> Context {
         Self {
-            container_id: self.container_id,
             container_eid,
-            slot_offset: self.slot_offset,
+            ..self.clone()
         }
+    }
+
+    fn local_slot(&self, slot: usize) -> LocalSlot {
+        LocalSlot(slot - self.slot_offset)
     }
 }
 
@@ -294,16 +271,17 @@ where
         return None;
     }
 
-    let &Context {
-        container_id,
-        container_eid,
-        ..
-    } = ctx;
-
     // TODO test multiple rotations (if non-square) and return it?
     (0..contents.len())
+        .map(LocalSlot)
         .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
-        .map(|slot| (container_id, slot, container_eid))
+        .map(|slot| {
+            (
+                ctx.container_id,
+                slot.0 + ctx.slot_offset,
+                ctx.container_eid,
+            )
+        })
 }
 
 // Maybe this should be a trait instead of requiring flagset. Or maybe

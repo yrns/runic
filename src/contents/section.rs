@@ -44,10 +44,10 @@ impl SectionContents {
     }
 
     /// Returns (section index, section slot) for `slot`.
-    fn section_slot(&self, slot: usize) -> Option<(usize, usize)> {
+    fn section_slot(&self, slot: LocalSlot) -> Option<(usize, LocalSlot)> {
         self.section_ranges()
             .enumerate()
-            .find_map(|(i, r)| (slot < r.end).then(|| (i, slot - r.start)))
+            .find_map(|(i, r)| (slot.0 < r.end).then(|| (i, LocalSlot(slot.0 - r.start))))
     }
 
     fn section_ranges(&self) -> impl Iterator<Item = Range<usize>> + '_ {
@@ -63,12 +63,12 @@ impl SectionContents {
         egui::Id::new(ctx.container_eid.with("section").with(sid))
     }
 
-    // (ctx, slot) -> (section, section ctx, section slot)
+    // (ctx, local slot) -> (section, section ctx, section local slot)
     fn section(
         &self,
         ctx: &Context,
-        slot: usize,
-    ) -> Option<(&(dyn Contents + Send + Sync), Context, usize)> {
+        slot: LocalSlot,
+    ) -> Option<(&(dyn Contents + Send + Sync), Context, LocalSlot)> {
         self.section_slot(slot).map(|(i, slot)| {
             (
                 self.sections[i].as_ref(),
@@ -82,9 +82,11 @@ impl SectionContents {
     fn split_items<'a>(
         &'a self,
         offset: usize,
-        mut items: Items<'a>,
+        all_items: Items<'a>,
     ) -> impl Iterator<Item = (usize, Items)> {
         let mut ranges = self.section_ranges();
+
+        let mut items = all_items;
 
         // This is more complicated than it needs to be, but we want to catch the assertions.
         std::iter::from_fn(move || {
@@ -107,9 +109,19 @@ impl SectionContents {
             items = tail;
 
             // TODO `is_sorted` is nightly...
+            // if !head.{
+            //     dbg!(offset, head);
+            // }
             assert!(
-                head.iter()
-                    .all(|((slot, _), ..)| r.contains(&(slot - offset))),
+                head.iter().all(|((slot, _), ..)| {
+                    if r.contains(&(slot - offset)) {
+                        true
+                    } else {
+                        // dbg!(&r, slot, offset);
+                        // dbg!(all_items);
+                        false
+                    }
+                }),
                 "item slot in range (is `items` sorted by slot?)"
             );
             Some((r.start, head))
@@ -145,23 +157,23 @@ impl Contents for SectionContents {
     }
 
     // Forward to section.
-    fn add(&self, ctx: &Context, slot: usize) -> Option<ResolveFn> {
+    fn add(&self, ctx: &Context, slot: LocalSlot) -> Option<ResolveFn> {
         self.section(ctx, slot)
             .and_then(|(a, ctx, slot)| a.add(&ctx, slot))
     }
 
-    fn remove(&self, ctx: &Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, ctx: &Context, slot: LocalSlot, shape: shape::Shape) -> Option<ResolveFn> {
         self.section(ctx, slot)
             .and_then(|(a, ctx, slot)| a.remove(&ctx, slot, shape))
     }
 
     // Never called.
-    fn pos(&self, _slot: usize) -> egui::Vec2 {
+    fn pos(&self, _slot: LocalSlot) -> egui::Vec2 {
         unimplemented!()
     }
 
     // Never called.
-    fn slot(&self, _offset: egui::Vec2) -> usize {
+    fn slot(&self, _offset: egui::Vec2) -> LocalSlot {
         unimplemented!()
     }
 
@@ -177,7 +189,7 @@ impl Contents for SectionContents {
         _ctx: &Context,
         _egui_ctx: &egui::Context,
         _item: &DragItem,
-        _slot: usize,
+        _slot: LocalSlot,
     ) -> bool {
         false
     }
@@ -197,11 +209,10 @@ impl Contents for SectionContents {
                 let ctx = Context {
                     container_id: ctx.container_id,
                     container_eid: self.section_eid(&ctx, i),
-                    slot_offset: offset, // + ctx.2??
+                    slot_offset: offset + ctx.slot_offset, // TODO: test this
                 };
-                layout
-                    .find_slot(&ctx, egui_ctx, item, items)
-                    .map(|(id, slot, eid)| (id, (slot + offset), eid))
+                layout.find_slot(&ctx, egui_ctx, item, items)
+                //.map(|(id, slot, eid)| (id, (slot + offset), eid))
             })
     }
 
@@ -251,7 +262,8 @@ impl Contents for SectionContents {
                                 // Remap slots. Only if we are the subject
                                 // of the drag or target. Nested containers
                                 // will have a different id.
-                                data.map_slots(id, |slot| slot + offset)
+                                // data.map_slots(id, |slot| slot + offset)
+                                data
                             })
                             .reduce(|acc, a| acc.merge(a))
                             .unwrap_or_default()
@@ -267,7 +279,8 @@ impl Contents for SectionContents {
                             slot_offset: offset + ctx.slot_offset,
                         };
                         let data = contents.ui(&section_ctx, q, drag_item, items, ui).inner;
-                        data.map_slots(id, |slot| slot + offset)
+                        // data.map_slots(id, |slot| slot + offset)
+                        data
                     })
                     .reduce(|data, a| data.merge(a))
                     .unwrap_or_default()
@@ -282,7 +295,8 @@ impl Contents for SectionContents {
                             slot_offset: offset + ctx.slot_offset,
                         };
                         let data = contents.ui(&section_ctx, q, drag_item, items, ui).inner;
-                        data.map_slots(id, |slot| slot + offset)
+                        // data.map_slots(id, |slot| slot + offset)
+                        data
                     })
                     .reduce(|data, a| data.merge(a))
                     .unwrap_or_default()

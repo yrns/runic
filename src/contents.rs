@@ -80,42 +80,44 @@ impl<'w, 's> ContentsStorage<'w, 's> {
 
             let (name, mut item) = self.items.get_mut(*id).expect("item exists");
 
-            if container_id == target_id {
-                let (_, mut items) = self
-                    .contents
-                    .get_mut(*container_id)
-                    .expect("contents exists");
-                match items.0.iter_mut().find(|(_, item)| item == id) {
-                    Some((s, _)) => *s = *slot,
-                    None => panic!("item does not exist in container"),
-                }
+            // We can't fetch the source and destination container mutably if they're the same.
+            let (mut src, dest) = if container_id == target_id {
+                (
+                    self.contents
+                        .get_mut(*container_id)
+                        .expect("src container exists"),
+                    None,
+                )
             } else {
-                let [(_, mut src), (dest_layout, mut dest)] =
-                    self.contents.many_mut([*container_id, *target_id]);
+                let [src, dest] = self.contents.many_mut([*container_id, *target_id]);
+                (src, Some(dest))
+            };
 
-                let _slot_item = src
-                    .0
-                    .iter()
-                    // .position(|slot_item| *slot_item == (*container_slot, *id)) // FIX
-                    .position(|(_, item)| item == id)
-                    .map(|i| src.0.remove(i))
-                    .expect("src exists");
+            // Remove from source container. Items must be ordered by slot in order for section
+            // contents to work.
+            let _slot_item = (src.1)
+                .0
+                .iter()
+                .position(|slot_item| *slot_item == (*container_slot, *id))
+                //.position(|(_, item)| item == id)
+                .map(|i| (src.1).0.remove(i))
+                .expect("src exists");
 
-                // Items must be ordered by slot in order for section contents to work.
-                let i = dest
-                    .0
-                    .binary_search_by_key(&slot, |(slot, _)| slot)
-                    .expect_err("dest item slot free");
+            // Insert into destination container (or source if same).
+            let (dest_layout, mut dest) = dest.unwrap_or(src);
+            let i = dest
+                .0
+                .binary_search_by(|(k, _)| k.cmp(slot))
+                .expect_err("dest item slot free");
 
-                // TODO: put slot_item back on error?
+            // TODO: put slot_item back on error?
 
-                assert!(
-                    *slot < dest_layout.0.len(),
-                    "destination slot in container range"
-                );
+            assert!(
+                *slot < dest_layout.0.len(),
+                "destination slot in container range"
+            );
 
-                dest.0.insert(i, (*slot, *id));
-            }
+            dest.0.insert(i, (*slot, *id));
 
             // Separate components?
             if item.rotation != *rotation {
@@ -130,6 +132,12 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         }
     }
 }
+
+// TODO Eliminate the Contents trait:
+// Everything boils down to a grid contents.
+// Expanding is a special case one by one grid.
+// Header, inline, and potentially section contents are just layout concerns.
+// Sectioned contents can be made into a a collection of contents, and their layout.
 
 /// Local slot (slot - offset).
 #[derive(Copy, Clone, Debug)]
@@ -159,26 +167,33 @@ pub trait Contents {
     /// update internal state in lieu of a normal trait method. `slot`
     /// is used for sectioned contents only. SectionContents needs to
     /// be updated...
-    fn add(&self, _ctx: &Context, _slot: usize) -> Option<ResolveFn> {
+    fn add(&self, _ctx: &Context, _slot: LocalSlot) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a thunk that is resolved after a move when an item is removed.
-    fn remove(&self, _ctx: &Context, _slot: usize, _shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, _ctx: &Context, _slot: LocalSlot, _shape: shape::Shape) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a position for a given slot relative to the contents' origin.
-    fn pos(&self, slot: usize) -> egui::Vec2;
+    fn pos(&self, slot: LocalSlot) -> egui::Vec2;
 
     /// Returns a container slot for a given offset. May return
     /// invalid results if the offset is outside the container.
-    fn slot(&self, offset: egui::Vec2) -> usize;
+    // This always returns a local slot.
+    fn slot(&self, offset: egui::Vec2) -> LocalSlot;
 
     fn accepts(&self, item: &Item) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
+    fn fits(
+        &self,
+        ctx: &Context,
+        egui_ctx: &egui::Context,
+        item: &DragItem,
+        slot: LocalSlot,
+    ) -> bool;
 
     /// Finds the first available slot for the dragged item.
     #[allow(unused)]
@@ -285,7 +300,9 @@ pub trait Contents {
                             MoveData {
                                 drag: None,
                                 target, //: (id, slot, eid),
-                                add_fn: target.and_then(|(_, slot, ..)| contents.0.add(&ctx, slot)),
+                                add_fn: target.and_then(|(_, slot, ..)| {
+                                    contents.0.add(&ctx, ctx.local_slot(slot))
+                                }),
                             },
                             response,
                         );
@@ -325,10 +342,9 @@ pub trait Contents {
 
             // `contains_pointer` does not work for the target because only the dragged items'
             // response will contain the pointer.
-            let slot = // response.contains_pointer()
-                // .then_some(())
-                // .and_then(|_| ui.ctx().pointer_latest_pos())
-                ui.ctx().pointer_latest_pos()
+            let slot = ui
+                .ctx()
+                .pointer_latest_pos()
                 // the hover includes the outer_rect?
                 .filter(|p| min_rect.contains(*p))
                 .map(|p| self.slot(p - min_rect.min));
@@ -370,7 +386,8 @@ pub trait Contents {
             match slot {
                 Some(slot) if accepts && fits => {
                     // The target eid is unused?
-                    move_data.target = Some((id, slot, eid));
+                    // dbg!(slot.0, ctx.slot_offset);
+                    move_data.target = Some((id, slot.0 + ctx.slot_offset, eid));
                     move_data.add_fn = self.add(ctx, slot);
                 }
                 _ => (),

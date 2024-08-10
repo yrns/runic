@@ -1,3 +1,5 @@
+use egui::style::WidgetVisuals;
+
 use super::*;
 
 #[derive(Clone, Debug)]
@@ -354,21 +356,23 @@ impl Contents for GridContents {
         //     _ => (), // we could be dragging something else
         // }
 
+        let header_frame = |ui: &mut egui::Ui, add_contents| {
+            ui.vertical(|ui| {
+                match self.header.as_ref() {
+                    Some(header) => _ = ui.label(header),
+                    _ => (),
+                }
+                crate::min_frame::min_frame(ui, add_contents)
+            })
+            .inner
+        };
+
         // Go back to with_bg/min_frame since egui::Frame takes up all available space.
-        crate::min_frame::min_frame(ui, |style, ui| {
+        header_frame(ui, |style: &mut WidgetVisuals, ui: &mut egui::Ui| {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let InnerResponse { inner, response } = match self.header.as_ref() {
-                Some(header) => {
-                    ui.vertical(|ui| {
-                        ui.label(header);
-                        self.body(ctx, drag_item, items, ui)
-                    })
-                    .inner
-                }
-                None => self.body(ctx, drag_item, items, ui),
-            };
+            let InnerResponse { inner, response } = self.body(ctx, drag_item, items, ui);
             let min_rect = response.rect;
 
             // TODO move everything into the match

@@ -110,39 +110,29 @@ impl Runic {
             SectionLayout::Vertical,
             vec![
                 // accepts any item
-                HeaderContents::new("Bag of any! 4x4:", GridContents::new((4, 4))).boxed(),
-                HeaderContents::new(
-                    "Only potions! 2x2:",
-                    GridContents::new((2, 2)).with_flags(ItemFlags::Potion),
+                GridContents::new((4, 4))
+                    .with_header("Bag of any! 4x4:")
+                    .boxed(),
+                GridContents::new((2, 2))
+                    .with_header("Only potions! 2x2:")
+                    .with_flags(ItemFlags::Potion)
+                    .boxed(),
+                // ExpandingContents::new((3, 2)).with_header("Weapon (3x2 MAX):").with_flags(ItemFlags::Weapon).boxed(),
+
+                // "Section contents 3x1x2:"
+                SectionContents::new(
+                    SectionLayout::Horizontal,
+                    vec![
+                        GridContents::new((1, 2)).boxed(),
+                        GridContents::new((1, 2)).boxed(),
+                        // the last section only accepts weapons
+                        GridContents::new((1, 2))
+                            .with_flags(ItemFlags::Weapon)
+                            .boxed(),
+                    ],
                 )
                 .boxed(),
-                // HeaderContents::new(
-                //     "Weapon (3x2 MAX):",
-                //     ExpandingContents::new((3, 2)).with_flags(ItemFlags::Weapon),
-                // )
-                // .boxed(),
-                HeaderContents::new(
-                    "Section contents 3x1x2:",
-                    SectionContents::new(
-                        SectionLayout::Horizontal,
-                        vec![
-                            GridContents::new((1, 2)).boxed(),
-                            GridContents::new((1, 2)).boxed(),
-                            // the last section only accepts weapons
-                            GridContents::new((1, 2))
-                                .with_flags(ItemFlags::Weapon)
-                                .boxed(),
-                        ],
-                    ),
-                )
-                .boxed(),
-                // HeaderContents::new(
-                //     "Holds a container:",
-                //     InlineContents::new(
-                //         ExpandingContents::new((2, 2)).with_flags(ItemFlags::Container), // we only accept containers
-                //     ),
-                // )
-                // .boxed(),
+                // InlineContents::new(ExpandingContents::new((2, 2)).with_header("Holds a container:").with_flags(ItemFlags::Container)).boxed(),
             ],
         );
 

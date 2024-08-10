@@ -144,6 +144,7 @@ impl Contents for ExpandingContents {
         InnerResponse::new(new_drag, response)
     }
 
+    #[allow(unused)]
     fn ui(
         &self,
         ctx: &Context,

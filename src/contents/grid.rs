@@ -4,7 +4,11 @@ use super::*;
 
 #[derive(Clone, Debug)]
 pub struct GridContents {
+    /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
+    pub expands: bool,
     pub header: Option<String>,
+    // TODO: Replace with shape? Do we want to store shapes for every container, even if the
+    // contents are not visible? LRU cache?
     pub size: shape::Vec2,
     pub flags: ItemFlags,
 }
@@ -12,6 +16,7 @@ pub struct GridContents {
 impl GridContents {
     pub fn new(size: impl Into<shape::Vec2>) -> Self {
         Self {
+            expands: false,
             header: None,
             size: size.into(),
             flags: ItemFlags::all(),
@@ -23,29 +28,34 @@ impl GridContents {
         self
     }
 
+    pub fn with_expands(mut self, expands: bool) -> Self {
+        self.expands = expands;
+        self
+    }
+
     pub fn with_header(mut self, header: impl Into<String>) -> Self {
         self.header = Some(header.into());
         self
     }
 
-    pub fn grid_size(&self) -> egui::Vec2 {
-        (self.size.as_vec2() * SLOT_SIZE).as_ref().into()
+    pub fn grid_size(&self, size: shape::Vec2) -> egui::Vec2 {
+        (size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
 
     // Grid lines shape.
-    pub fn shape(&self, style: &egui::Style) -> egui::Shape {
+    pub fn grid_shape(&self, style: &egui::Style, size: shape::Vec2) -> egui::Shape {
         let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
         let mut stroke2 = stroke1.clone();
         stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
         let stroke2 = egui::epaint::PathStroke::from(stroke2);
 
-        let size = self.grid_size();
-        let egui::Vec2 { x: w, y: h } = size;
+        let pixel_size = (size.as_vec2() * SLOT_SIZE).as_ref().into();
+        let egui::Vec2 { x: w, y: h } = pixel_size;
 
         let mut lines = vec![];
 
         // Don't draw the outside edge.
-        lines.extend((1..(self.size.x)).map(|x| {
+        lines.extend((1..(size.x)).map(|x| {
             let x = x as f32 * SLOT_SIZE;
             egui::Shape::LineSegment {
                 points: [egui::Pos2::new(x, 0.0), egui::Pos2::new(x, h)],
@@ -53,7 +63,7 @@ impl GridContents {
             }
         }));
 
-        lines.extend((1..(self.size.y)).map(|y| {
+        lines.extend((1..(size.y)).map(|y| {
             let y = y as f32 * SLOT_SIZE;
             egui::Shape::LineSegment {
                 points: [egui::Pos2::new(0.0, y), egui::Pos2::new(w, y)],
@@ -62,10 +72,10 @@ impl GridContents {
         }));
 
         lines.push(egui::Shape::Rect(egui::epaint::RectShape::new(
-            egui::Rect::from_min_size(egui::Pos2::ZERO, size),
+            egui::Rect::from_min_size(egui::Pos2::ZERO, pixel_size),
             style.visuals.widgets.noninteractive.rounding,
             // style.visuals.window_rounding,
-            Color32::TRANSPARENT,
+            Color32::TRANSPARENT, // fill covers the grid
             // style.visuals.window_fill,
             stroke1,
         )));
@@ -102,7 +112,11 @@ fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
 
 impl Contents for GridContents {
     fn len(&self) -> usize {
-        self.size.element_product() as usize
+        if self.expands {
+            1
+        } else {
+            self.size.element_product() as usize
+        }
     }
 
     // `slot` is remapped for sections. The target is not...
@@ -120,11 +134,21 @@ impl Contents for GridContents {
     }
 
     fn pos(&self, slot: LocalSlot) -> egui::Vec2 {
-        xy(slot.0, self.size.x as usize) * SLOT_SIZE
+        // Expanding only ever has one slot.
+        if self.expands {
+            egui::Vec2::ZERO
+        } else {
+            xy(slot.0, self.size.x as usize) * SLOT_SIZE
+        }
     }
 
     fn slot(&self, p: egui::Vec2) -> LocalSlot {
-        LocalSlot(slot(p, self.size.x as usize))
+        // Expanding only ever has one slot.
+        if self.expands {
+            LocalSlot(0)
+        } else {
+            LocalSlot(slot(p, self.size.x as usize))
+        }
     }
 
     fn accepts(&self, item: &Item) -> bool {
@@ -140,6 +164,12 @@ impl Contents for GridContents {
         drag: &DragItem,
         slot: LocalSlot,
     ) -> bool {
+        if self.expands && !drag.item.shape_size().cmple(self.size).all() {
+            return false;
+        }
+
+        // TODO test this works for expanding rather than the specialized trait impl
+
         // Must be careful with the type inference here since it will
         // never fetch anything if it thinks it's a reference.
         match ctx.data(|d| d.get_temp::<Shape>(eid)) {
@@ -194,10 +224,23 @@ impl Contents for GridContents {
         items: Items,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
+        // assert!(!self.expands || items.len() <= 1);
+        assert!(items.len() <= self.len());
+
+        let grid_size = if self.expands {
+            if let Some(&((_slot, _id), (_name, item))) = items.first() {
+                item.shape_size()
+            } else {
+                Vec2::ONE
+            }
+        } else {
+            self.size
+        };
+
         // Allocate the full grid size. Note ui.min_rect() may differ from from the allocated rect
         // due to layout. So position items based on the latter.
-
-        let (rect, response) = ui.allocate_exact_size(self.grid_size(), egui::Sense::hover());
+        let (rect, response) =
+            ui.allocate_exact_size(self.grid_size(grid_size), egui::Sense::hover());
 
         let new_drag = if ui.is_rect_visible(rect) {
             let &Context {
@@ -314,7 +357,7 @@ impl Contents for GridContents {
                     }
                 });
 
-            let mut grid = self.shape(ui.style());
+            let mut grid = self.grid_shape(ui.style(), grid_size);
             grid.translate(rect.min.to_vec2());
             ui.painter().set(grid_shape, grid);
 

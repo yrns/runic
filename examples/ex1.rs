@@ -117,8 +117,11 @@ impl Runic {
                     .with_header("Only potions! 2x2:")
                     .with_flags(ItemFlags::Potion)
                     .boxed(),
-                // ExpandingContents::new((3, 2)).with_header("Weapon (3x2 MAX):").with_flags(ItemFlags::Weapon).boxed(),
-
+                GridContents::new((3, 2))
+                    .with_expands(true)
+                    .with_header("Weapon (3x2 MAX):")
+                    .with_flags(ItemFlags::Weapon)
+                    .boxed(),
                 // "Section contents 3x1x2:"
                 SectionContents::new(
                     SectionLayout::Horizontal,

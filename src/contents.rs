@@ -1,10 +1,8 @@
 pub mod grid;
-pub mod inline;
 pub mod section;
 
 use crate::*;
 pub use grid::*;
-pub use inline::*;
 pub use section::*;
 
 use bevy_core::Name;

@@ -6,6 +6,8 @@ use super::*;
 pub struct GridContents {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
+    /// If true, show inline contents for the contained item.
+    pub inline: bool,
     pub header: Option<String>,
     // TODO: Replace with shape? Do we want to store shapes for every container, even if the
     // contents are not visible? LRU cache?
@@ -17,6 +19,7 @@ impl GridContents {
     pub fn new(size: impl Into<shape::Vec2>) -> Self {
         Self {
             expands: false,
+            inline: false,
             header: None,
             size: size.into(),
             flags: ItemFlags::all(),
@@ -30,6 +33,11 @@ impl GridContents {
 
     pub fn with_expands(mut self, expands: bool) -> Self {
         self.expands = expands;
+        self
+    }
+
+    pub fn with_inline(mut self, inline: bool) -> Self {
+        self.inline = inline;
         self
     }
 
@@ -405,7 +413,26 @@ impl Contents for GridContents {
                     Some(header) => _ = ui.label(header),
                     _ => (),
                 }
-                crate::min_frame::min_frame(ui, add_contents)
+
+                // TODO: Make the order and layout configurable.
+                ui.horizontal_top(|ui| {
+                    let data: MoveData = crate::min_frame::min_frame(ui, add_contents).inner;
+
+                    // Show inline contents.
+                    if self.inline {
+                        // What if there's more than one item?
+                        if let Some(id) = items.first().map(|((_, id), ..)| *id) {
+                            // Don't add contents if the container is being dragged.
+                            if !drag_item.as_ref().is_some_and(|d| d.id == id) {
+                                if let Some(inline_data) = q.show_contents(id, drag_item, ui) {
+                                    return data.merge(inline_data.inner);
+                                }
+                            }
+                        }
+                    }
+
+                    data
+                })
             })
             .inner
         };

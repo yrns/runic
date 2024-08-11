@@ -135,13 +135,12 @@ impl Runic {
                     ],
                 )
                 .boxed(),
-                InlineContents::new(
-                    GridContents::new((2, 2))
-                        .with_expands(true)
-                        .with_header("Holds a container:")
-                        .with_flags(ItemFlags::Container),
-                )
-                .boxed(),
+                GridContents::new((2, 2))
+                    .with_header("Holds a container:")
+                    .with_expands(true)
+                    .with_inline(true)
+                    .with_flags(ItemFlags::Container)
+                    .boxed(),
             ],
         );
 

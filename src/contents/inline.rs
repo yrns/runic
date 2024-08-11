@@ -3,10 +3,10 @@ use crate::*;
 // A container for a single item (or "slot") that, when containing
 // another container, the interior contents are displayed inline.
 #[derive(Clone, Debug)]
-pub struct InlineContents(ExpandingContents);
+pub struct InlineContents(GridContents);
 
 impl InlineContents {
-    pub fn new(contents: ExpandingContents) -> Self {
+    pub fn new(contents: GridContents) -> Self {
         Self(contents)
     }
 }

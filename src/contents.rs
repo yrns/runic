@@ -1,10 +1,8 @@
-pub mod expanding;
 pub mod grid;
 pub mod inline;
 pub mod section;
 
 use crate::*;
-pub use expanding::*;
 pub use grid::*;
 pub use inline::*;
 pub use section::*;

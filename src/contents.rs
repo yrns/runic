@@ -1,9 +1,7 @@
 pub mod grid;
-pub mod section;
 
 use crate::*;
 pub use grid::*;
-pub use section::*;
 
 use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
@@ -14,13 +12,17 @@ pub type BoxedContents = Box<dyn Contents + Send + Sync + 'static>;
 #[derive(Component)]
 pub struct ContentsLayout(pub BoxedContents);
 
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct ContentsItems(pub Vec<(usize, Entity)>);
+
+#[derive(Component)]
+pub struct Sections(pub egui::Layout, pub Vec<Entity>);
 
 #[derive(SystemParam)]
 pub struct ContentsStorage<'w, 's> {
-    pub contents: Query<'w, 's, (&'static ContentsLayout, &'static mut ContentsItems)>, // Option<&'static Sections> ?
+    pub contents: Query<'w, 's, (&'static ContentsLayout, &'static mut ContentsItems)>,
     pub items: Query<'w, 's, (&'static Name, &'static mut Item)>,
+    pub sections: Query<'w, 's, &'static Sections>,
 }
 
 pub type Items<'a> = &'a [((usize, Entity), (&'a Name, &'a Item))];

@@ -103,66 +103,96 @@ impl Runic {
             .id();
         let potion2 = commands.spawn((potion, Name::from("Potion 2"))).id();
 
-        // Setup containers. It's important to note here that there are only three containers,
-        // the paper doll, the ground, and the pouch. Sectioned contents is one container split
-        // into many sections.
-        let paper_doll = SectionContents::new(
-            SectionLayout::Vertical,
-            vec![
-                // accepts any item
-                GridContents::new((4, 4))
-                    .with_header("Bag of any! 4x4:")
-                    .boxed(),
-                GridContents::new((2, 2))
-                    .with_header("Only potions! 2x2:")
-                    .with_flags(ItemFlags::Potion)
-                    .boxed(),
-                GridContents::new((3, 2))
-                    .with_expands(true)
-                    .with_header("Weapon (3x2 MAX):")
-                    .with_flags(ItemFlags::Weapon)
-                    .boxed(),
-                // "Section contents 3x1x2:"
-                SectionContents::new(
-                    SectionLayout::Horizontal,
-                    vec![
-                        GridContents::new((1, 2)).boxed(),
-                        GridContents::new((1, 2)).boxed(),
-                        // the last section only accepts weapons
-                        GridContents::new((1, 2))
-                            .with_flags(ItemFlags::Weapon)
-                            .boxed(),
-                    ],
-                )
-                .boxed(),
-                GridContents::new((2, 2))
-                    .with_header("Holds a container:")
-                    .with_expands(true)
-                    .with_inline(true)
-                    .with_flags(ItemFlags::Container)
-                    .boxed(),
-            ],
-        );
-
-        let paper_doll = commands
-            .spawn((ContentsLayout(paper_doll.boxed()), ContentsItems(vec![])))
+        // Setup sections.
+        let section1 = commands
+            .spawn((
+                ContentsLayout(
+                    GridContents::new((2, 2))
+                        .with_header("Only potions! 2x2:")
+                        .with_flags(ItemFlags::Potion)
+                        .boxed(),
+                ),
+                ContentsItems(vec![]),
+            ))
             .id();
 
-        let pouch_contents = SectionContents::new(
-            SectionLayout::Grid(2),
-            vec![
-                // Test inline contents with differing flags...
+        let section2 = commands
+            .spawn((
+                ContentsLayout(
+                    GridContents::new((3, 2))
+                        .with_expands(true)
+                        .with_header("Weapon (3x2 MAX):")
+                        .with_flags(ItemFlags::Weapon)
+                        .boxed(),
+                ),
+                ContentsItems(vec![]),
+            ))
+            .id();
+
+        let sub_sections = [
+            GridContents::new((1, 2)),
+            GridContents::new((1, 2)),
+            // the last section only accepts weapons
+            GridContents::new((1, 2)).with_flags(ItemFlags::Weapon),
+        ]
+        .map(|s| {
+            commands
+                .spawn((ContentsLayout(s.boxed()), ContentsItems::default()))
+                .id()
+        });
+
+        let horizontal =
+            egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Min);
+
+        let section3 = commands
+            .spawn((
+                ContentsLayout(
+                    GridContents::new((2, 2))
+                        .with_header("Holds a container:")
+                        .with_expands(true)
+                        .with_inline(true)
+                        .with_flags(ItemFlags::Container)
+                        .boxed(),
+                ),
+                ContentsItems(vec![]),
+                Sections(horizontal, sub_sections.to_vec()),
+            ))
+            .id();
+
+        let paper_doll = commands
+            .spawn((
+                ContentsLayout(
+                    GridContents::new((4, 4))
+                        .with_header("Bag of any! 4x4:")
+                        .boxed(),
+                ),
+                ContentsItems(vec![]),
+                Sections(
+                    egui::Layout::top_down(egui::Align::Center),
+                    vec![section1, section2, section3],
+                ),
+            ))
+            .id();
+
+        let potion_section = commands
+            .spawn((
+                ContentsLayout(
+                    GridContents::new((1, 1))
+                        .with_flags(ItemFlags::Potion)
+                        .boxed(),
+                ),
+                ContentsItems(vec![]),
+            ))
+            .id();
+
+        commands.entity(pouch).insert((
+            ContentsLayout(
                 GridContents::new((3, 2))
                     .with_flags(ItemFlags::Weapon)
                     .boxed(),
-                GridContents::new((1, 1))
-                    .with_flags(ItemFlags::Potion)
-                    .boxed(),
-            ],
-        );
-        commands.entity(pouch).insert((
-            ContentsLayout(pouch_contents.boxed()),
+            ),
             ContentsItems(vec![]),
+            Sections(horizontal, vec![potion_section]),
         ));
 
         let ground = commands

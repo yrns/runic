@@ -409,6 +409,21 @@ impl Contents for GridContents {
 
         let header_frame = |ui: &mut egui::Ui, add_contents| {
             ui.vertical(|ui| {
+                // Sections.
+                let section_data = if let Ok(Sections(layout, sections)) =
+                    q.sections.get(ctx.container_id)
+                {
+                    ui.with_layout(*layout, |ui| {
+                        sections
+                            .iter()
+                            .filter_map(|id| q.show_contents(*id, drag_item, ui).map(|ir| ir.inner))
+                            .reduce(|acc, data| acc.merge(data))
+                    })
+                    .inner
+                } else {
+                    None
+                };
+
                 match self.header.as_ref() {
                     Some(header) => _ = ui.label(header),
                     _ => (),
@@ -417,6 +432,11 @@ impl Contents for GridContents {
                 // TODO: Make the order and layout configurable.
                 ui.horizontal_top(|ui| {
                     let data: MoveData = crate::min_frame::min_frame(ui, add_contents).inner;
+
+                    let data = match section_data {
+                        Some(section_data) => section_data.merge(data),
+                        None => data,
+                    };
 
                     // Show inline contents.
                     if self.inline {

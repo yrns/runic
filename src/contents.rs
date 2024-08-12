@@ -159,11 +159,6 @@ impl<'w, 's> ContentsStorage<'w, 's> {
     }
 }
 
-// FIX: remove local slots and offsets
-/// Local slot (slot - offset).
-#[derive(Copy, Clone, Debug)]
-pub struct LocalSlot(pub usize);
-
 /// A widget to display the contents of a container.
 pub trait Contents {
     /// Returns an egui id based on the contents id. Unused, except
@@ -188,33 +183,27 @@ pub trait Contents {
     /// update internal state in lieu of a normal trait method. `slot`
     /// is used for sectioned contents only. SectionContents needs to
     /// be updated...
-    fn add(&self, _ctx: &Context, _slot: LocalSlot) -> Option<ResolveFn> {
+    fn add(&self, _ctx: &Context, _slot: usize) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a thunk that is resolved after a move when an item is removed.
-    fn remove(&self, _ctx: &Context, _slot: LocalSlot, _shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, _ctx: &Context, _slot: usize, _shape: shape::Shape) -> Option<ResolveFn> {
         None
     }
 
     /// Returns a position for a given slot relative to the contents' origin.
-    fn pos(&self, slot: LocalSlot) -> egui::Vec2;
+    fn pos(&self, slot: usize) -> egui::Vec2;
 
     /// Returns a container slot for a given offset. May return
     /// invalid results if the offset is outside the container.
     // This always returns a local slot.
-    fn slot(&self, offset: egui::Vec2) -> LocalSlot;
+    fn slot(&self, offset: egui::Vec2) -> usize;
 
     fn accepts(&self, item: &Item) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(
-        &self,
-        ctx: &Context,
-        egui_ctx: &egui::Context,
-        item: &DragItem,
-        slot: LocalSlot,
-    ) -> bool;
+    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
     #[allow(unused)]

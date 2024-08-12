@@ -226,12 +226,11 @@ pub fn shape_mesh(
     mesh
 }
 
-// Container id, egui id, item slot offset (for sectioned containers).
+// Container id, egui id.
 #[derive(Clone, Debug)]
 pub struct Context {
     container_id: Entity,
     container_eid: egui::Id,
-    slot_offset: usize,
 }
 
 impl Context {
@@ -241,10 +240,6 @@ impl Context {
             ..self.clone()
         }
     }
-
-    fn local_slot(&self, slot: usize) -> LocalSlot {
-        LocalSlot(slot - self.slot_offset)
-    }
 }
 
 impl From<Entity> for Context {
@@ -252,7 +247,6 @@ impl From<Entity> for Context {
         Self {
             container_id,
             container_eid: egui::Id::new("contents").with(container_id),
-            slot_offset: 0,
         }
     }
 }
@@ -273,15 +267,8 @@ where
 
     // TODO test multiple rotations (if non-square) and return it?
     (0..contents.len())
-        .map(LocalSlot)
         .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
-        .map(|slot| {
-            (
-                ctx.container_id,
-                slot.0 + ctx.slot_offset,
-                ctx.container_eid,
-            )
-        })
+        .map(|slot| (ctx.container_id, slot, ctx.container_eid))
 }
 
 // Maybe this should be a trait instead of requiring flagset. Or maybe

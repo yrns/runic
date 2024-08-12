@@ -24,7 +24,7 @@ pub struct Item {
 
 #[derive(Debug)]
 pub enum ItemResponse {
-    Hover((LocalSlot, Entity, Item)),
+    Hover((usize, Entity, Item)),
     NewDrag(Entity, Item),
     Drag(DragItem),
 }
@@ -212,7 +212,7 @@ impl Item {
                 drag_item
                     .as_ref()
                     // TODO use an item ref?
-                    .map(|_| ItemResponse::Hover((LocalSlot(0), id, self.clone())))
+                    .map(|_| ItemResponse::Hover((0, id, self.clone())))
             } else {
                 None
             }

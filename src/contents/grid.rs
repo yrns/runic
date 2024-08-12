@@ -128,34 +128,34 @@ impl Contents for GridContents {
     }
 
     // `slot` is remapped for sections. The target is not...
-    fn add(&self, _ctx: &Context, slot: LocalSlot) -> Option<ResolveFn> {
+    fn add(&self, _ctx: &Context, slot: usize) -> Option<ResolveFn> {
         Some(Box::new(move |ctx, drag, (.., eid)| {
-            add_shape(ctx, eid, slot.0, &drag.item.shape())
+            add_shape(ctx, eid, slot, &drag.item.shape())
         }))
     }
 
-    fn remove(&self, ctx: &Context, slot: LocalSlot, shape: shape::Shape) -> Option<ResolveFn> {
+    fn remove(&self, ctx: &Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
         let container_eid = ctx.container_eid;
         Some(Box::new(move |ctx, _, _| {
-            remove_shape(ctx, container_eid, slot.0, &shape)
+            remove_shape(ctx, container_eid, slot, &shape)
         }))
     }
 
-    fn pos(&self, slot: LocalSlot) -> egui::Vec2 {
+    fn pos(&self, slot: usize) -> egui::Vec2 {
         // Expanding only ever has one slot.
         if self.expands {
             egui::Vec2::ZERO
         } else {
-            xy(slot.0, self.size.x as usize) * SLOT_SIZE
+            xy(slot, self.size.x as usize) * SLOT_SIZE
         }
     }
 
-    fn slot(&self, p: egui::Vec2) -> LocalSlot {
+    fn slot(&self, p: egui::Vec2) -> usize {
         // Expanding only ever has one slot.
         if self.expands {
-            LocalSlot(0)
+            0
         } else {
-            LocalSlot(slot(p, self.size.x as usize))
+            slot(p, self.size.x as usize)
         }
     }
 
@@ -170,7 +170,7 @@ impl Contents for GridContents {
         }: &Context,
         ctx: &egui::Context,
         drag: &DragItem,
-        slot: LocalSlot,
+        slot: usize,
     ) -> bool {
         if self.expands && !drag.item.shape_size().cmple(self.size).all() {
             return false;
@@ -191,7 +191,7 @@ impl Contents for GridContents {
                     _ => &shape,
                 };
 
-                shape.fits(&drag.item.shape(), slot.0)
+                shape.fits(&drag.item.shape(), slot)
             }
             None => {
                 // TODO remove this
@@ -212,7 +212,7 @@ impl Contents for GridContents {
             items.into_iter().fold(
                 Shape::new(self.size, false),
                 |mut shape, ((slot, _), (_, item))| {
-                    shape.paint(&item.shape(), slot - ctx.slot_offset);
+                    shape.paint(&item.shape(), *slot);
                     shape
                 },
             )
@@ -254,7 +254,6 @@ impl Contents for GridContents {
             let &Context {
                 container_id: id,
                 container_eid: eid,
-                slot_offset: offset,
             } = ctx;
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
@@ -297,19 +296,17 @@ impl Contents for GridContents {
             let new_drag = items
                 .iter()
                 .map(|&((slot, id), (name, item))| {
-                    let local_slot = LocalSlot(slot - offset);
-
                     // If this item is being dragged, we want to use the dragged rotation.
                     // Everything else should be the same.
                     let (dragged, item) = drag::item!(drag_item, id, item);
 
                     // Paint each item and fill our shape if needed.
                     if !dragged && fill {
-                        shape.paint(&item.shape(), local_slot.0);
+                        shape.paint(&item.shape(), slot);
                     }
 
                     let item_rect = egui::Rect::from_min_size(
-                        rect.min + self.pos(local_slot),
+                        rect.min + self.pos(slot),
                         if dragged {
                             // Only allocate the slot otherwise we'll blow out the contents if it
                             // doesn't fit.
@@ -337,7 +334,6 @@ impl Contents for GridContents {
                 // Add the contents id, current slot and
                 // container shape w/ the item unpainted.
                 .map(|(slot, item)| {
-                    let local_slot = LocalSlot(slot - offset);
                     match item {
                         ItemResponse::NewDrag(drag_id, item) => {
                             // The dragged item shape is already rotated. We
@@ -347,19 +343,19 @@ impl Contents for GridContents {
                             let mut cshape = shape.clone();
                             // We've already cloned the item and we're cloning
                             // the shape again to rotate? Isn't it already rotated?
-                            cshape.unpaint(&item_shape, local_slot.0);
+                            cshape.unpaint(&item_shape, slot);
                             ItemResponse::Drag(DragItem {
                                 id: drag_id,
                                 item,
                                 // FIX just use ctx?
                                 container: (id, slot, eid),
                                 cshape: Some(cshape),
-                                remove_fn: self.remove(ctx, local_slot, item_shape),
+                                remove_fn: self.remove(ctx, slot, item_shape),
                             })
                         }
                         // Update the slot.
                         ItemResponse::Hover((_slot, id, item)) => {
-                            ItemResponse::Hover((local_slot, id, item))
+                            ItemResponse::Hover((slot, id, item))
                         }
                         _ => item,
                     }
@@ -489,9 +485,8 @@ impl Contents for GridContents {
                         MoveData {
                             drag: None,
                             target: target.map(|t| t.1),
-                            add_fn: target.and_then(|(contents, (_, slot, ..))| {
-                                contents.0.add(&ctx, ctx.local_slot(slot))
-                            }),
+                            add_fn: target
+                                .and_then(|(contents, (_, slot, ..))| contents.0.add(&ctx, slot)),
                         },
                         response,
                     );
@@ -575,7 +570,7 @@ impl Contents for GridContents {
                 Some(slot) if accepts && fits => {
                     // The target eid is unused?
                     // dbg!(slot.0, ctx.slot_offset);
-                    move_data.target = Some((id, slot.0 + ctx.slot_offset, eid));
+                    move_data.target = Some((id, slot, eid));
                     move_data.add_fn = self.add(ctx, slot);
                 }
                 _ => (),

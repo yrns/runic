@@ -15,6 +15,7 @@ pub struct ContentsLayout(pub BoxedContents);
 #[derive(Component, Default)]
 pub struct ContentsItems(pub Vec<(usize, Entity)>);
 
+// TODO layout per contents?
 #[derive(Component)]
 pub struct Sections(pub egui::Layout, pub Vec<Entity>);
 
@@ -48,6 +49,35 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         let items: Vec<((usize, Entity), (&Name, &Item))> =
             items.0.iter().copied().zip(q_items).collect();
         Some((layout, items))
+    }
+
+    // Check sections first or last? Last is less recursion.
+    // TODO remove contents in return
+    pub fn find_slot(
+        &self,
+        id: Entity,
+        // TODO remove?
+        _ctx: &Context,
+        egui_ctx: &egui::Context,
+        drag_item: &DragItem,
+    ) -> Option<(&ContentsLayout, (Entity, usize, egui::Id))> {
+        let find_slot = |id| {
+            self.get(id).and_then(|(contents, items)| {
+                // We only need the items to generate shapes, which should go away. TODO
+                let ctx = Context::from(id);
+                contents
+                    .0
+                    .find_slot(&ctx, egui_ctx, drag_item, &items)
+                    .map(|t| (contents, t))
+            })
+        };
+
+        find_slot(id).or_else(|| {
+            self.sections
+                .get(id)
+                .ok()
+                .and_then(|s| s.1.iter().find_map(|id| find_slot(*id)))
+        })
     }
 
     pub fn resolve_move(&mut self, data: MoveData, ctx: &egui::Context) {
@@ -129,12 +159,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
     }
 }
 
-// TODO Eliminate the Contents trait:
-// Everything boils down to a grid contents.
-// Expanding is a special case one by one grid.
-// Header, inline, and potentially section contents are just layout concerns.
-// Sectioned contents can be made into a a collection of contents, and their layout.
-
+// FIX: remove local slots and offsets
 /// Local slot (slot - offset).
 #[derive(Copy, Clone, Debug)]
 pub struct LocalSlot(pub usize);

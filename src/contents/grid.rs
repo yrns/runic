@@ -471,34 +471,30 @@ impl Contents for GridContents {
             // the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
                 (Some(drag), Some(ItemResponse::Hover((slot, id, item)))) => {
-                    if let Some((contents, items)) = q.get(*id) {
-                        let ctx = Context::from(*id);
-                        let target = contents.0.find_slot(&ctx, ui.ctx(), drag, &items);
+                    let target = q.find_slot(*id, ctx, ui.ctx(), drag);
+                    // The item shadow becomes the target item, not the dragged item, for
+                    // drag-to-item. TODO just use rect
+                    let color = self.shadow_color(true, target.is_some(), ui);
+                    let mut mesh = egui::Mesh::default();
+                    mesh.add_colored_rect(
+                        egui::Rect::from_min_size(
+                            min_rect.min + self.pos(*slot),
+                            item.size_rotated(),
+                        ),
+                        color,
+                    );
+                    ui.painter().set(shadow, mesh);
 
-                        // The item shadow becomes the target item, not the dragged item, for
-                        // drag-to-item. TODO just use rect
-                        let color = self.shadow_color(true, target.is_some(), ui);
-                        let mut mesh = egui::Mesh::default();
-                        mesh.add_colored_rect(
-                            egui::Rect::from_min_size(
-                                min_rect.min + self.pos(*slot),
-                                item.size_rotated(),
-                            ),
-                            color,
-                        );
-                        ui.painter().set(shadow, mesh);
-
-                        return InnerResponse::new(
-                            MoveData {
-                                drag: None,
-                                target, //: (id, slot, eid),
-                                add_fn: target.and_then(|(_, slot, ..)| {
-                                    contents.0.add(&ctx, ctx.local_slot(slot))
-                                }),
-                            },
-                            response,
-                        );
-                    }
+                    return InnerResponse::new(
+                        MoveData {
+                            drag: None,
+                            target: target.map(|t| t.1),
+                            add_fn: target.and_then(|(contents, (_, slot, ..))| {
+                                contents.0.add(&ctx, ctx.local_slot(slot))
+                            }),
+                        },
+                        response,
+                    );
                 }
                 _ => (),
             }

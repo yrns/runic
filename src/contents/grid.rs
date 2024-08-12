@@ -9,9 +9,7 @@ pub struct GridContents {
     /// If true, show inline contents for the contained item.
     pub inline: bool,
     pub header: Option<String>,
-    // TODO: Replace with shape? Do we want to store shapes for every container, even if the
-    // contents are not visible? LRU cache?
-    pub size: shape::Vec2,
+    pub shape: Shape,
     pub flags: ItemFlags,
 }
 
@@ -21,7 +19,7 @@ impl GridContents {
             expands: false,
             inline: false,
             header: None,
-            size: size.into(),
+            shape: Shape::new(size.into(), false),
             flags: ItemFlags::all(),
         }
     }
@@ -92,53 +90,21 @@ impl GridContents {
     }
 }
 
-fn update_state<T: 'static + Clone + Send + Sync>(
-    ctx: &egui::Context,
-    id: egui::Id,
-    mut f: impl FnMut(T) -> T,
-) {
-    if let Some(t) = ctx.data(|d| d.get_temp::<T>(id)) {
-        ctx.data_mut(|d| d.insert_temp(id, f(t)));
-    }
-}
-
-// There is no get_temp_mut... If the shape doesn't exist we don't
-// care since it will be regenerated next time the container is shown.
-fn add_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
-    update_state(ctx, id, |mut fill: Shape| {
-        fill.paint(shape, slot);
-        fill
-    })
-}
-
-fn remove_shape(ctx: &egui::Context, id: egui::Id, slot: usize, shape: &Shape) {
-    update_state(ctx, id, |mut fill: Shape| {
-        fill.unpaint(shape, slot);
-        fill
-    })
-}
-
 impl Contents for GridContents {
     fn len(&self) -> usize {
         if self.expands {
             1
         } else {
-            self.size.element_product() as usize
+            self.shape.area()
         }
     }
 
-    // `slot` is remapped for sections. The target is not...
-    fn add(&self, _ctx: &Context, slot: usize) -> Option<ResolveFn> {
-        Some(Box::new(move |ctx, drag, (.., eid)| {
-            add_shape(ctx, eid, slot, &drag.item.shape())
-        }))
+    fn insert(&mut self, slot: usize, item: &Item) {
+        self.shape.paint(&item.shape, slot);
     }
 
-    fn remove(&self, ctx: &Context, slot: usize, shape: shape::Shape) -> Option<ResolveFn> {
-        let container_eid = ctx.container_eid;
-        Some(Box::new(move |ctx, _, _| {
-            remove_shape(ctx, container_eid, slot, &shape)
-        }))
+    fn remove(&mut self, slot: usize, item: &Item) {
+        self.shape.unpaint(&item.shape, slot);
     }
 
     fn pos(&self, slot: usize) -> egui::Vec2 {
@@ -146,7 +112,7 @@ impl Contents for GridContents {
         if self.expands {
             egui::Vec2::ZERO
         } else {
-            xy(slot, self.size.x as usize) * SLOT_SIZE
+            xy(slot, self.shape.size.x as usize) * SLOT_SIZE
         }
     }
 
@@ -155,7 +121,7 @@ impl Contents for GridContents {
         if self.expands {
             0
         } else {
-            slot(p, self.size.x as usize)
+            slot(p, self.shape.size.x as usize)
         }
     }
 
@@ -163,66 +129,33 @@ impl Contents for GridContents {
         self.flags.contains(item.flags)
     }
 
-    fn fits(
-        &self,
-        &Context {
-            container_eid: eid, ..
-        }: &Context,
-        ctx: &egui::Context,
-        drag: &DragItem,
-        slot: usize,
-    ) -> bool {
-        if self.expands && !drag.item.shape_size().cmple(self.size).all() {
+    fn fits(&self, ctx: &Context, drag: &DragItem, slot: usize) -> bool {
+        // This can be moved into Shape::fits?
+        if self.expands && !drag.item.shape_size().cmple(self.shape.size).all() {
             return false;
         }
 
-        // TODO test this works for expanding rather than the specialized trait impl
-
-        // Must be careful with the type inference here since it will
-        // never fetch anything if it thinks it's a reference.
-        match ctx.data(|d| d.get_temp::<Shape>(eid)) {
-            Some(shape) => {
-                // Check if the shape fits here. When moving within
-                // one container, use the cached shape with the
-                // dragged item (and original rotation) unpainted.
-                let shape = match (drag.container.2 == eid, &drag.cshape) {
-                    // (true, None) should never happen...
-                    (true, Some(shape)) => shape,
-                    _ => &shape,
-                };
-
-                shape.fits(&drag.item.shape(), slot)
-            }
-            None => {
-                // TODO remove this
-                tracing::error!("shape {:?} not found!", eid);
-                false
-            }
-        }
-    }
-
-    fn find_slot(
-        &self,
-        ctx: &Context,
-        egui_ctx: &egui::Context,
-        item: &DragItem,
-        items: Items,
-    ) -> Option<(Entity, usize, egui::Id)> {
-        let new_shape = || {
-            items.into_iter().fold(
-                Shape::new(self.size, false),
-                |mut shape, ((slot, _), (_, item))| {
-                    shape.paint(&item.shape(), *slot);
-                    shape
-                },
-            )
+        // Check if the shape fits here. When moving within
+        // one container, use the cached shape with the
+        // dragged item (and original rotation) unpainted.
+        let shape = match (drag.container.2 == ctx.container_eid, &drag.cshape) {
+            // (true, None) should never happen...
+            (true, Some(shape)) => shape,
+            _ => &self.shape,
         };
 
-        // Prime the container shape. Normally `body` does this. This is here so we can call `fits`,
-        // which requires a filled shape, before we draw the contents (drag to item).
-        egui_ctx.data_mut(|d| _ = d.get_temp_mut_or_insert_with(ctx.container_eid, new_shape));
+        shape.fits(&drag.item.shape(), slot)
+    }
 
-        find_slot_default(self, ctx, egui_ctx, item, items)
+    fn find_slot(&self, ctx: &Context, drag: &DragItem) -> Option<(Entity, usize, egui::Id)> {
+        if !self.accepts(&drag.item) {
+            return None;
+        }
+
+        // TODO test multiple rotations (if non-square) and return it?
+        (0..self.len())
+            .find(|slot| self.fits(ctx, drag, *slot))
+            .map(|slot| (ctx.container_id, slot, ctx.container_eid))
     }
 
     fn body(
@@ -232,7 +165,6 @@ impl Contents for GridContents {
         items: Items,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
-        // assert!(!self.expands || items.len() <= 1);
         assert!(items.len() <= self.len());
 
         let grid_size = if self.expands {
@@ -242,7 +174,7 @@ impl Contents for GridContents {
                 Vec2::ONE
             }
         } else {
-            self.size
+            self.shape.size
         };
 
         // Allocate the full grid size. Note ui.min_rect() may differ from from the allocated rect
@@ -257,40 +189,23 @@ impl Contents for GridContents {
             } = ctx;
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
-            // Skip this if the container is empty? Only if dragging into
-            // this container? Only if visible? What if we are dragging to
-            // a container w/o the contents visible/open? Is it possible
-            // to have an empty shape without a bitvec allocated until
-            // painted?  [`fits`] also checks the boundaries even if the
-            // container is empty...
-            let mut fill = false;
-            let mut shape = ui.data(|d| d.get_temp::<Shape>(eid)).unwrap_or_else(|| {
-                // We don't need to fill if we aren't dragging currently...
-                fill = true;
-                shape::Shape::new(self.size, false)
-            });
-
-            // Debug container "shape", AKA filled slots.
             if ui.ctx().debug_on_hover() {
-                if !fill {
-                    // Use the cached shape if the dragged item is ours. This
-                    // rehashes what's in `fits`.
-                    let shape = drag_item
-                        .as_ref()
-                        .filter(|drag| eid == drag.container.2)
-                        .and_then(|drag| drag.cshape.as_ref())
-                        .unwrap_or(&shape);
+                // Use the cached shape if the dragged item is ours. This
+                // rehashes what's in `fits`.
+                let shape = drag_item
+                    .as_ref()
+                    .filter(|drag| eid == drag.container.2)
+                    .and_then(|drag| drag.cshape.as_ref())
+                    .unwrap_or(&self.shape);
 
-                    // debug paint the container "shape" (filled
-                    // slots)
-                    ui.painter().add(shape_mesh(
-                        shape,
-                        rect,
-                        egui::Vec2::ZERO,
-                        Color32::DARK_BLUE,
-                        SLOT_SIZE,
-                    ));
-                }
+                // debug paint the container "shape" (filled slots)
+                ui.painter().add(shape_mesh(
+                    shape,
+                    rect,
+                    egui::Vec2::ZERO,
+                    Color32::DARK_BLUE,
+                    SLOT_SIZE,
+                ));
             }
 
             let new_drag = items
@@ -299,11 +214,6 @@ impl Contents for GridContents {
                     // If this item is being dragged, we want to use the dragged rotation.
                     // Everything else should be the same.
                     let (dragged, item) = drag::item!(drag_item, id, item);
-
-                    // Paint each item and fill our shape if needed.
-                    if !dragged && fill {
-                        shape.paint(&item.shape(), slot);
-                    }
 
                     let item_rect = egui::Rect::from_min_size(
                         rect.min + self.pos(slot),
@@ -340,7 +250,7 @@ impl Contents for GridContents {
                             // clone it to retain the original rotation for
                             // removal. FIX:?
                             let item_shape = item.shape();
-                            let mut cshape = shape.clone();
+                            let mut cshape = self.shape.clone();
                             // We've already cloned the item and we're cloning
                             // the shape again to rotate? Isn't it already rotated?
                             cshape.unpaint(&item_shape, slot);
@@ -350,7 +260,6 @@ impl Contents for GridContents {
                                 // FIX just use ctx?
                                 container: (id, slot, eid),
                                 cshape: Some(cshape),
-                                remove_fn: self.remove(ctx, slot, item_shape),
                             })
                         }
                         // Update the slot.
@@ -365,10 +274,6 @@ impl Contents for GridContents {
             grid.translate(rect.min.to_vec2());
             ui.painter().set(grid_shape, grid);
 
-            // Write out the new shape.
-            if fill {
-                ui.data_mut(|d| d.insert_temp(eid, shape));
-            }
             new_drag
         } else {
             None
@@ -410,6 +315,7 @@ impl Contents for GridContents {
                     q.sections.get(ctx.container_id)
                 {
                     ui.with_layout(*layout, |ui| {
+                        // TODO faster to fetch many first?
                         sections
                             .iter()
                             .filter_map(|id| q.show_contents(*id, drag_item, ui).map(|ir| ir.inner))
@@ -467,7 +373,7 @@ impl Contents for GridContents {
             // the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
                 (Some(drag), Some(ItemResponse::Hover((slot, id, item)))) => {
-                    let target = q.find_slot(*id, ctx, ui.ctx(), drag);
+                    let target = q.find_slot(*id, ctx, drag);
                     // The item shadow becomes the target item, not the dragged item, for
                     // drag-to-item. TODO just use rect
                     let color = self.shadow_color(true, target.is_some(), ui);
@@ -481,15 +387,7 @@ impl Contents for GridContents {
                     );
                     ui.painter().set(shadow, mesh);
 
-                    return InnerResponse::new(
-                        MoveData {
-                            drag: None,
-                            target: target.map(|t| t.1),
-                            add_fn: target
-                                .and_then(|(contents, (_, slot, ..))| contents.0.add(&ctx, slot)),
-                        },
-                        response,
-                    );
+                    return InnerResponse::new(MoveData { drag: None, target }, response);
                 }
                 _ => (),
             }
@@ -541,7 +439,7 @@ impl Contents for GridContents {
             let fits = drag_item
                 .as_ref()
                 .zip(slot)
-                .map(|(item, slot)| self.fits(ctx, ui.ctx(), item, slot))
+                .map(|(item, slot)| self.fits(ctx, item, slot))
                 .unwrap_or_default();
 
             // Paint the dragged item's shadow, showing which slots will
@@ -571,7 +469,6 @@ impl Contents for GridContents {
                     // The target eid is unused?
                     // dbg!(slot.0, ctx.slot_offset);
                     move_data.target = Some((id, slot, eid));
-                    move_data.add_fn = self.add(ctx, slot);
                 }
                 _ => (),
             }

@@ -246,7 +246,7 @@ impl Runic {
         });
 
         if let Some(data) = move_data {
-            q.resolve_move(data, ui.ctx())
+            q.resolve_move(data)
         }
     }
 }

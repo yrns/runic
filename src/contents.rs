@@ -21,7 +21,7 @@ pub struct Sections(pub egui::Layout, pub Vec<Entity>);
 
 #[derive(SystemParam)]
 pub struct ContentsStorage<'w, 's> {
-    pub contents: Query<'w, 's, (&'static ContentsLayout, &'static mut ContentsItems)>,
+    pub contents: Query<'w, 's, (&'static mut ContentsLayout, &'static mut ContentsItems)>,
     pub items: Query<'w, 's, (&'static Name, &'static mut Item)>,
     pub sections: Query<'w, 's, &'static Sections>,
 }
@@ -52,23 +52,17 @@ impl<'w, 's> ContentsStorage<'w, 's> {
     }
 
     // Check sections first or last? Last is less recursion.
-    // TODO remove contents in return
     pub fn find_slot(
         &self,
         id: Entity,
         // TODO remove?
         _ctx: &Context,
-        egui_ctx: &egui::Context,
         drag_item: &DragItem,
-    ) -> Option<(&ContentsLayout, (Entity, usize, egui::Id))> {
+    ) -> Option<(Entity, usize, egui::Id)> {
         let find_slot = |id| {
-            self.get(id).and_then(|(contents, items)| {
-                // We only need the items to generate shapes, which should go away. TODO
+            self.contents.get(id).ok().and_then(|(contents, _items)| {
                 let ctx = Context::from(id);
-                contents
-                    .0
-                    .find_slot(&ctx, egui_ctx, drag_item, &items)
-                    .map(|t| (contents, t))
+                contents.0.find_slot(&ctx, drag_item)
             })
         };
 
@@ -80,7 +74,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         })
     }
 
-    pub fn resolve_move(&mut self, data: MoveData, ctx: &egui::Context) {
+    pub fn resolve_move(&mut self, data: MoveData) {
         {
             let MoveData {
                 drag:
@@ -92,7 +86,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                     }),
                 target: Some((target_id, slot, ..)),
                 ..
-            } = &data
+            } = data
             else {
                 return;
             };
@@ -104,70 +98,70 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                 id
             );
 
-            let (name, mut item) = self.items.get_mut(*id).expect("item exists");
+            let (name, mut item) = self.items.get_mut(id).expect("item exists");
 
             // We can't fetch the source and destination container mutably if they're the same.
             let (mut src, dest) = if container_id == target_id {
                 (
                     self.contents
-                        .get_mut(*container_id)
+                        .get_mut(container_id)
                         .expect("src container exists"),
                     None,
                 )
             } else {
-                let [src, dest] = self.contents.many_mut([*container_id, *target_id]);
+                let [src, dest] = self.contents.many_mut([container_id, target_id]);
                 (src, Some(dest))
             };
 
-            // Remove from source container. Items must be ordered by slot in order for section
-            // contents to work.
-            let _slot_item = (src.1)
-                .0
-                .iter()
-                .position(|slot_item| *slot_item == (*container_slot, *id))
-                //.position(|(_, item)| item == id)
-                .map(|i| (src.1).0.remove(i))
-                .expect("src exists");
+            // Remove from source container.
+            src.1.remove(container_slot, id);
+            (src.0).0.remove(container_slot, item.as_ref());
 
             // Insert into destination container (or source if same).
-            let (dest_layout, mut dest) = dest.unwrap_or(src);
-            let i = dest
-                .0
-                .binary_search_by(|(k, _)| k.cmp(slot))
-                .expect_err("dest item slot free");
-
-            // TODO: put slot_item back on error?
+            let (mut dest_layout, mut dest) = dest.unwrap_or(src);
 
             assert!(
-                *slot < dest_layout.0.len(),
+                slot < dest_layout.0.len(),
                 "destination slot in container range"
             );
 
-            dest.0.insert(i, (*slot, *id));
+            // TODO: put slot_item back on error?
+            dest.insert(slot, id);
+            dest_layout.0.insert(slot, item.as_ref());
 
             // Separate components?
-            if item.rotation != *rotation {
-                item.rotation = *rotation;
+            if item.rotation != rotation {
+                item.rotation = rotation;
             }
 
             tracing::info!(
                 "moved item {name} {id} {rotation:?} -> container {target_id} slot {slot}"
             );
-
-            data.resolve(ctx);
         }
+    }
+}
+
+impl ContentsItems {
+    pub fn insert(&mut self, slot: usize, id: Entity) {
+        let i = self
+            .0
+            .binary_search_by(|(k, _)| k.cmp(&slot))
+            .expect_err("item slot free");
+        self.0.insert(i, (slot, id));
+    }
+
+    pub fn remove(&mut self, slot: usize, id: Entity) {
+        self.0
+            .iter()
+            .position(|slot_item| *slot_item == (slot, id))
+            //.position(|(_, item)| item == id)
+            .map(|i| self.0.remove(i))
+            .expect("item exists");
     }
 }
 
 /// A widget to display the contents of a container.
 pub trait Contents {
-    /// Returns an egui id based on the contents id. Unused, except
-    /// for loading state.
-    // fn eid(&self, id: usize) -> egui::Id {
-    //     // Containers are items, so we need a unique id for the contents.
-    //     egui::Id::new("contents").with(id)
-    // }
-
     fn boxed(self) -> Box<dyn Contents + Send + Sync>
     where
         Self: Sized + Send + Sync + 'static,
@@ -178,19 +172,9 @@ pub trait Contents {
     /// Number of slots this container holds.
     fn len(&self) -> usize;
 
-    /// Creates a thunk that is resolved after a move when an item is
-    /// added. The contents won't exist after a move so we use this to
-    /// update internal state in lieu of a normal trait method. `slot`
-    /// is used for sectioned contents only. SectionContents needs to
-    /// be updated...
-    fn add(&self, _ctx: &Context, _slot: usize) -> Option<ResolveFn> {
-        None
-    }
+    fn insert(&mut self, slot: usize, item: &Item);
 
-    /// Returns a thunk that is resolved after a move when an item is removed.
-    fn remove(&self, _ctx: &Context, _slot: usize, _shape: shape::Shape) -> Option<ResolveFn> {
-        None
-    }
+    fn remove(&mut self, slot: usize, item: &Item);
 
     /// Returns a position for a given slot relative to the contents' origin.
     fn pos(&self, slot: usize) -> egui::Vec2;
@@ -203,23 +187,10 @@ pub trait Contents {
     fn accepts(&self, item: &Item) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, ctx: &Context, egui_ctx: &egui::Context, item: &DragItem, slot: usize) -> bool;
+    fn fits(&self, ctx: &Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    #[allow(unused)]
-    fn find_slot(
-        &self,
-        ctx: &Context,
-        egui_ctx: &egui::Context,
-        item: &DragItem,
-        items: Items,
-    ) -> Option<(Entity, usize, egui::Id)> {
-        // Expanding, header, inline contents never call this. This is only called on drag to
-        // (container) item. TODO: This is only a trait method since it uses the grid contents
-        // shape?
-        unimplemented!();
-        // find_slot_default(self, ctx, egui_ctx, item, items)
-    }
+    fn find_slot(&self, ctx: &Context, item: &DragItem) -> Option<(Entity, usize, egui::Id)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {

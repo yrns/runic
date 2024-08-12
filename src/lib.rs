@@ -40,7 +40,6 @@ pub struct DragItem {
     /// Source container shape with item unpainted, used for fit
     /// checking if dragged within the source container.
     pub cshape: Option<shape::Shape>,
-    pub remove_fn: Option<ResolveFn>,
 }
 
 impl std::fmt::Debug for DragItem {
@@ -72,7 +71,6 @@ mod drag {
 pub struct MoveData {
     pub drag: Option<DragItem>,
     pub target: Option<ContainerData>,
-    pub add_fn: Option<ResolveFn>,
 }
 
 impl MoveData {
@@ -90,26 +88,11 @@ impl MoveData {
         Self {
             drag: self.drag.or(other.drag),
             target: self.target.or(other.target),
-            add_fn: self.add_fn.or(other.add_fn),
         }
     }
 
     pub fn zip(&self) -> Option<(&DragItem, &ContainerData)> {
         self.drag.as_ref().zip(self.target.as_ref())
-    }
-
-    pub fn resolve(mut self, ctx: &egui::Context) {
-        match (self.drag.take(), self.target.take()) {
-            (Some(mut drag), Some(target)) => {
-                if let Some(mut f) = drag.remove_fn.take() {
-                    f(ctx, &drag, target)
-                }
-                if let Some(mut f) = self.add_fn.take() {
-                    f(ctx, &drag, target)
-                }
-            }
-            _ => tracing::warn!("resolve failed"),
-        }
     }
 }
 
@@ -233,15 +216,6 @@ pub struct Context {
     container_eid: egui::Id,
 }
 
-impl Context {
-    fn with_container_eid(&self, container_eid: egui::Id) -> Context {
-        Self {
-            container_eid,
-            ..self.clone()
-        }
-    }
-}
-
 impl From<Entity> for Context {
     fn from(container_id: Entity) -> Self {
         Self {
@@ -249,26 +223,6 @@ impl From<Entity> for Context {
             container_eid: egui::Id::new("contents").with(container_id),
         }
     }
-}
-
-pub fn find_slot_default<'a, T>(
-    contents: &T,
-    ctx: &Context,
-    egui_ctx: &egui::Context,
-    drag: &DragItem,
-    _items: Items,
-) -> Option<(Entity, usize, egui::Id)>
-where
-    T: Contents + ?Sized,
-{
-    if !contents.accepts(&drag.item) {
-        return None;
-    }
-
-    // TODO test multiple rotations (if non-square) and return it?
-    (0..contents.len())
-        .find(|slot| contents.fits(ctx, egui_ctx, drag, *slot))
-        .map(|slot| (ctx.container_id, slot, ctx.container_eid))
 }
 
 // Maybe this should be a trait instead of requiring flagset. Or maybe

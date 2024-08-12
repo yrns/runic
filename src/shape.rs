@@ -55,14 +55,16 @@ impl Shape {
         }
     }
 
-    #[inline]
     pub fn width(&self) -> usize {
         self.size.x as usize
     }
 
-    #[inline]
     pub fn height(&self) -> usize {
         self.size.y as usize
+    }
+
+    pub fn area(&self) -> usize {
+        self.size.element_product() as usize
     }
 
     pub fn contains(&self, pt: Vec2) -> bool {
@@ -196,7 +198,7 @@ impl std::fmt::Display for Shape {
         self.rows()
             .map(|r| {
                 r.iter()
-                    .map(|b| if *b { "\u{25A0}" } else { "\u{25A1}" })
+                    .map(|b| if *b { "■" } else { "□" })
                     .chain(std::iter::once("\n"))
                     .map(|x| write!(f, "{}", x))
                     .collect()

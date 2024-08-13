@@ -189,25 +189,6 @@ impl Contents for GridContents {
             } = ctx;
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
-            if ui.ctx().debug_on_hover() {
-                // Use the cached shape if the dragged item is ours. This
-                // rehashes what's in `fits`.
-                let shape = drag_item
-                    .as_ref()
-                    .filter(|drag| eid == drag.container.2)
-                    .and_then(|drag| drag.cshape.as_ref())
-                    .unwrap_or(&self.shape);
-
-                // debug paint the container "shape" (filled slots)
-                ui.painter().add(shape_mesh(
-                    shape,
-                    rect,
-                    egui::Vec2::ZERO,
-                    Color32::DARK_BLUE,
-                    SLOT_SIZE,
-                ));
-            }
-
             let new_drag = items
                 .iter()
                 .map(|&((slot, id), (name, item))| {
@@ -273,6 +254,25 @@ impl Contents for GridContents {
             let mut grid = self.grid_shape(ui.style(), grid_size);
             grid.translate(rect.min.to_vec2());
             ui.painter().set(grid_shape, grid);
+
+            // debug paint the container "shape" (filled slots)
+            if ui.ctx().debug_on_hover() {
+                // Use the cached shape if the dragged item is ours. This
+                // rehashes what's in `fits`.
+                let shape = drag_item
+                    .as_ref()
+                    .filter(|drag| ctx.container_eid == drag.container.2)
+                    .and_then(|drag| drag.cshape.as_ref())
+                    .unwrap_or(&self.shape);
+
+                ui.painter().add(shape_mesh(
+                    shape,
+                    rect,
+                    egui::Vec2::ZERO,
+                    Color32::GREEN.gamma_multiply(0.8),
+                    SLOT_SIZE,
+                ));
+            }
 
             new_drag
         } else {

@@ -39,16 +39,16 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         Some(layout.0.ui(&id.into(), self, drag_item, &items, ui))
     }
 
-    pub fn get(
-        &self,
-        id: Entity,
-    ) -> Option<(&ContentsLayout, Vec<((usize, Entity), (&Name, &Item))>)> {
-        let (layout, items) = self.contents.get(id).ok()?;
-        let q_items = self.items.iter_many(items.0.iter().map(|i| i.1));
-        // FIX: remove collect
-        let items: Vec<((usize, Entity), (&Name, &Item))> =
-            items.0.iter().copied().zip(q_items).collect();
-        Some((layout, items))
+    pub fn get(&self, id: Entity) -> Option<(&ContentsLayout, &ContentsItems)> {
+        self.contents.get(id).ok()
+    }
+
+    pub fn items<'a>(
+        &'a self,
+        contents_items: &'a ContentsItems,
+    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item))> + 'a {
+        let q_items = self.items.iter_many(contents_items.0.iter().map(|i| i.1));
+        contents_items.0.iter().copied().zip(q_items)
     }
 
     // Check sections first or last? Last is less recursion.
@@ -206,21 +206,19 @@ pub trait Contents {
     // Draw contents.
     fn body(
         &self,
-        _ctx: &Context,
-        _drag_item: &Option<DragItem>,
-        _items: Items,
+        ctx: &Context,
+        q: &ContentsStorage,
+        drag_item: &Option<DragItem>,
+        items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> InnerResponse<Option<ItemResponse>> {
-        // Never used: header, inline, sectioned contents don't call body.
-        InnerResponse::new(None, ui.label("❓"))
-    }
+    ) -> InnerResponse<Option<ItemResponse>>;
 
     fn ui(
         &self,
         ctx: &Context,
         q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: Items<'_>,
+        items: &ContentsItems,
         ui: &mut egui::Ui,
     ) -> InnerResponse<MoveData>;
 }

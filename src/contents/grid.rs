@@ -161,18 +161,21 @@ impl Contents for GridContents {
     fn body(
         &self,
         ctx: &Context,
+        q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        items: Items,
+        items: &ContentsItems,
         ui: &mut egui::Ui,
     ) -> egui::InnerResponse<Option<ItemResponse>> {
-        assert!(items.len() <= self.len());
+        assert!(items.0.len() <= self.len());
+
+        // For expanding contents we need to see the size of the first item before looping.
+        let mut items = q.items(items).peekable();
 
         let grid_size = if self.expands {
-            if let Some(&((_slot, _id), (_name, item))) = items.first() {
-                item.shape_size()
-            } else {
-                Vec2::ONE
-            }
+            items
+                .peek()
+                .map(|(_, (_, item))| item.shape_size())
+                .unwrap_or(Vec2::ONE)
         } else {
             self.shape.size
         };
@@ -187,11 +190,11 @@ impl Contents for GridContents {
                 container_id: id,
                 container_eid: eid,
             } = ctx;
+
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .iter()
-                .map(|&((slot, id), (name, item))| {
+                .map(|((slot, id), (name, item))| {
                     // If this item is being dragged, we want to use the dragged rotation.
                     // Everything else should be the same.
                     let (dragged, item) = drag::item!(drag_item, id, item);
@@ -287,8 +290,7 @@ impl Contents for GridContents {
         ctx: &Context,
         q: &ContentsStorage,
         drag_item: &Option<DragItem>,
-        // TODO: fetch in body?
-        items: Items<'_>,
+        items: &ContentsItems,
         ui: &mut egui::Ui,
     ) -> InnerResponse<MoveData> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
@@ -343,10 +345,10 @@ impl Contents for GridContents {
                     // Show inline contents.
                     if self.inline {
                         // What if there's more than one item?
-                        if let Some(id) = items.first().map(|((_, id), ..)| *id) {
+                        if let Some((_slot, id)) = items.0.first() {
                             // Don't add contents if the container is being dragged.
-                            if !drag_item.as_ref().is_some_and(|d| d.id == id) {
-                                if let Some(inline_data) = q.show_contents(id, drag_item, ui) {
+                            if !drag_item.as_ref().is_some_and(|d| d.id == *id) {
+                                if let Some(inline_data) = q.show_contents(*id, drag_item, ui) {
                                     return data.merge(inline_data.inner);
                                 }
                             }
@@ -364,7 +366,7 @@ impl Contents for GridContents {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let InnerResponse { inner, response } = self.body(ctx, drag_item, items, ui);
+            let InnerResponse { inner, response } = self.body(ctx, q, drag_item, items, ui);
             let min_rect = response.rect;
 
             // TODO move everything into the match

@@ -130,8 +130,8 @@ impl Contents for GridContents {
     }
 
     fn fits(&self, ctx: &Context, drag: &DragItem, slot: usize) -> bool {
-        // This can be moved into Shape::fits?
-        if self.expands && !drag.item.shape_size().cmple(self.shape.size).all() {
+        // This can be moved into Shape::fits? TODO
+        if self.expands && !drag.item.shape.size.cmple(self.shape.size).all() {
             return false;
         }
 
@@ -143,7 +143,7 @@ impl Contents for GridContents {
             _ => &self.shape,
         };
 
-        shape.fits(&drag.item.shape(), slot)
+        shape.fits(&drag.item.shape, slot)
     }
 
     fn find_slot(&self, ctx: &Context, drag: &DragItem) -> Option<(Entity, usize)> {
@@ -173,7 +173,7 @@ impl Contents for GridContents {
         let grid_size = if self.expands {
             items
                 .peek()
-                .map(|(_, (_, item))| item.shape_size())
+                .map(|(_, (_, item))| item.shape.size)
                 .unwrap_or(Vec2::ONE)
         } else {
             self.shape.size
@@ -200,7 +200,7 @@ impl Contents for GridContents {
                             // doesn't fit.
                             slot_size()
                         } else {
-                            item.size_rotated()
+                            item.size()
                         },
                     );
 
@@ -224,14 +224,8 @@ impl Contents for GridContents {
                 .map(|(slot, item)| {
                     match item {
                         ItemResponse::NewDrag(drag_id, item) => {
-                            // The dragged item shape is already rotated. We
-                            // clone it to retain the original rotation for
-                            // removal. FIX:??
-                            let item_shape = item.shape();
                             let mut cshape = self.shape.clone();
-                            // We've already cloned the item and we're cloning
-                            // the shape again to rotate? Isn't it already rotated?
-                            cshape.unpaint(&item_shape, slot);
+                            cshape.unpaint(&item.shape, slot);
                             ItemResponse::Drag(DragItem {
                                 id: drag_id,
                                 item,
@@ -373,10 +367,7 @@ impl Contents for GridContents {
                     let color = self.shadow_color(true, target.is_some(), ui);
                     let mut mesh = egui::Mesh::default();
                     mesh.add_colored_rect(
-                        egui::Rect::from_min_size(
-                            min_rect.min + self.pos(*slot),
-                            item.size_rotated(),
-                        ),
+                        egui::Rect::from_min_size(min_rect.min + self.pos(*slot), item.size()),
                         color,
                     );
                     ui.painter().set(shadow, mesh);
@@ -434,8 +425,7 @@ impl Contents for GridContents {
             // be filled.
             if let Some((drag, slot)) = drag_item.as_ref().zip(slot) {
                 let color = self.shadow_color(accepts, fits, ui);
-                // Use the rotated shape.
-                let shape = drag.item.shape();
+                let shape = &drag.item.shape;
                 let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
                 ui.painter().set(shadow, mesh);
             }

@@ -95,7 +95,7 @@ impl ContainerSpace {
         if ui.input(|i| i.key_pressed(egui::Key::R)) {
             if let Some(DragItem { item, .. }) = drag_item.as_mut() {
                 item.rotation = item.rotation.increment();
-                // item.shape = item.shape.rotate90();
+                item.shape = item.shape.rotate90();
             }
         }
 

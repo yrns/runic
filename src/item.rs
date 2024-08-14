@@ -47,8 +47,10 @@ impl Item {
         self
     }
 
+    /// Set the item shape and unset its rotation.
     pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
         self.shape = shape.into();
+        self.rotation = ItemRotation::None;
         self
     }
 
@@ -57,41 +59,22 @@ impl Item {
         self
     }
 
+    /// Set the item's rotation and apply it to its shape.
     pub fn with_rotation(mut self, r: ItemRotation) -> Self {
         self.rotation = r;
+        self.rotate();
         self
     }
 
-    /// Size of the (unrotated?) item in pixels.
+    /// Size in pixels.
     // TODO check uses of this and make sure the rotation is right
     pub fn size(&self) -> egui::Vec2 {
         (self.shape.size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
 
-    /// Rotated size in pixels.
-    pub fn size_rotated(&self) -> egui::Vec2 {
-        match self.rotation {
-            ItemRotation::R90 | ItemRotation::R270 => self.size().yx(),
-            _ => self.size(),
-        }
-    }
-
-    /// Rotated shape size (in slots).
-    pub fn shape_size(&self) -> Vec2 {
-        use glam::swizzles::Vec2Swizzles;
-
-        match self.rotation {
-            ItemRotation::R90 | ItemRotation::R270 => self.shape.size.yx(),
-            _ => self.shape.size,
-        }
-    }
-
-    /// The width of the shape (in slots), with rotation.
+    /// The width of the shape (in slots).
     pub fn width(&self) -> usize {
-        match self.rotation {
-            ItemRotation::R90 | ItemRotation::R270 => self.shape.height(),
-            _ => self.shape.width(),
-        }
+        self.shape.width()
     }
 
     const PIVOT: egui::Vec2 = egui::Vec2::splat(0.5);
@@ -112,7 +95,7 @@ impl Item {
 
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
-        let size = self.size_rotated();
+        let size = self.size();
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
 
         // Scale down slightly even when not dragging in lieu of baking a border into every item
@@ -203,7 +186,6 @@ impl Item {
                 let response = ui.interact(response.rect, eid, egui::Sense::drag());
                 let response = response.on_hover_text_at_pointer(name);
                 if response.drag_started() {
-                    // This clones the shape twice...
                     return Some(ItemResponse::NewDrag(id, self.clone()));
                 }
                 if response.hovered() {
@@ -267,21 +249,14 @@ impl Item {
         }
     }
 
-    // This returns a clone every time, even if not rotated.
-    pub fn shape(&self) -> shape::Shape {
+    // Apply rotation to shape.
+    fn rotate(&mut self) {
         match self.rotation {
-            ItemRotation::None => self.shape.clone(),
-            ItemRotation::R90 => self.shape.rotate90(),
-            ItemRotation::R180 => self.shape.rotate180(),
-            ItemRotation::R270 => self.shape.rotate270(),
-        }
-    }
-
-    // Rotate the (dragged) shape to match the item's rotation.
-    #[allow(unused)]
-    fn rotate(mut self) -> Self {
-        self.shape = self.shape();
-        self
+            ItemRotation::None => (),
+            ItemRotation::R90 => self.shape = self.shape.rotate90(),
+            ItemRotation::R180 => self.shape = self.shape.rotate180(),
+            ItemRotation::R270 => self.shape = self.shape.rotate270(),
+        };
     }
 }
 

@@ -95,7 +95,10 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                 drag:
                     Some(DragItem {
                         id,
-                        item: Item { rotation, .. },
+                        item:
+                            Item {
+                                shape, rotation, ..
+                            },
                         source: Some((container_id, container_slot, _)),
                     }),
                 target: Some((target_id, slot, ..)),
@@ -139,14 +142,15 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                 "destination slot in container range"
             );
 
+            // Copy rotation and shape from the dragged item. Do this before inserting so the shape is painted correctly.
+            if item.rotation != rotation {
+                item.shape = shape;
+                item.rotation = rotation;
+            }
+
             // TODO: put slot_item back on error?
             dest.insert(slot, id);
             dest_layout.0.insert(slot, item.as_ref());
-
-            // Separate components?
-            if item.rotation != rotation {
-                item.rotation = rotation;
-            }
 
             tracing::info!(
                 "moved item {name} {id} {rotation:?} -> container {target_id} slot {slot}"

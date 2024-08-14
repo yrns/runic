@@ -159,7 +159,7 @@ impl Contents for GridContents {
         drag_item: &Option<DragItem>,
         items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> egui::InnerResponse<Option<ItemResponse>> {
+    ) -> InnerResponse<Option<ItemResponse>> {
         assert!(items.0.len() <= self.len());
 
         // For expanding contents we need to see the size of the first item before looping.
@@ -228,9 +228,7 @@ impl Contents for GridContents {
                             })
                         }
                         // Update the slot.
-                        ItemResponse::Hover((_slot, id, item)) => {
-                            ItemResponse::Hover((slot, id, item))
-                        }
+                        ItemResponse::Hover((_slot, id)) => ItemResponse::Hover((slot, id)),
                         _ => item,
                     }
                 });
@@ -355,12 +353,14 @@ impl Contents for GridContents {
             // If we are dragging onto another item, check to see if
             // the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
-                (Some(drag), Some(ItemResponse::Hover((slot, id, item)))) => {
+                (Some(drag), Some(ItemResponse::Hover((slot, id)))) => {
                     let target = q.find_slot(*id, drag);
                     // The item shadow becomes the target item, not the dragged item, for
                     // drag-to-item. TODO just use rect
                     let color = self.shadow_color(true, target.is_some(), ui);
                     let mut mesh = egui::Mesh::default();
+                    // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
+                    let item = q.items.get(*id).expect("item exists").1;
                     mesh.add_colored_rect(
                         egui::Rect::from_min_size(min_rect.min + self.pos(*slot), item.size()),
                         color,

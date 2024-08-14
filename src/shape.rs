@@ -106,6 +106,10 @@ impl Shape {
     }
 
     pub fn fits(&self, other: &Shape, slot: usize) -> bool {
+        if !other.size.cmple(self.size).all() {
+            return false;
+        }
+
         if let Some(r) = self.overlay_range(other, slot) {
             let w = other.width();
             self.fill[r]

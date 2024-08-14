@@ -130,11 +130,6 @@ impl Contents for GridContents {
     }
 
     fn fits(&self, ctx: &Context, drag: &DragItem, slot: usize) -> bool {
-        // This can be moved into Shape::fits? TODO
-        if self.expands && !drag.item.shape.size.cmple(self.shape.size).all() {
-            return false;
-        }
-
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.

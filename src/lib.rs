@@ -23,33 +23,15 @@ pub fn slot(offset: egui::Vec2, width: usize) -> usize {
     p.x as usize + p.y as usize * width
 }
 
-pub type ContainerId = Entity;
-
-/// Target container id, slot, and egui::Id (which is unique to sections).
-pub type ContainerData = (ContainerId, usize, egui::Id);
-
-pub type ResolveFn =
-    Box<dyn FnMut(&egui::Context, &DragItem, ContainerData) + Send + Sync + 'static>;
-
+#[derive(Debug)]
 pub struct DragItem {
     pub id: Entity,
-    /// A clone of the original item with rotation applied.
+    /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
     pub item: Item,
-    /// Source location.
-    pub container: ContainerData,
-    /// Source container shape with item unpainted, used for fit
-    /// checking if dragged within the source container.
-    pub cshape: Option<shape::Shape>,
-}
-
-impl std::fmt::Debug for DragItem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "DragItem {{ item: {:?}, container: {:?} }}",
-            self.item, self.container
-        )
-    }
+    /// Source location container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
+    pub source: Option<(Entity, usize, Shape)>,
+    // TODO:?
+    // pub target: Option<(Entity, usize)>,
 }
 
 mod drag {
@@ -70,29 +52,23 @@ mod drag {
 #[derive(Default)]
 pub struct MoveData {
     pub drag: Option<DragItem>,
-    pub target: Option<ContainerData>,
+    pub target: Option<(Entity, usize)>,
 }
 
 impl MoveData {
-    // we could just use zip
+    // TODO: remove
     pub fn merge(self, other: Self) -> Self {
         //let Self { item, container } = self;
         if let (Some(drag), Some(other)) = (self.drag.as_ref(), other.drag.as_ref()) {
             tracing::error!("multiple items! ({:?} and {:?})", drag.id, other.id)
         }
-        if let (Some((c, _, _)), Some((other, _, _))) =
-            (self.target.as_ref(), other.target.as_ref())
-        {
+        if let (Some((c, ..)), Some((other, ..))) = (self.target.as_ref(), other.target.as_ref()) {
             tracing::error!("multiple containers! ({:?} and {:?})", c, other)
         }
         Self {
             drag: self.drag.or(other.drag),
             target: self.target.or(other.target),
         }
-    }
-
-    pub fn zip(&self) -> Option<(&DragItem, &ContainerData)> {
-        self.drag.as_ref().zip(self.target.as_ref())
     }
 }
 
@@ -213,14 +189,13 @@ pub fn shape_mesh(
 #[derive(Clone, Debug)]
 pub struct Context {
     container_id: Entity,
-    container_eid: egui::Id,
 }
 
 impl From<Entity> for Context {
     fn from(container_id: Entity) -> Self {
         Self {
             container_id,
-            container_eid: egui::Id::new("contents").with(container_id),
+            // container_eid: egui::Id::new("contents").with(container_id),
         }
     }
 }

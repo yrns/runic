@@ -51,14 +51,29 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         contents_items.0.iter().copied().zip(q_items)
     }
 
+    /// Inserts item with `id` into `container`. Returns final container id and slot.
+    pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, usize)> {
+        let item = self.items.get(id).ok()?.1;
+
+        // fits/find_slot only accept DragItem...
+        let drag = DragItem {
+            id,
+            item: item.clone(),
+            source: None,
+        };
+
+        // This is fetching twice...
+        let (container, slot) = self.find_slot(container, &drag)?;
+        let (mut layout, mut items) = self.contents.get_mut(container).ok()?;
+
+        items.insert(slot, id);
+        let DragItem { item, .. } = drag;
+        layout.0.insert(slot, &item);
+        Some((container, slot))
+    }
+
     // Check sections first or last? Last is less recursion.
-    pub fn find_slot(
-        &self,
-        id: Entity,
-        // TODO remove?
-        _ctx: &Context,
-        drag_item: &DragItem,
-    ) -> Option<(Entity, usize, egui::Id)> {
+    pub fn find_slot(&self, id: Entity, drag_item: &DragItem) -> Option<(Entity, usize)> {
         let find_slot = |id| {
             self.contents.get(id).ok().and_then(|(contents, _items)| {
                 let ctx = Context::from(id);
@@ -81,8 +96,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                     Some(DragItem {
                         id,
                         item: Item { rotation, .. },
-                        container: (container_id, container_slot, ..),
-                        ..
+                        source: Some((container_id, container_slot, _)),
                     }),
                 target: Some((target_id, slot, ..)),
                 ..
@@ -190,7 +204,7 @@ pub trait Contents {
     fn fits(&self, ctx: &Context, item: &DragItem, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot(&self, ctx: &Context, item: &DragItem) -> Option<(Entity, usize, egui::Id)>;
+    fn find_slot(&self, ctx: &Context, item: &DragItem) -> Option<(Entity, usize)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {

@@ -138,16 +138,15 @@ impl Contents for GridContents {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
-        let shape = match (drag.container.2 == ctx.container_eid, &drag.cshape) {
-            // (true, None) should never happen...
-            (true, Some(shape)) => shape,
+        let shape = match &drag.source {
+            Some((id, _, shape)) if ctx.container_id == *id => shape,
             _ => &self.shape,
         };
 
         shape.fits(&drag.item.shape(), slot)
     }
 
-    fn find_slot(&self, ctx: &Context, drag: &DragItem) -> Option<(Entity, usize, egui::Id)> {
+    fn find_slot(&self, ctx: &Context, drag: &DragItem) -> Option<(Entity, usize)> {
         if !self.accepts(&drag.item) {
             return None;
         }
@@ -155,7 +154,7 @@ impl Contents for GridContents {
         // TODO test multiple rotations (if non-square) and return it?
         (0..self.len())
             .find(|slot| self.fits(ctx, drag, *slot))
-            .map(|slot| (ctx.container_id, slot, ctx.container_eid))
+            .map(|slot| (ctx.container_id, slot))
     }
 
     fn body(
@@ -186,11 +185,6 @@ impl Contents for GridContents {
             ui.allocate_exact_size(self.grid_size(grid_size), egui::Sense::hover());
 
         let new_drag = if ui.is_rect_visible(rect) {
-            let &Context {
-                container_id: id,
-                container_eid: eid,
-            } = ctx;
-
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
@@ -232,7 +226,7 @@ impl Contents for GridContents {
                         ItemResponse::NewDrag(drag_id, item) => {
                             // The dragged item shape is already rotated. We
                             // clone it to retain the original rotation for
-                            // removal. FIX:?
+                            // removal. FIX:??
                             let item_shape = item.shape();
                             let mut cshape = self.shape.clone();
                             // We've already cloned the item and we're cloning
@@ -241,9 +235,7 @@ impl Contents for GridContents {
                             ItemResponse::Drag(DragItem {
                                 id: drag_id,
                                 item,
-                                // FIX just use ctx?
-                                container: (id, slot, eid),
-                                cshape: Some(cshape),
+                                source: Some((ctx.container_id, slot, cshape)),
                             })
                         }
                         // Update the slot.
@@ -260,12 +252,12 @@ impl Contents for GridContents {
 
             // debug paint the container "shape" (filled slots)
             if ui.ctx().debug_on_hover() {
-                // Use the cached shape if the dragged item is ours. This
-                // rehashes what's in `fits`.
+                // Use the cached shape if the dragged item is ours. This rehashes what's in `fits`.
                 let shape = drag_item
                     .as_ref()
-                    .filter(|drag| ctx.container_eid == drag.container.2)
-                    .and_then(|drag| drag.cshape.as_ref())
+                    .and_then(|d| d.source.as_ref())
+                    .filter(|s| ctx.container_id == s.0)
+                    .map(|d| &d.2)
                     .unwrap_or(&self.shape);
 
                 ui.painter().add(shape_mesh(
@@ -375,7 +367,7 @@ impl Contents for GridContents {
             // the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
                 (Some(drag), Some(ItemResponse::Hover((slot, id, item)))) => {
-                    let target = q.find_slot(*id, ctx, drag);
+                    let target = q.find_slot(*id, drag);
                     // The item shadow becomes the target item, not the dragged item, for
                     // drag-to-item. TODO just use rect
                     let color = self.shadow_color(true, target.is_some(), ui);
@@ -432,12 +424,6 @@ impl Contents for GridContents {
                 .filter(|p| min_rect.contains(*p))
                 .map(|p| self.slot(p - min_rect.min));
 
-            let Context {
-                container_id: id,
-                container_eid: eid,
-                ..
-            } = *ctx;
-
             let fits = drag_item
                 .as_ref()
                 .zip(slot)
@@ -459,7 +445,7 @@ impl Contents for GridContents {
             if released && fits && !accepts {
                 tracing::info!(
                     "container {:?} does not accept item {:?}!",
-                    id,
+                    ctx.container_id,
                     drag_item.as_ref().map(|drag| drag.item.flags)
                 );
             }
@@ -468,9 +454,7 @@ impl Contents for GridContents {
 
             match slot {
                 Some(slot) if accepts && fits => {
-                    // The target eid is unused?
-                    // dbg!(slot.0, ctx.slot_offset);
-                    move_data.target = Some((id, slot, eid));
+                    move_data.target = Some((ctx.container_id, slot));
                 }
                 _ => (),
             }

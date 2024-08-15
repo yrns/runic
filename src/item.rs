@@ -11,22 +11,11 @@ pub struct Item {
     pub flags: ItemFlags,
 }
 
-// pub fn item(
-//     id: usize,
-//     icon: TextureId,
-//     shape: shape::Shape,
-//     drag_item: &Option<DragItem>,
-// ) -> impl egui::Widget + '_ {
-//     // Widget will never work since we need to return things other
-//     // than a response.
-//     move |ui: &mut egui::Ui| ui.horizontal(|ui| Item::new(id, icon, shape).ui(drag_item, ui))
-// }
-
 #[derive(Debug)]
 pub enum ItemResponse {
-    Hover((usize, Entity)),
-    NewDrag(Entity, Item),
-    Drag(DragItem),
+    // Rename DragToItem,
+    SetTarget((usize, Entity)),
+    NewDrag(DragItem),
 }
 
 impl Item {
@@ -183,12 +172,19 @@ impl Item {
                 let response = ui.interact(response.rect, eid, egui::Sense::drag());
                 let response = response.on_hover_text_at_pointer(name);
                 if response.drag_started() {
-                    return Some(ItemResponse::NewDrag(id, self.clone()));
+                    return Some(ItemResponse::NewDrag(DragItem {
+                        id,
+                        item: self.clone(),
+                        // Contents::ui sets this.
+                        source: None,
+                    }));
                 }
                 if response.hovered() {
                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
-                drag_item.as_ref().map(|_| ItemResponse::Hover((slot, id)))
+                drag_item
+                    .as_ref()
+                    .map(|_| ItemResponse::SetTarget((slot, id)))
             } else {
                 None
             }

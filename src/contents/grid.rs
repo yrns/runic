@@ -214,21 +214,15 @@ impl Contents for GridContents {
                     a.or(b)
                 })
                 .flatten()
-                // Add the contents id, current slot and
-                // container shape w/ the item unpainted.
-                .map(|(slot, item)| match item {
-                    // NewDrag --> Drag
-                    ItemResponse::NewDrag(drag_id, item) => {
+                // Set drag source. Contents id, current slot and container shape w/ the item unpainted.
+                .map(|(slot, ir)| match ir {
+                    ItemResponse::NewDrag(mut drag) => {
                         let mut cshape = self.shape.clone();
-                        cshape.unpaint(&item.shape, slot);
-
-                        ItemResponse::Drag(DragItem {
-                            id: drag_id,
-                            item,
-                            source: Some((ctx.container_id, slot, cshape)),
-                        })
+                        cshape.unpaint(&drag.item.shape, slot);
+                        drag.source = Some((ctx.container_id, slot, cshape));
+                        ItemResponse::NewDrag(drag)
                     }
-                    _ => item,
+                    _ => ir,
                 });
 
             let mut grid = self.grid_shape(ui.style(), grid_size);
@@ -346,100 +340,92 @@ impl Contents for GridContents {
             let InnerResponse { inner, response } = self.body(ctx, q, drag_item, items, ui);
             let min_rect = response.rect;
 
-            // TODO move everything into the match
-
             // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
-            match (drag_item, inner.as_ref()) {
-                (Some(drag), Some(ItemResponse::Hover((slot, id)))) if q.is_container(*id) => {
-                    let target = q.find_slot(*id, drag);
+            let move_data = match (drag_item, inner) {
+                (Some(drag), Some(ItemResponse::SetTarget((slot, id)))) if q.is_container(id) => {
+                    let target = q.find_slot(id, drag);
                     // The item shadow becomes the target item, not the dragged item, for
                     // drag-to-item. TODO just use rect
                     let color = self.shadow_color(true, target.is_some(), ui);
                     let mut mesh = egui::Mesh::default();
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
-                    let item = q.items.get(*id).expect("item exists").1;
+                    let item = q.items.get(id).expect("item exists").1;
                     mesh.add_colored_rect(
-                        egui::Rect::from_min_size(min_rect.min + self.pos(*slot), item.size()),
+                        egui::Rect::from_min_size(min_rect.min + self.pos(slot), item.size()),
                         color,
                     );
                     ui.painter().set(shadow, mesh);
 
-                    return InnerResponse::new(MoveData { drag: None, target }, response);
+                    MoveData { drag: None, target }
                 }
-                _ => (),
-            }
-
-            // tarkov also checks if containers are full, even if not
-            // hovering -- maybe track min size free? TODO just do
-            // accepts, and only check fits for hover
-            let dragging = drag_item.is_some();
-
-            let mut move_data = MoveData {
-                drag: match inner {
-                    // TODO NewDrag?
-                    Some(ItemResponse::Drag(drag)) => Some(drag),
-                    _ => None,
+                // Unless the drag is released and pressed in the same frame, we should never have a new drag while dragging?
+                (None, ir) => MoveData {
+                    drag: ir.map(|ir| match ir {
+                        ItemResponse::SetTarget(_) => unreachable!(),
+                        ItemResponse::NewDrag(drag) => drag,
+                    }),
+                    target: None,
                 },
-                ..Default::default()
+                (Some(drag), None) => {
+                    // tarkov also checks if containers are full, even if not
+                    // hovering -- maybe track min size free? TODO just do
+                    // accepts, and only check fits for hover
+
+                    let accepts = self.accepts(&drag.item);
+
+                    // Highlight the contents border if we can accept the dragged item.
+                    if accepts {
+                        // TODO move this to settings?
+                        style.bg_stroke = ui.visuals().widgets.hovered.bg_stroke;
+                    } else {
+                        // This does nothing.
+                        ui.disable()
+                    }
+                    // This is ugly w/ the default theme.
+                    // *style = ui.style().interact_selectable(&response, accepts);
+
+                    // `contains_pointer` does not work for the target because only the dragged items'
+                    // response will contain the pointer.
+                    let slot = ui
+                        .ctx()
+                        .pointer_latest_pos()
+                        // the hover includes the outer_rect?
+                        .filter(|p| min_rect.contains(*p))
+                        .map(|p| self.slot(p - min_rect.min));
+
+                    let fits = slot
+                        .map(|slot| self.fits(ctx, drag, slot))
+                        .unwrap_or_default();
+
+                    // Paint the dragged item's shadow, showing which slots will be filled.
+                    if let Some(slot) = slot {
+                        let color = self.shadow_color(accepts, fits, ui);
+                        let shape = &drag.item.shape;
+                        let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
+                        ui.painter().set(shadow, mesh);
+                    }
+
+                    // Only send target on release?
+                    let released = ui.input(|i| i.pointer.any_released());
+                    if released && fits && !accepts {
+                        tracing::info!(
+                            "container {:?} does not accept item {:?}!",
+                            ctx.container_id,
+                            drag.item.flags,
+                        );
+                    }
+
+                    MoveData {
+                        // So this gets merged?
+                        drag: None,
+                        target: slot
+                            .filter(|_| accepts && fits)
+                            .map(|slot| (ctx.container_id, slot)),
+                    }
+                }
+                _ => MoveData::default(),
             };
 
-            if !dragging {
-                return InnerResponse::new(move_data, response);
-            }
-
-            let accepts = drag_item
-                .as_ref()
-                .map(|drag| self.accepts(&drag.item))
-                .unwrap_or_default();
-
-            // Highlight the contents border if we can accept the dragged item.
-            if accepts {
-                // TODO move this to settings?
-                style.bg_stroke = ui.visuals().widgets.hovered.bg_stroke;
-            }
-
-            // `contains_pointer` does not work for the target because only the dragged items'
-            // response will contain the pointer.
-            let slot = ui
-                .ctx()
-                .pointer_latest_pos()
-                // the hover includes the outer_rect?
-                .filter(|p| min_rect.contains(*p))
-                .map(|p| self.slot(p - min_rect.min));
-
-            let fits = drag_item
-                .as_ref()
-                .zip(slot)
-                .map(|(item, slot)| self.fits(ctx, item, slot))
-                .unwrap_or_default();
-
-            // Paint the dragged item's shadow, showing which slots will
-            // be filled.
-            if let Some((drag, slot)) = drag_item.as_ref().zip(slot) {
-                let color = self.shadow_color(accepts, fits, ui);
-                let shape = &drag.item.shape;
-                let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
-                ui.painter().set(shadow, mesh);
-            }
-
-            // Only send target on release?
-            let released = ui.input(|i| i.pointer.any_released());
-            if released && fits && !accepts {
-                tracing::info!(
-                    "container {:?} does not accept item {:?}!",
-                    ctx.container_id,
-                    drag_item.as_ref().map(|drag| drag.item.flags)
-                );
-            }
-
-            // accepts ⇒ dragging, fits ⇒ dragging, fits ⇒ slot
-
-            match slot {
-                Some(slot) if accepts && fits => {
-                    move_data.target = Some((ctx.container_id, slot));
-                }
-                _ => (),
-            }
             InnerResponse::new(move_data, response)
         })
     }

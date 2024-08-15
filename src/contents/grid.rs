@@ -14,7 +14,7 @@ pub struct GridContents {
 }
 
 impl GridContents {
-    pub fn new(size: impl Into<shape::Vec2>) -> Self {
+    pub fn new(size: impl Into<Size>) -> Self {
         Self {
             expands: false,
             inline: false,
@@ -44,12 +44,12 @@ impl GridContents {
         self
     }
 
-    pub fn grid_size(&self, size: shape::Vec2) -> egui::Vec2 {
+    pub fn grid_size(&self, size: Size) -> egui::Vec2 {
         (size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
 
     // Grid lines shape.
-    pub fn grid_shape(&self, style: &egui::Style, size: shape::Vec2) -> egui::Shape {
+    pub fn grid_shape(&self, style: &egui::Style, size: Size) -> egui::Shape {
         let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
         let mut stroke2 = stroke1.clone();
         stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
@@ -169,7 +169,7 @@ impl Contents for GridContents {
             items
                 .peek()
                 .map(|(_, (_, item))| item.shape.size)
-                .unwrap_or(Vec2::ONE)
+                .unwrap_or(Size::ONE)
         } else {
             self.shape.size
         };

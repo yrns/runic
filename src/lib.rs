@@ -17,12 +17,6 @@ pub const fn slot_size() -> egui::Vec2 {
     egui::Vec2::splat(SLOT_SIZE)
 }
 
-/// Return slot for offset in pixels.
-pub fn slot(offset: egui::Vec2, width: usize) -> usize {
-    let p = offset / SLOT_SIZE;
-    p.x as usize + p.y as usize * width
-}
-
 #[derive(Debug)]
 pub struct DragItem {
     pub id: Entity,

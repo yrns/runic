@@ -121,7 +121,7 @@ impl Contents for GridContents {
         if self.expands {
             0
         } else {
-            slot(p, self.shape.size.x as usize)
+            self.shape.slot(to_size(p / SLOT_SIZE))
         }
     }
 
@@ -200,7 +200,7 @@ impl Contents for GridContents {
                     );
 
                     // item returns a clone if it's being dragged
-                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(id, name, drag_item, ui))
+                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(slot, id, name, drag_item, ui))
                         .inner
                         .map(|new_drag| (slot, new_drag))
                 })
@@ -216,21 +216,19 @@ impl Contents for GridContents {
                 .flatten()
                 // Add the contents id, current slot and
                 // container shape w/ the item unpainted.
-                .map(|(slot, item)| {
-                    match item {
-                        ItemResponse::NewDrag(drag_id, item) => {
-                            let mut cshape = self.shape.clone();
-                            cshape.unpaint(&item.shape, slot);
-                            ItemResponse::Drag(DragItem {
-                                id: drag_id,
-                                item,
-                                source: Some((ctx.container_id, slot, cshape)),
-                            })
-                        }
-                        // Update the slot.
-                        ItemResponse::Hover((_slot, id)) => ItemResponse::Hover((slot, id)),
-                        _ => item,
+                .map(|(slot, item)| match item {
+                    // NewDrag --> DragItem, TODO: just return Option<DragItem>?
+                    ItemResponse::NewDrag(drag_id, item) => {
+                        let mut cshape = self.shape.clone();
+                        cshape.unpaint(&item.shape, slot);
+
+                        ItemResponse::Drag(DragItem {
+                            id: drag_id,
+                            item,
+                            source: Some((ctx.container_id, slot, cshape)),
+                        })
                     }
+                    _ => item,
                 });
 
             let mut grid = self.grid_shape(ui.style(), grid_size);

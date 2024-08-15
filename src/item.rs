@@ -67,7 +67,6 @@ impl Item {
     }
 
     /// Size in pixels.
-    // TODO check uses of this and make sure the rotation is right
     pub fn size(&self) -> egui::Vec2 {
         (self.shape.size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
@@ -75,6 +74,11 @@ impl Item {
     /// The width of the shape (in slots).
     pub fn width(&self) -> usize {
         self.shape.width()
+    }
+
+    /// Return slot for offset in pixels.
+    pub fn slot(&self, offset: egui::Vec2) -> usize {
+        self.shape.slot(to_size(offset / SLOT_SIZE))
     }
 
     const PIVOT: egui::Vec2 = egui::Vec2::splat(0.5);
@@ -137,6 +141,7 @@ impl Item {
 
     pub fn ui(
         &self,
+        slot: usize,
         id: Entity,
         name: &str,
         drag_item: &Option<DragItem>,
@@ -152,23 +157,15 @@ impl Item {
         let drag = drag_item.as_ref().is_some_and(|d| d.id == id);
 
         if !drag {
-            // This does not work.
-            // ui.push_id(self.id, |ui| self.body(drag_item, ui))
-            //     .response
-            //     .interact(egui::Sense::drag())
-            //     .on_hover_cursor(egui::CursorIcon::Grab);
-
-            // let response = ui.scope(|ui| self.body(drag_item, ui)).response;
             let response = self.body(id, drag_item, ui).response;
 
-            // Figure out what slot we're in, see if it's filled,
-            // don't sense drag if not.
+            // Figure out what slot we're in, see if it's filled, don't sense drag if not.
             let filled = ui
                 .ctx()
                 .pointer_interact_pos()
                 .filter(|p| response.rect.contains(*p))
                 .map(|p| {
-                    let slot = slot(p - response.rect.min, self.width());
+                    let slot = self.slot(p - response.rect.min);
                     self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
                         // FIX This occurs somewhere on drag/mouseover.
                         tracing::error!(
@@ -191,10 +188,7 @@ impl Item {
                 if response.hovered() {
                     ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
-                drag_item
-                    .as_ref()
-                    // We don't know our own slot. It is mapped from contents.
-                    .map(|_| ItemResponse::Hover((0, id)))
+                drag_item.as_ref().map(|_| ItemResponse::Hover((slot, id)))
             } else {
                 None
             }

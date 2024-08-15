@@ -10,6 +10,10 @@
 
 pub use glam::U16Vec2 as Vec2;
 
+pub fn to_size(v: egui::Vec2) -> Vec2 {
+    Vec2::new(v.x as u16, v.y as u16)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shape {
     pub size: Vec2,
@@ -125,14 +129,11 @@ impl Shape {
     }
 
     /// Return slot for position.
-    #[inline]
-    pub fn slot(&self, pt: impl Into<Vec2>) -> usize {
-        let pt = pt.into();
-        pt.x as usize + pt.y as usize * self.width()
+    pub fn slot(&self, Vec2 { x, y }: Vec2) -> usize {
+        x as usize + y as usize * self.width()
     }
 
     /// Return position for slot.
-    #[inline]
     pub fn pos(&self, slot: usize) -> Vec2 {
         Vec2::new((slot % self.width()) as u16, (slot / self.width()) as u16)
     }
@@ -159,7 +160,7 @@ impl Shape {
         let slice = &mut dest.fill;
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y))];
+                let b = self.fill[self.slot(Vec2::new(x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
                 slice[slot as usize] = b;
@@ -173,7 +174,7 @@ impl Shape {
         let mut dest = Shape::new((w, h), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y))];
+                let b = self.fill[self.slot(Vec2::new(x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
                 dest.fill[slot as usize] = b;
@@ -187,7 +188,7 @@ impl Shape {
         let mut dest = Shape::new((h, w), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot((x, y))];
+                let b = self.fill[self.slot(Vec2::new(x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
                 dest.fill[slot as usize] = b;
@@ -243,10 +244,10 @@ mod tests {
     fn fits() {
         let a = Shape::from_ones(4, [1, 1, 0, 0, 1, 1, 0, 0]);
         let b = Shape::from_ones(2, [1, 1, 1, 1]);
-        assert!(a.fits(&b, a.slot((0, 0))) == false);
-        assert!(a.fits(&b, a.slot((1, 0))) == false);
-        assert!(a.fits(&b, a.slot((2, 0))) == true);
-        assert!(a.fits(&b, a.slot((3, 0))) == false); // outside
+        assert!(a.fits(&b, a.slot(Vec2::new(0, 0))) == false);
+        assert!(a.fits(&b, a.slot(Vec2::new(1, 0))) == false);
+        assert!(a.fits(&b, a.slot(Vec2::new(2, 0))) == true);
+        assert!(a.fits(&b, a.slot(Vec2::new(3, 0))) == false); // outside
     }
 
     #[test]

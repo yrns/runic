@@ -72,6 +72,10 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         Some((container, slot))
     }
 
+    pub fn is_container(&self, id: Entity) -> bool {
+        self.contents.contains(id)
+    }
+
     // Check sections first or last? Last is less recursion.
     pub fn find_slot(&self, id: Entity, drag_item: &DragItem) -> Option<(Entity, usize)> {
         let find_slot = |id| {

@@ -217,7 +217,7 @@ impl Contents for GridContents {
                 // Add the contents id, current slot and
                 // container shape w/ the item unpainted.
                 .map(|(slot, item)| match item {
-                    // NewDrag --> DragItem, TODO: just return Option<DragItem>?
+                    // NewDrag --> Drag
                     ItemResponse::NewDrag(drag_id, item) => {
                         let mut cshape = self.shape.clone();
                         cshape.unpaint(&item.shape, slot);
@@ -348,10 +348,9 @@ impl Contents for GridContents {
 
             // TODO move everything into the match
 
-            // If we are dragging onto another item, check to see if
-            // the dragged item will fit anywhere within its contents.
+            // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
             match (drag_item, inner.as_ref()) {
-                (Some(drag), Some(ItemResponse::Hover((slot, id)))) => {
+                (Some(drag), Some(ItemResponse::Hover((slot, id)))) if q.is_container(*id) => {
                     let target = q.find_slot(*id, drag);
                     // The item shadow becomes the target item, not the dragged item, for
                     // drag-to-item. TODO just use rect

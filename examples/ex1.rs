@@ -2,9 +2,20 @@ use bevy::{prelude::*, window::RequestRedraw, winit::WinitSettings};
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
 use runic::*;
 
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Flags: u32 {
+        const Weapon = 1;
+        const Armor = 1 << 1;
+        const Potion = 1 << 2;
+        const TradeGood = 1 << 3;
+        const Container = 1 << 4;
+    }
+}
+
 #[derive(Resource)]
 struct Runic {
-    drag_item: Option<DragItem>,
+    drag_item: Option<DragItem<Flags>>,
 }
 
 #[derive(Resource)]
@@ -46,7 +57,7 @@ fn setup_items(
 ) {
     let _boomerang = commands
         .spawn((
-            Item::new(ItemFlags::Weapon)
+            Item::new(Flags::Weapon)
                 .with_icon(textures.add_image(asset_server.load("boomerang.png")))
                 .with_shape(Shape::from_ones(2, [1, 1, 1, 0])),
             Name::from("Boomerang"),
@@ -55,7 +66,7 @@ fn setup_items(
 
     let pouch = commands
         .spawn((
-            Item::new(ItemFlags::Container)
+            Item::new(Flags::Container)
                 .with_icon(textures.add_image(asset_server.load("pouch.png")))
                 .with_shape((2, 2)),
             Name::from("Pouch"),
@@ -65,8 +76,8 @@ fn setup_items(
     let potion_section = commands
         .spawn((
             ContentsLayout(
-                GridContents::new((1, 1))
-                    .with_flags(ItemFlags::Potion)
+                GridContents::<Flags>::new((1, 1))
+                    .with_flags(Flags::Potion)
                     .boxed(),
             ),
             ContentsItems(vec![]),
@@ -75,8 +86,8 @@ fn setup_items(
 
     commands.entity(pouch).insert((
         ContentsLayout(
-            GridContents::new((3, 2))
-                .with_flags(ItemFlags::Weapon)
+            GridContents::<Flags>::new((3, 2))
+                .with_flags(Flags::Weapon)
                 .boxed(),
         ),
         ContentsItems::default(),
@@ -85,7 +96,7 @@ fn setup_items(
 
     let _short_sword = commands
         .spawn((
-            Item::new(ItemFlags::Weapon)
+            Item::new(Flags::Weapon)
                 .with_icon(textures.add_image(asset_server.load("short-sword.png")))
                 .with_shape((3, 1))
                 .with_rotation(ItemRotation::R90),
@@ -93,7 +104,7 @@ fn setup_items(
         ))
         .id();
 
-    let potion = Item::new(ItemFlags::Potion)
+    let potion = Item::new(Flags::Potion)
         .with_icon(textures.add_image(asset_server.load("potion.png")))
         .with_shape((1, 1));
 
@@ -106,9 +117,9 @@ fn setup_items(
     let section1 = commands
         .spawn((
             ContentsLayout(
-                GridContents::new((2, 2))
+                GridContents::<Flags>::new((2, 2))
                     .with_header("Only potions! 2x2:")
-                    .with_flags(ItemFlags::Potion)
+                    .with_flags(Flags::Potion)
                     .boxed(),
             ),
             ContentsItems(vec![]),
@@ -118,10 +129,10 @@ fn setup_items(
     let section2 = commands
         .spawn((
             ContentsLayout(
-                GridContents::new((3, 2))
+                GridContents::<Flags>::new((3, 2))
                     .with_expands(true)
                     .with_header("Weapon (3x2 MAX):")
-                    .with_flags(ItemFlags::Weapon)
+                    .with_flags(Flags::Weapon)
                     .boxed(),
             ),
             ContentsItems(vec![]),
@@ -129,10 +140,10 @@ fn setup_items(
         .id();
 
     let sub_sections = [
-        GridContents::new((1, 2)),
-        GridContents::new((1, 2)),
+        GridContents::<Flags>::new((1, 2)),
+        GridContents::<Flags>::new((1, 2)),
         // the last section only accepts weapons
-        GridContents::new((1, 2)).with_flags(ItemFlags::Weapon),
+        GridContents::<Flags>::new((1, 2)).with_flags(Flags::Weapon),
     ]
     .map(|s| {
         commands
@@ -146,11 +157,11 @@ fn setup_items(
     let section3 = commands
         .spawn((
             ContentsLayout(
-                GridContents::new((2, 2))
+                GridContents::<Flags>::new((2, 2))
                     .with_header("Holds a container:")
                     .with_expands(true)
                     .with_inline(true)
-                    .with_flags(ItemFlags::Container)
+                    .with_flags(Flags::Container)
                     .boxed(),
             ),
             ContentsItems(vec![]),
@@ -161,7 +172,7 @@ fn setup_items(
     let paper_doll = commands
         .spawn((
             ContentsLayout(
-                GridContents::new((4, 4))
+                GridContents::<Flags>::new((4, 4))
                     .with_header("Bag of any! 4x4:")
                     .boxed(),
             ),
@@ -175,7 +186,7 @@ fn setup_items(
 
     let ground = commands
         .spawn((
-            ContentsLayout(GridContents::new((10, 10)).boxed()),
+            ContentsLayout(GridContents::<Flags>::new((10, 10)).boxed()),
             ContentsItems::default(),
         ))
         .id();
@@ -186,8 +197,8 @@ fn setup_items(
 }
 
 fn insert_items(
-    items: Query<Entity, With<Item>>,
-    mut contents: ContentsStorage,
+    items: Query<Entity, With<Item<Flags>>>,
+    mut contents: ContentsStorage<Flags>,
     ground: Res<Ground>,
 ) {
     for item in &items {
@@ -198,7 +209,7 @@ fn insert_items(
 fn update(
     mut contexts: EguiContexts,
     mut runic: ResMut<Runic>,
-    mut q: ContentsStorage,
+    mut q: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
     // mut _move_data: Local<MoveData>,

@@ -3,28 +3,31 @@ use egui::style::WidgetVisuals;
 use super::*;
 
 #[derive(Clone, Debug)]
-pub struct GridContents {
+pub struct GridContents<T> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     /// If true, show inline contents for the contained item.
     pub inline: bool,
     pub header: Option<String>,
     pub shape: Shape,
-    pub flags: ItemFlags,
+    pub flags: T,
 }
 
-impl GridContents {
+impl<T> GridContents<T>
+where
+    T: Accepts,
+{
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
             expands: false,
             inline: false,
             header: None,
             shape: Shape::new(size.into(), false),
-            flags: ItemFlags::all(),
+            flags: T::all(),
         }
     }
 
-    pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
+    pub fn with_flags(mut self, flags: impl Into<T>) -> Self {
         self.flags = flags.into();
         self
     }
@@ -90,7 +93,7 @@ impl GridContents {
     }
 }
 
-impl Contents for GridContents {
+impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
     fn len(&self) -> usize {
         if self.expands {
             1
@@ -99,11 +102,11 @@ impl Contents for GridContents {
         }
     }
 
-    fn insert(&mut self, slot: usize, item: &Item) {
+    fn insert(&mut self, slot: usize, item: &Item<T>) {
         self.shape.paint(&item.shape, slot);
     }
 
-    fn remove(&mut self, slot: usize, item: &Item) {
+    fn remove(&mut self, slot: usize, item: &Item<T>) {
         self.shape.unpaint(&item.shape, slot);
     }
 
@@ -125,11 +128,11 @@ impl Contents for GridContents {
         }
     }
 
-    fn accepts(&self, item: &Item) -> bool {
-        self.flags.contains(item.flags)
+    fn accepts(&self, item: &Item<T>) -> bool {
+        self.flags.accepts(item.flags)
     }
 
-    fn fits(&self, ctx: &Context, drag: &DragItem, slot: usize) -> bool {
+    fn fits(&self, ctx: &Context, drag: &DragItem<T>, slot: usize) -> bool {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
@@ -141,7 +144,7 @@ impl Contents for GridContents {
         shape.fits(&drag.item.shape, slot)
     }
 
-    fn find_slot(&self, ctx: &Context, drag: &DragItem) -> Option<(Entity, usize)> {
+    fn find_slot(&self, ctx: &Context, drag: &DragItem<T>) -> Option<(Entity, usize)> {
         if !self.accepts(&drag.item) {
             return None;
         }
@@ -155,11 +158,11 @@ impl Contents for GridContents {
     fn body(
         &self,
         ctx: &Context,
-        q: &ContentsStorage,
-        drag_item: &Option<DragItem>,
+        q: &ContentsStorage<T>,
+        drag_item: &Option<DragItem<T>>,
         items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> InnerResponse<Option<ItemResponse>> {
+    ) -> InnerResponse<Option<ItemResponse<T>>> {
         assert!(items.0.len() <= self.len());
 
         // For expanding contents we need to see the size of the first item before looping.
@@ -255,11 +258,11 @@ impl Contents for GridContents {
     fn ui(
         &self,
         ctx: &Context,
-        q: &ContentsStorage,
-        drag_item: &Option<DragItem>,
+        q: &ContentsStorage<T>,
+        drag_item: &Option<DragItem<T>>,
         items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> InnerResponse<MoveData> {
+    ) -> InnerResponse<MoveData<T>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
         // dragged_id will be unset before drag_item for one frame.
 
@@ -302,7 +305,7 @@ impl Contents for GridContents {
 
                 // TODO: Make the order and layout configurable.
                 ui.horizontal_top(|ui| {
-                    let data: MoveData = crate::min_frame::min_frame(ui, add_contents).inner;
+                    let data: MoveData<T> = crate::min_frame::min_frame(ui, add_contents).inner;
 
                     let data = match section_data {
                         Some(section_data) => section_data.merge(data),
@@ -402,9 +405,9 @@ impl Contents for GridContents {
                     let released = ui.input(|i| i.pointer.any_released());
                     if released && fits && !accepts {
                         tracing::info!(
-                            "container {:?} does not accept item {:?}!",
+                            "container {:?} does not accept item!",
                             ctx.container_id,
-                            drag.item.flags,
+                            // drag.item.flags,
                         );
                     }
 
@@ -416,7 +419,7 @@ impl Contents for GridContents {
                             .map(|slot| (ctx.container_id, slot)),
                     }
                 }
-                _ => MoveData::default(),
+                _ => MoveData::<T>::default(),
             };
 
             InnerResponse::new(move_data, response)

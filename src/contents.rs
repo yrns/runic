@@ -7,10 +7,11 @@ use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
 use egui::ecolor::{tint_color_towards, Color32};
 
-pub type BoxedContents = Box<dyn Contents + Send + Sync + 'static>;
+pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
+// Generic over contents?
 #[derive(Component)]
-pub struct ContentsLayout(pub BoxedContents);
+pub struct ContentsLayout<T>(pub BoxedContents<T>);
 
 #[derive(Component, Default)]
 pub struct ContentsItems(pub Vec<(usize, Entity)>);
@@ -19,34 +20,75 @@ pub struct ContentsItems(pub Vec<(usize, Entity)>);
 #[derive(Component)]
 pub struct Sections(pub egui::Layout, pub Vec<Entity>);
 
-#[derive(SystemParam)]
-pub struct ContentsStorage<'w, 's> {
-    pub contents: Query<'w, 's, (&'static mut ContentsLayout, &'static mut ContentsItems)>,
-    pub items: Query<'w, 's, (&'static Name, &'static mut Item)>,
-    pub sections: Query<'w, 's, &'static Sections>,
+// #[derive(Component)]
+// pub struct ItemFlags<T: Accepts + 'static>(T);
+
+// #[derive(Component)]
+// pub struct ContainerFlags<T: Accepts + 'static>(T);
+
+pub trait Accepts: Send + Sync + 'static {
+    fn accepts(&self, other: Self) -> bool;
+    fn all() -> Self;
 }
 
-pub type Items<'a> = &'a [((usize, Entity), (&'a Name, &'a Item))];
+impl<T> Accepts for T
+where
+    T: bitflags::Flags + Send + Sync + 'static,
+{
+    fn accepts(&self, other: Self) -> bool {
+        self.contains(other)
+    }
 
-impl<'w, 's> ContentsStorage<'w, 's> {
+    fn all() -> Self {
+        Self::all()
+    }
+}
+
+#[derive(SystemParam)]
+pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
+    pub contents: Query<
+        'w,
+        's,
+        (
+            &'static mut ContentsLayout<T>, // Change to Contents parameter?
+            &'static mut ContentsItems,
+            // &'static ContainerFlags<T>,
+            // TODO?
+            // Option<&'static mut Sections>,
+        ),
+    >,
+    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>)>,
+    pub sections: Query<'w, 's, &'static Sections>,
+    // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
+    // pub item_flags: Query<'w, 's, &'static ItemFlags<T>>,
+}
+
+impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
     pub fn show_contents(
         &self,
         id: Entity,
-        drag_item: &Option<DragItem>,
+        drag_item: &Option<DragItem<T>>,
         ui: &mut egui::Ui,
-    ) -> Option<InnerResponse<MoveData>> {
+    ) -> Option<InnerResponse<MoveData<T>>> {
         let (layout, items) = self.get(id)?;
         Some(layout.0.ui(&id.into(), self, drag_item, &items, ui))
     }
 
-    pub fn get(&self, id: Entity) -> Option<(&ContentsLayout, &ContentsItems)> {
+    pub fn get(
+        &self,
+        id: Entity,
+    ) -> Option<(
+        &ContentsLayout<T>,
+        &ContentsItems,
+        // &ContainerFlags<T>,
+    )> {
         self.contents.get(id).ok()
     }
 
     pub fn items<'a>(
         &'a self,
         contents_items: &'a ContentsItems,
-    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item))> + 'a {
+    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>))> + 'a {
         let q_items = self.items.iter_many(contents_items.0.iter().map(|i| i.1));
         contents_items.0.iter().copied().zip(q_items)
     }
@@ -79,7 +121,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
     }
 
     // Check sections first or last? Last is less recursion.
-    pub fn find_slot(&self, id: Entity, drag_item: &DragItem) -> Option<(Entity, usize)> {
+    pub fn find_slot(&self, id: Entity, drag_item: &DragItem<T>) -> Option<(Entity, usize)> {
         let find_slot = |id| {
             self.contents.get(id).ok().and_then(|(contents, _items)| {
                 let ctx = Context::from(id);
@@ -95,7 +137,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
         })
     }
 
-    pub fn resolve_move(&mut self, data: MoveData) {
+    pub fn resolve_move(&mut self, data: MoveData<T>) {
         {
             let MoveData {
                 drag:
@@ -186,8 +228,8 @@ impl ContentsItems {
 }
 
 /// A widget to display the contents of a container.
-pub trait Contents {
-    fn boxed(self) -> Box<dyn Contents + Send + Sync>
+pub trait Contents<T: Accepts> {
+    fn boxed(self) -> Box<dyn Contents<T> + Send + Sync>
     where
         Self: Sized + Send + Sync + 'static,
     {
@@ -197,25 +239,24 @@ pub trait Contents {
     /// Number of slots this container holds.
     fn len(&self) -> usize;
 
-    fn insert(&mut self, slot: usize, item: &Item);
+    fn insert(&mut self, slot: usize, item: &Item<T>);
 
-    fn remove(&mut self, slot: usize, item: &Item);
+    fn remove(&mut self, slot: usize, item: &Item<T>);
 
     /// Returns a position for a given slot relative to the contents' origin.
     fn pos(&self, slot: usize) -> egui::Vec2;
 
     /// Returns a container slot for a given offset. May return
     /// invalid results if the offset is outside the container.
-    // This always returns a local slot.
     fn slot(&self, offset: egui::Vec2) -> usize;
 
-    fn accepts(&self, item: &Item) -> bool;
+    fn accepts(&self, item: &Item<T>) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, ctx: &Context, item: &DragItem, slot: usize) -> bool;
+    fn fits(&self, ctx: &Context, item: &DragItem<T>, slot: usize) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot(&self, ctx: &Context, item: &DragItem) -> Option<(Entity, usize)>;
+    fn find_slot(&self, ctx: &Context, item: &DragItem<T>) -> Option<(Entity, usize)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {
@@ -232,18 +273,18 @@ pub trait Contents {
     fn body(
         &self,
         ctx: &Context,
-        q: &ContentsStorage,
-        drag_item: &Option<DragItem>,
+        q: &ContentsStorage<T>,
+        drag_item: &Option<DragItem<T>>,
         items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> InnerResponse<Option<ItemResponse>>;
+    ) -> InnerResponse<Option<ItemResponse<T>>>;
 
     fn ui(
         &self,
         ctx: &Context,
-        q: &ContentsStorage,
-        drag_item: &Option<DragItem>,
+        q: &ContentsStorage<T>,
+        drag_item: &Option<DragItem<T>>,
         items: &ContentsItems,
         ui: &mut egui::Ui,
-    ) -> InnerResponse<MoveData>;
+    ) -> InnerResponse<MoveData<T>>;
 }

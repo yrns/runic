@@ -18,10 +18,10 @@ pub const fn slot_size() -> egui::Vec2 {
 }
 
 #[derive(Debug)]
-pub struct DragItem {
+pub struct DragItem<T> {
     pub id: Entity,
     /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
-    pub item: Item,
+    pub item: Item<T>,
     /// Source location container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
     pub source: Option<(Entity, usize, Shape)>,
     // TODO:?
@@ -45,13 +45,21 @@ mod drag {
 }
 
 /// source item -> target container
-#[derive(Default)]
-pub struct MoveData {
-    pub drag: Option<DragItem>,
+pub struct MoveData<T> {
+    pub drag: Option<DragItem<T>>,
     pub target: Option<(Entity, usize)>,
 }
 
-impl MoveData {
+impl<T> Default for MoveData<T> {
+    fn default() -> Self {
+        Self {
+            drag: None,
+            target: None,
+        }
+    }
+}
+
+impl<T> MoveData<T> {
     // TODO: remove
     pub fn merge(self, other: Self) -> Self {
         //let Self { item, container } = self;
@@ -73,11 +81,11 @@ pub struct ContainerSpace;
 impl ContainerSpace {
     // Not a widget since it doesn't return a Response, but we can use
     // ui.scope just to get a response.
-    pub fn show(
-        drag_item: &mut Option<DragItem>,
+    pub fn show<T>(
+        drag_item: &mut Option<DragItem<T>>,
         ui: &mut egui::Ui,
-        add_contents: impl FnOnce(&Option<DragItem>, &mut egui::Ui) -> MoveData,
-    ) -> Option<MoveData> {
+        add_contents: impl FnOnce(&Option<DragItem<T>>, &mut egui::Ui) -> MoveData<T>,
+    ) -> Option<MoveData<T>> {
         // do something w/ inner state, i.e. move items
         let mut data = add_contents(drag_item, ui);
 
@@ -193,22 +201,6 @@ impl From<Entity> for Context {
             container_id,
             // container_eid: egui::Id::new("contents").with(container_id),
         }
-    }
-}
-
-// Maybe this should be a trait instead of requiring flagset. Or maybe
-// `Item` itself is a trait that encompasses flags. We only care about
-// accepting items and whether or not something is a container. At a
-// minimum `Item` should be generic over flags. TODO?
-// What about slots?
-bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct ItemFlags: u32 {
-        const Weapon = 1;
-        const Armor = 1 << 1;
-        const Potion = 1 << 2;
-        const TradeGood = 1 << 3;
-        const Container = 1 << 4;
     }
 }
 

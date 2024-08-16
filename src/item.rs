@@ -4,23 +4,23 @@ use crate::*;
 use bevy_ecs::prelude::*;
 
 #[derive(Component, Clone, Debug)]
-pub struct Item {
+pub struct Item<T> {
     pub rotation: ItemRotation,
     pub shape: shape::Shape,
     pub icon: TextureId,
-    pub flags: ItemFlags,
+    pub flags: T,
 }
 
 #[derive(Debug)]
-pub enum ItemResponse {
+pub enum ItemResponse<T> {
     DragToItem((usize, Entity)),
-    NewDrag(DragItem),
+    NewDrag(DragItem<T>),
 }
 
-impl Item {
+impl<T: Clone> Item<T> {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
-    pub fn new(flags: ItemFlags) -> Self {
+    pub fn new(flags: T) -> Self {
         Self {
             rotation: Default::default(),
             shape: Shape::new([1, 1], true),
@@ -42,7 +42,7 @@ impl Item {
         self
     }
 
-    pub fn with_flags(mut self, flags: impl Into<ItemFlags>) -> Self {
+    pub fn with_flags(mut self, flags: impl Into<T>) -> Self {
         self.flags = flags.into();
         self
     }
@@ -74,7 +74,7 @@ impl Item {
     pub fn body(
         &self,
         id: Entity,
-        drag_item: &Option<DragItem>,
+        drag_item: &Option<DragItem<T>>,
         ui: &mut egui::Ui,
     ) -> InnerResponse<egui::Vec2> {
         let eid = egui::Id::new(id);
@@ -133,9 +133,9 @@ impl Item {
         slot: usize,
         id: Entity,
         name: &str,
-        drag_item: &Option<DragItem>,
+        drag_item: &Option<DragItem<T>>,
         ui: &mut egui::Ui,
-    ) -> Option<ItemResponse> {
+    ) -> Option<ItemResponse<T>> {
         let eid = ui.id().with(id);
         let p = ui.ctx().pointer_latest_pos();
 

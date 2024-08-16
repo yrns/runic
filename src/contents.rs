@@ -5,7 +5,17 @@ pub use grid::*;
 
 use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
-use egui::ecolor::{tint_color_towards, Color32};
+use egui::{
+    ecolor::{tint_color_towards, Color32},
+    InnerResponse, Vec2,
+};
+
+pub const SLOT_SIZE: f32 = 48.0;
+
+/// Single slot dimensions in pixels.
+pub const fn slot_size() -> egui::Vec2 {
+    egui::Vec2::splat(SLOT_SIZE)
+}
 
 pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
@@ -287,4 +297,58 @@ pub trait Contents<T: Accepts> {
         items: &ContentsItems,
         ui: &mut egui::Ui,
     ) -> InnerResponse<MoveData<T>>;
+}
+
+pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
+    egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
+}
+
+pub fn paint_shape(
+    idxs: Vec<egui::layers::ShapeIdx>,
+    shape: &shape::Shape,
+    grid_rect: egui::Rect,
+    offset: egui::Vec2,
+    color: egui::Color32,
+    ui: &mut egui::Ui,
+) {
+    let offset = grid_rect.min + offset;
+    shape
+        .slots()
+        .map(|slot| offset + xy(slot, shape.width()) * SLOT_SIZE)
+        .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+        // It does not matter if we don't use all the shape indices.
+        .zip(idxs.iter())
+        .for_each(|(p, idx)| {
+            let slot_rect = egui::Rect::from_min_size(p, slot_size());
+            // ui.painter()
+            //     .rect(slot_rect, 0., color, egui::Stroke::none())
+            ui.painter()
+                .set(*idx, egui::epaint::RectShape::filled(slot_rect, 0., color));
+        })
+}
+
+// Replaces `paint_shape` and uses only one shape index, so we don't
+// have to reserve multiple. There is Shape::Vec, too.
+pub fn shape_mesh(
+    shape: &shape::Shape,
+    grid_rect: egui::Rect,
+    offset: egui::Vec2,
+    color: egui::Color32,
+    //texture_id: egui::TextureId,
+    scale: f32,
+) -> egui::Mesh {
+    let mut mesh = egui::Mesh::default();
+
+    // TODO share vertices in grid
+    let offset = grid_rect.min + offset;
+    shape
+        .slots()
+        .map(|slot| offset + xy(slot, shape.width()) * scale)
+        // TODO use clip rect instead of remaking vertices every frame
+        .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+        .map(|p| egui::Rect::from_min_size(p, egui::Vec2::splat(scale)))
+        .for_each(|rect| {
+            mesh.add_colored_rect(rect, color);
+        });
+    mesh
 }

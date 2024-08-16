@@ -1,4 +1,6 @@
-use egui::{CursorIcon, Sense, TextureId};
+use egui::{
+    emath::Rot2, CursorIcon, Id, Image, InnerResponse, Pos2, Rect, Rgba, Sense, TextureId, Ui, Vec2,
+};
 
 use crate::*;
 use bevy_ecs::prelude::*;
@@ -55,7 +57,7 @@ impl<T: Clone> Item<T> {
     }
 
     /// Size in pixels.
-    pub fn size(&self) -> egui::Vec2 {
+    pub fn size(&self) -> Vec2 {
         (self.shape.size.as_vec2() * SLOT_SIZE).as_ref().into()
     }
 
@@ -65,19 +67,19 @@ impl<T: Clone> Item<T> {
     }
 
     /// Return slot for offset in pixels.
-    pub fn slot(&self, offset: egui::Vec2) -> usize {
+    pub fn slot(&self, offset: Vec2) -> usize {
         self.shape.slot(to_size(offset / SLOT_SIZE))
     }
 
-    const PIVOT: egui::Vec2 = egui::Vec2::splat(0.5);
+    const PIVOT: Vec2 = Vec2::splat(0.5);
 
     pub fn body(
         &self,
         id: Entity,
         drag_item: &Option<DragItem<T>>,
-        ui: &mut egui::Ui,
-    ) -> InnerResponse<egui::Vec2> {
-        let eid = egui::Id::new(id);
+        ui: &mut Ui,
+    ) -> InnerResponse<Vec2> {
+        let eid = Id::new(id);
 
         // let (dragging, item) = match drag_item.as_ref() {
         //     Some(drag) if drag.item.id == self.id => (true, &drag.item),
@@ -99,15 +101,15 @@ impl<T: Clone> Item<T> {
 
         if ui.is_rect_visible(rect) {
             // This size is a hint and isn't used since the image is always(?) already loaded.
-            let image = egui::Image::new((self.icon, size));
+            let image = Image::new((self.icon, size));
             let image = if dragging {
-                image.tint(egui::Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
+                image.tint(Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
             } else {
                 image
             };
 
             // Scale down if dragging from center.
-            let rect = egui::Rect::from_center_size(
+            let rect = Rect::from_center_size(
                 rect.center(),
                 rect.size() * egui::lerp(1.0..=0.88, drag_scale),
             );
@@ -117,10 +119,9 @@ impl<T: Clone> Item<T> {
             match self.rotation {
                 ItemRotation::None => image.paint_at(ui, rect),
                 r @ ItemRotation::R180 => image.rotate(r.angle(), Self::PIVOT).paint_at(ui, rect),
-                r @ _ => image.rotate(r.angle(), Self::PIVOT).paint_at(
-                    ui,
-                    egui::Rect::from_center_size(rect.center(), rect.size().yx()),
-                ),
+                r @ _ => image
+                    .rotate(r.angle(), Self::PIVOT)
+                    .paint_at(ui, Rect::from_center_size(rect.center(), rect.size().yx())),
             };
         }
 
@@ -134,7 +135,7 @@ impl<T: Clone> Item<T> {
         id: Entity,
         name: &str,
         drag_item: &Option<DragItem<T>>,
-        ui: &mut egui::Ui,
+        ui: &mut Ui,
     ) -> Option<ItemResponse<T>> {
         let eid = ui.id().with(id);
         let p = ui.ctx().pointer_latest_pos();
@@ -239,28 +240,28 @@ pub enum ItemRotation {
 }
 
 impl ItemRotation {
-    pub const R0_UVS: [egui::Pos2; 4] = [
+    pub const R0_UVS: [Pos2; 4] = [
         egui::pos2(0.0, 0.0),
         egui::pos2(1.0, 0.0),
         egui::pos2(0.0, 1.0),
         egui::pos2(1.0, 1.0),
     ];
 
-    pub const R90_UVS: [egui::Pos2; 4] = [
+    pub const R90_UVS: [Pos2; 4] = [
         egui::pos2(0.0, 1.0),
         egui::pos2(0.0, 0.0),
         egui::pos2(1.0, 1.0),
         egui::pos2(1.0, 0.0),
     ];
 
-    pub const R180_UVS: [egui::Pos2; 4] = [
+    pub const R180_UVS: [Pos2; 4] = [
         egui::pos2(1.0, 1.0),
         egui::pos2(0.0, 1.0),
         egui::pos2(1.0, 0.0),
         egui::pos2(0.0, 0.0),
     ];
 
-    pub const R270_UVS: [egui::Pos2; 4] = [
+    pub const R270_UVS: [Pos2; 4] = [
         egui::pos2(1.0, 0.0),
         egui::pos2(1.0, 1.0),
         egui::pos2(0.0, 0.0),
@@ -285,11 +286,11 @@ impl ItemRotation {
         }
     }
 
-    pub fn rot2(&self) -> egui::emath::Rot2 {
-        egui::emath::Rot2::from_angle(self.angle())
+    pub fn rot2(&self) -> Rot2 {
+        Rot2::from_angle(self.angle())
     }
 
-    pub fn uvs(&self) -> &[egui::Pos2; 4] {
+    pub fn uvs(&self) -> &[Pos2; 4] {
         match *self {
             ItemRotation::None => &Self::R0_UVS,
             ItemRotation::R90 => &Self::R90_UVS,

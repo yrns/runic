@@ -60,6 +60,8 @@ impl<'w, 's> ContentsStorage<'w, 's> {
             id,
             item: item.clone(),
             source: None,
+            // unused...
+            offset: Default::default(),
         };
 
         // This is fetching twice...
@@ -104,6 +106,7 @@ impl<'w, 's> ContentsStorage<'w, 's> {
                                 shape, rotation, ..
                             },
                         source: Some((container_id, container_slot, _)),
+                        ..
                     }),
                 target: Some((target_id, slot, ..)),
                 ..

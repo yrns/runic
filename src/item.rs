@@ -1,4 +1,4 @@
-use egui::TextureId;
+use egui::{CursorIcon, Sense, TextureId};
 
 use crate::*;
 use bevy_ecs::prelude::*;
@@ -89,7 +89,7 @@ impl Item {
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
         let size = self.size();
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
 
         // Scale down slightly even when not dragging in lieu of baking a border into every item
         // icon. TODO This needs to be configurable.
@@ -110,7 +110,7 @@ impl Item {
             // Scale down if dragging from center.
             let rect = egui::Rect::from_center_size(
                 rect.center(),
-                rect.size() * egui::lerp(0.98..=0.88, drag_scale),
+                rect.size() * egui::lerp(1.0..=0.88, drag_scale),
             );
 
             // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug
@@ -128,6 +128,7 @@ impl Item {
         InnerResponse::new(size, response)
     }
 
+    /// `slot` is the slot we occupy in the container.
     pub fn ui(
         &self,
         slot: usize,
@@ -136,106 +137,71 @@ impl Item {
         drag_item: &Option<DragItem>,
         ui: &mut egui::Ui,
     ) -> Option<ItemResponse> {
-        let eid = egui::Id::new(id);
+        let eid = ui.id().with(id);
+        let p = ui.ctx().pointer_latest_pos();
 
-        // This was a bug: "being dragged" is false on the frame in which we release the button.
-        // This means that if we dragged the item onto itself, it would return a hover and prevent a
-        // move.
+        // This was a bug: "being dragged" is false on the frame in which we release the button. This means that if we dragged the item onto itself, it would return a hover and prevent a move.
         // let drag = ui.ctx().is_being_dragged(id);
 
-        let drag = drag_item.as_ref().is_some_and(|d| d.id == id);
+        match drag_item.as_ref() {
+            // This item is being dragged. We never return an item response.
+            Some(drag) if drag.id == id => {
+                // Half of these cursors do not work in X11. See about using custom cursors in bevy and sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
+                ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
 
-        if !drag {
-            let response = self.body(id, drag_item, ui).response;
-
-            // Figure out what slot we're in, see if it's filled, don't sense drag if not.
-            let filled = ui
-                .ctx()
-                .pointer_interact_pos()
-                .filter(|p| response.rect.contains(*p))
-                .map(|p| {
-                    let slot = self.slot(p - response.rect.min);
-                    self.shape.fill.get(slot).map(|b| *b).unwrap_or_else(|| {
-                        // FIX This occurs somewhere on drag/mouseover.
-                        tracing::error!(
-                            "point {:?} slot {} out of shape fill {}",
-                            p,
-                            slot,
-                            self.shape
-                        );
-                        false
-                    })
-                })
-                .unwrap_or_default();
-
-            if filled {
-                let response = ui.interact(response.rect, eid, egui::Sense::drag());
-                let response = response.on_hover_text_at_pointer(name);
-                if response.drag_started() {
-                    return Some(ItemResponse::NewDrag(DragItem {
-                        id,
-                        item: self.clone(),
-                        // Contents::ui sets this.
-                        source: None,
-                    }));
+                // Draw the dragged item in a new area so it does not affect the size of the contents, which could occur with a large item rotated outside the bounds of the contents.
+                if let Some(p) = p {
+                    // from egui::containers::show_tooltip_area_dyn
+                    egui::containers::Area::new(eid)
+                        .fixed_pos(p - drag.offset.1)
+                        .interactable(false)
+                        // TODO Restrict to ContainerSpace?
+                        //.constrain(true) // this is wrong
+                        .show(ui.ctx(), |ui| self.body(id, drag_item, ui));
                 }
-                if response.hovered() {
-                    ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
-                }
-                drag_item
-                    .as_ref()
-                    .map(|_| ItemResponse::SetTarget((slot, id)))
-            } else {
+
                 None
             }
-        } else {
-            // Half of these cursors do not work in X11. See about using custom cursors in bevy and
-            // sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
-            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
+            // This item is not being dragged (but maybe something else is).
+            _ => {
+                let response = self.body(id, drag_item, ui).response;
 
-            // pos - pos = vec
-            // pos + pos = error
-            // pos +/- vec = pos
-            // vec +/- pos = error
-
-            // Draw the dragged item in a new area so it does not
-            // affect the size of the contents, which could occur with
-            // a large item rotated outside the bounds of the contents.
-            match ui.ctx().pointer_interact_pos() {
-                Some(p) => {
-                    // from egui::containers::show_tooltip_area_dyn
-                    let _resp = egui::containers::Area::new(eid)
-                        // .order(egui::Order::Tooltip)
-                        // The cursor is placing the first slot (upper
-                        // left) when dragging, so draw the dragged
-                        // item in roughly the same place.
-                        .fixed_pos(p - slot_size() * 0.2)
-                        .interactable(false)
-                        .movable(false)
-                        // Restrict to ContainerSpace?
-                        //.constrain(true) // FIX this is wrong
-                        //.default_size(self.size_rotated())
-                        .show(ui.ctx(), |ui| self.body(id, drag_item, ui));
-
-                    // Still allocate the original size for expanding contents. The response size
-                    // can be rotated (since it's being dragged), so use our (rotated) size.
-
-                    // We no longer know the undragged item size, so this is broken. FIX:
-                    // ui.allocate_exact_size(self.size_rotated(), egui::Sense::hover());
-
-                    // This only works because we're not drawing the original item...
-                    ui.allocate_exact_size(slot_size(), egui::Sense::hover());
-                }
-                _ => tracing::error!("no interact position for drag?"),
+                // Figure out what slot we're in, see if it's filled, don't sense drag if not.
+                p.filter(|p| response.rect.contains(*p))
+                    .map(|p| p - response.rect.min)
+                    .map(|offset| (self.slot(offset), offset))
+                    .filter(|(slot, _)| {
+                        self.shape.fill.get(*slot).map(|b| *b).unwrap_or_else(|| {
+                            // FIX This occurs somewhere on drag/mouseover.
+                            tracing::error!(
+                                "point {:?} slot {} out of shape fill {}",
+                                p,
+                                slot,
+                                self.shape
+                            );
+                            false
+                        })
+                    })
+                    .map(|offset| {
+                        if drag_item.is_some() {
+                            Some(ItemResponse::SetTarget((slot, id)))
+                        } else {
+                            ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+                            let response = ui.interact(response.rect, eid, Sense::drag());
+                            let response = response.on_hover_text_at_pointer(name);
+                            response.drag_started().then(|| {
+                                ItemResponse::NewDrag(DragItem {
+                                    id,
+                                    item: self.clone(),
+                                    // Contents::ui sets this.
+                                    source: None,
+                                    offset,
+                                })
+                            })
+                        }
+                    })
+                    .flatten()
             }
-
-            // make sure there is no existing drag_item or it matches
-            // our id
-            // assert!(
-            //     drag_item.is_none() || drag_item.as_ref().map(|drag| drag.item.id) == Some(self.id)
-            // );
-
-            None
         }
     }
 

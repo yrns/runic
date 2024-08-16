@@ -4,7 +4,7 @@ mod min_frame;
 mod shape;
 
 use bevy_ecs::prelude::Entity;
-use egui::InnerResponse;
+use egui::{InnerResponse, Vec2};
 
 pub use contents::*;
 pub use item::*;
@@ -26,6 +26,8 @@ pub struct DragItem {
     pub source: Option<(Entity, usize, Shape)>,
     // TODO:?
     // pub target: Option<(Entity, usize)>,
+    /// Slot and offset inside the item when drag started. FIX: Is the slot used?
+    pub offset: (usize, Vec2),
 }
 
 mod drag {

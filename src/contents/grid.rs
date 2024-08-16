@@ -204,13 +204,9 @@ impl Contents for GridContents {
                         .inner
                         .map(|new_drag| (slot, new_drag))
                 })
-                // Reduce down to one new_drag. At some point change
-                // the above to find_map.
+                // Reduce down to one response.
                 .reduce(|a, b| {
-                    if a.as_ref().and(b.as_ref()).is_some() {
-                        // This will only happen if the items overlap?
-                        tracing::error!("multiple drag items! ({:?} and {:?})", &a, &b);
-                    }
+                    assert!(!(a.is_some() && b.is_some()), "single item response");
                     a.or(b)
                 })
                 .flatten()
@@ -387,7 +383,8 @@ impl Contents for GridContents {
                         .pointer_latest_pos()
                         // the hover includes the outer_rect?
                         .filter(|p| min_rect.contains(*p))
-                        .map(|p| self.slot(p - min_rect.min));
+                        // Add (inset) a bit so it's easier to target from the upper left. TODO: Fix the weird clamping on the top and left?
+                        .map(|p| self.slot(p - min_rect.min - drag.offset.1 + Vec2::splat(10.0)));
 
                     let fits = slot
                         .map(|slot| self.fits(ctx, drag, slot))

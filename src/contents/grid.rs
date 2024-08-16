@@ -343,17 +343,13 @@ impl Contents for GridContents {
             // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
             let move_data = match (drag_item, inner) {
                 (Some(drag), Some(ItemResponse::SetTarget((slot, id)))) if q.is_container(id) => {
-                    let target = q.find_slot(id, drag);
-                    // The item shadow becomes the target item, not the dragged item, for
-                    // drag-to-item. TODO just use rect
-                    let color = self.shadow_color(true, target.is_some(), ui);
-                    let mut mesh = egui::Mesh::default();
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
                     let item = q.items.get(id).expect("item exists").1;
-                    mesh.add_colored_rect(
-                        egui::Rect::from_min_size(min_rect.min + self.pos(slot), item.size()),
-                        color,
-                    );
+                    let target = q.find_slot(id, drag);
+
+                    // The item shadow is the target item for drag-to-item, not the dragged item.
+                    let color = self.shadow_color(true, target.is_some(), ui);
+                    let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, SLOT_SIZE);
                     ui.painter().set(shadow, mesh);
 
                     MoveData { drag: None, target }

@@ -13,8 +13,7 @@ pub struct Item {
 
 #[derive(Debug)]
 pub enum ItemResponse {
-    // Rename DragToItem,
-    SetTarget((usize, Entity)),
+    DragToItem((usize, Entity)),
     NewDrag(DragItem),
 }
 
@@ -184,7 +183,7 @@ impl Item {
                     })
                     .map(|offset| {
                         if drag_item.is_some() {
-                            Some(ItemResponse::SetTarget((slot, id)))
+                            Some(ItemResponse::DragToItem((slot, id)))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::drag());

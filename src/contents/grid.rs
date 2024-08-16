@@ -338,7 +338,7 @@ impl Contents for GridContents {
 
             // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
             let move_data = match (drag_item, inner) {
-                (Some(drag), Some(ItemResponse::SetTarget((slot, id)))) if q.is_container(id) => {
+                (Some(drag), Some(ItemResponse::DragToItem((slot, id)))) if q.is_container(id) => {
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
                     let item = q.items.get(id).expect("item exists").1;
                     let target = q.find_slot(id, drag);
@@ -353,7 +353,7 @@ impl Contents for GridContents {
                 // Unless the drag is released and pressed in the same frame, we should never have a new drag while dragging?
                 (None, ir) => MoveData {
                     drag: ir.map(|ir| match ir {
-                        ItemResponse::SetTarget(_) => unreachable!(),
+                        ItemResponse::DragToItem(_) => unreachable!(),
                         ItemResponse::NewDrag(drag) => drag,
                     }),
                     target: None,

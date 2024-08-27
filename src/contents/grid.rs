@@ -4,7 +4,7 @@ use itertools::Itertools;
 use super::*;
 
 #[derive(Clone, Debug)]
-pub struct GridContents<T> {
+pub struct GridContents<T, const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     /// If true, show inline contents for the contained item.
@@ -14,7 +14,7 @@ pub struct GridContents<T> {
     pub flags: T,
 }
 
-impl<T> GridContents<T>
+impl<T, const N: usize> GridContents<T, N>
 where
     T: Accepts + std::fmt::Debug,
 {
@@ -48,8 +48,13 @@ where
         self
     }
 
+    /// Single slot dimensions in pixels.
+    pub const fn slot_size() -> egui::Vec2 {
+        egui::Vec2::splat(N as f32)
+    }
+
     pub fn grid_size(&self, size: Size) -> egui::Vec2 {
-        (size.as_vec2() * SLOT_SIZE).as_ref().into()
+        (size.as_vec2() * N as f32).as_ref().into()
     }
 
     // Grid lines shape.
@@ -59,14 +64,14 @@ where
         stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
         let stroke2 = egui::epaint::PathStroke::from(stroke2);
 
-        let pixel_size = (size.as_vec2() * SLOT_SIZE).as_ref().into();
+        let pixel_size = self.grid_size(size);
         let egui::Vec2 { x: w, y: h } = pixel_size;
 
         let mut lines = vec![];
 
         // Don't draw the outside edge.
         lines.extend((1..(size.x)).map(|x| {
-            let x = x as f32 * SLOT_SIZE;
+            let x = x as f32 * N as f32;
             egui::Shape::LineSegment {
                 points: [egui::Pos2::new(x, 0.0), egui::Pos2::new(x, h)],
                 stroke: stroke2.clone(),
@@ -74,7 +79,7 @@ where
         }));
 
         lines.extend((1..(size.y)).map(|y| {
-            let y = y as f32 * SLOT_SIZE;
+            let y = y as f32 * N as f32;
             egui::Shape::LineSegment {
                 points: [egui::Pos2::new(0.0, y), egui::Pos2::new(w, y)],
                 stroke: stroke2.clone(),
@@ -94,7 +99,7 @@ where
     }
 }
 
-impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
+impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridContents<T, N> {
     fn len(&self) -> usize {
         if self.expands {
             1
@@ -116,7 +121,7 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
         if self.expands {
             egui::Vec2::ZERO
         } else {
-            xy(slot, self.shape.size.x as usize) * SLOT_SIZE
+            xy(slot, self.shape.size.x as usize) * N as f32
         }
     }
 
@@ -125,7 +130,7 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
         if self.expands {
             0
         } else {
-            self.shape.slot(to_size(p / SLOT_SIZE))
+            self.shape.slot(to_size(p / N as f32))
         }
     }
 
@@ -195,11 +200,12 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
                         .map_or(item, |d| &d.item);
 
                     // Only allocate the slot otherwise we'll blow out the contents if it doesn't fit.
-                    let item_rect = Rect::from_min_size(rect.min + self.pos(slot), slot_size());
+                    let item_rect =
+                        Rect::from_min_size(rect.min + self.pos(slot), Self::slot_size());
 
                     // item returns a clone if it's being dragged
                     ui.allocate_ui_at_rect(item_rect, |ui| {
-                        item.ui(slot, item_id, name, contents.drag.as_ref(), ui)
+                        item.ui(slot, item_id, name, contents.drag.as_ref(), N as f32, ui)
                     })
                     .inner
                     .map(|ir| match ir {
@@ -240,7 +246,7 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
                     rect,
                     egui::Vec2::ZERO,
                     Color32::GREEN.gamma_multiply(0.8),
-                    SLOT_SIZE,
+                    N as f32,
                 ));
             }
 
@@ -352,7 +358,7 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
 
                     // The item shadow is the target item for drag-to-item, not the dragged item.
                     let color = self.shadow_color(true, target.is_some(), ui);
-                    let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, SLOT_SIZE);
+                    let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
                     ui.painter().set(shadow, mesh);
 
                     target.map(|(slot, item)| ItemResponse::NewTarget(slot, item))
@@ -397,7 +403,7 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
                     if let Some(slot) = slot {
                         let color = self.shadow_color(accepts, fits, ui);
                         let shape = &drag.item.shape;
-                        let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, SLOT_SIZE);
+                        let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, N as f32);
                         ui.painter().set(shadow, mesh);
                     }
 

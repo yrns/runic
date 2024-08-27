@@ -58,8 +58,8 @@ impl<T: Clone> Item<T> {
     }
 
     /// Size in pixels.
-    pub fn size(&self) -> Vec2 {
-        (self.shape.size.as_vec2() * SLOT_SIZE).as_ref().into()
+    pub fn size(&self, slot_dim: f32) -> Vec2 {
+        (self.shape.size.as_vec2() * slot_dim).as_ref().into()
     }
 
     /// The width of the shape (in slots).
@@ -69,12 +69,18 @@ impl<T: Clone> Item<T> {
 
     /// Return slot for offset in pixels.
     pub fn slot(&self, offset: Vec2) -> usize {
-        self.shape.slot(to_size(offset / SLOT_SIZE))
+        self.shape.slot(to_size(offset))
     }
 
     const PIVOT: Vec2 = Vec2::splat(0.5);
 
-    pub fn body(&self, id: Entity, drag: Option<&DragItem<T>>, ui: &mut Ui) -> InnerResponse<Vec2> {
+    pub fn body(
+        &self,
+        id: Entity,
+        drag: Option<&DragItem<T>>,
+        slot_dim: f32,
+        ui: &mut Ui,
+    ) -> InnerResponse<Vec2> {
         let eid = Id::new(id);
 
         // let (dragging, item) = match drag_item.as_ref() {
@@ -85,7 +91,7 @@ impl<T: Clone> Item<T> {
 
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
-        let size = self.size();
+        let size = self.size(slot_dim);
         let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
 
         // Scale down slightly even when not dragging in lieu of baking a border into every item
@@ -131,6 +137,7 @@ impl<T: Clone> Item<T> {
         id: Entity,
         name: &str,
         drag: Option<&DragItem<T>>,
+        slot_dim: f32,
         ui: &mut Ui,
     ) -> Option<ItemResponse<T>> {
         let eid = ui.id().with(id);
@@ -153,19 +160,19 @@ impl<T: Clone> Item<T> {
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
-                        .show(ui.ctx(), |ui| self.body(id, Some(drag), ui));
+                        .show(ui.ctx(), |ui| self.body(id, Some(drag), slot_dim, ui));
                 }
 
                 None
             }
             // This item is not being dragged (but maybe something else is).
             _ => {
-                let response = self.body(id, drag, ui).response;
+                let response = self.body(id, drag, slot_dim, ui).response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|p| response.rect.contains(*p))
                     .map(|p| p - response.rect.min)
-                    .map(|offset| (self.slot(offset), offset))
+                    .map(|offset| (self.slot(offset / slot_dim), offset))
                     .filter(|(slot, _)| {
                         self.shape.fill.get(*slot).map(|b| *b).unwrap_or_else(|| {
                             // FIX This occurs somewhere on drag/mouseover.

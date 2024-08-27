@@ -10,13 +10,6 @@ use egui::{
     InnerResponse, Response, Ui, Vec2,
 };
 
-pub const SLOT_SIZE: f32 = 48.0;
-
-/// Single slot dimensions in pixels.
-pub const fn slot_size() -> egui::Vec2 {
-    egui::Vec2::splat(SLOT_SIZE)
-}
-
 pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
 // Generic over contents?
@@ -357,29 +350,29 @@ pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
     egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
 }
 
-pub fn paint_shape(
-    idxs: Vec<egui::layers::ShapeIdx>,
-    shape: &shape::Shape,
-    grid_rect: egui::Rect,
-    offset: egui::Vec2,
-    color: egui::Color32,
-    ui: &mut egui::Ui,
-) {
-    let offset = grid_rect.min + offset;
-    shape
-        .slots()
-        .map(|slot| offset + xy(slot, shape.width()) * SLOT_SIZE)
-        .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
-        // It does not matter if we don't use all the shape indices.
-        .zip(idxs.iter())
-        .for_each(|(p, idx)| {
-            let slot_rect = egui::Rect::from_min_size(p, slot_size());
-            // ui.painter()
-            //     .rect(slot_rect, 0., color, egui::Stroke::none())
-            ui.painter()
-                .set(*idx, egui::epaint::RectShape::filled(slot_rect, 0., color));
-        })
-}
+// pub fn paint_shape(
+//     idxs: Vec<egui::layers::ShapeIdx>,
+//     shape: &shape::Shape,
+//     grid_rect: egui::Rect,
+//     offset: egui::Vec2,
+//     color: egui::Color32,
+//     ui: &mut egui::Ui,
+// ) {
+//     let offset = grid_rect.min + offset;
+//     shape
+//         .slots()
+//         .map(|slot| offset + xy(slot, shape.width()) * SLOT_SIZE)
+//         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
+//         // It does not matter if we don't use all the shape indices.
+//         .zip(idxs.iter())
+//         .for_each(|(p, idx)| {
+//             let slot_rect = egui::Rect::from_min_size(p, slot_size());
+//             // ui.painter()
+//             //     .rect(slot_rect, 0., color, egui::Stroke::none())
+//             ui.painter()
+//                 .set(*idx, egui::epaint::RectShape::filled(slot_rect, 0., color));
+//         })
+// }
 
 // Replaces `paint_shape` and uses only one shape index, so we don't
 // have to reserve multiple. There is Shape::Vec, too.

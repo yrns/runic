@@ -43,6 +43,7 @@ pub struct DragItem<T> {
     pub item: Item<T>,
     /// Source location container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
     pub source: Option<(Entity, usize, Shape)>,
+    /// Target container id and slot.
     pub target: Option<(Entity, usize)>,
     /// Slot and offset inside the item when drag started. FIX: Is the slot used?
     pub offset: (usize, egui::Vec2),
@@ -272,10 +273,12 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
 
 impl ContentsItems {
     pub fn insert(&mut self, slot: usize, id: Entity) {
+        // Multiple items can share the same slot if they fit together.
         let i = self
             .0
             .binary_search_by(|(k, _)| k.cmp(&slot))
-            .expect_err("item slot free");
+            // .expect_err("item slot free");
+            .unwrap_or_else(|i| i);
         self.0.insert(i, (slot, id));
     }
 

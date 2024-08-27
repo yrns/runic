@@ -215,11 +215,10 @@ impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
                 })
                 .at_most_one()
                 //.expect("at most one item response");
-                .map_err(|mut e| {
+                .unwrap_or_else(|mut e| {
                     tracing::warn!("more than one item response");
                     e.next()
-                })
-                .unwrap();
+                });
 
             let mut grid = self.grid_shape(ui.style(), grid_size);
             grid.translate(rect.min.to_vec2());

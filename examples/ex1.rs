@@ -14,11 +14,6 @@ bitflags::bitflags! {
 }
 
 #[derive(Resource)]
-struct Runic {
-    drag_item: Option<DragItem<Flags>>,
-}
-
-#[derive(Resource)]
 struct PaperDoll(Entity);
 
 #[derive(Resource)]
@@ -193,7 +188,6 @@ fn setup_items(
 
     commands.insert_resource(PaperDoll(paper_doll));
     commands.insert_resource(Ground(ground));
-    commands.insert_resource(Runic { drag_item: None });
 }
 
 fn insert_items(
@@ -208,45 +202,23 @@ fn insert_items(
 
 fn update(
     mut contexts: EguiContexts,
-    mut runic: ResMut<Runic>,
-    mut q: ContentsStorage<Flags>,
+    mut contents: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
-    // mut _move_data: Local<MoveData>,
 ) {
+    contents.update(contexts.ctx_mut());
+
     //egui::CentralPanel::default().show(ctx, |ui| {});
     egui::Window::new("runic - ex1")
         .resizable(false)
         .movable(false)
         .show(contexts.ctx_mut(), |ui| {
-            let drag_item = &mut runic.drag_item;
+            ui.columns(2, |cols| {
+                cols[0].label("Paper doll:");
+                contents.show(paper_doll.0, &mut cols[0]);
 
-            let move_data = ContainerSpace::show(drag_item, ui, |drag_item, ui| {
-                // TODO remove this and merging
-                let data = MoveData::default();
-
-                let data = ui.columns(2, |cols| {
-                    cols[0].label("Paper doll:");
-                    let data = data.merge(
-                        q.show_contents(paper_doll.0, drag_item, &mut cols[0])
-                            .unwrap()
-                            .inner,
-                    );
-
-                    cols[1].label("Ground 10x10:");
-                    let data = data.merge(
-                        q.show_contents(ground.0, drag_item, &mut cols[1])
-                            .unwrap()
-                            .inner,
-                    );
-                    data
-                });
-
-                data
-            });
-
-            if let Some(data) = move_data {
-                q.resolve_move(data)
-            }
+                cols[1].label("Ground 10x10:");
+                contents.show(ground.0, &mut cols[1]);
+            })
         });
 }

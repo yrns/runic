@@ -13,9 +13,10 @@ pub struct Item<T> {
     pub flags: T,
 }
 
+// TODO: move/rename to contents
 #[derive(Debug)]
 pub enum ItemResponse<T> {
-    DragToItem((usize, Entity)),
+    NewTarget(Entity, usize),
     NewDrag(DragItem<T>),
 }
 
@@ -73,19 +74,14 @@ impl<T: Clone> Item<T> {
 
     const PIVOT: Vec2 = Vec2::splat(0.5);
 
-    pub fn body(
-        &self,
-        id: Entity,
-        drag_item: &Option<DragItem<T>>,
-        ui: &mut Ui,
-    ) -> InnerResponse<Vec2> {
+    pub fn body(&self, id: Entity, drag: Option<&DragItem<T>>, ui: &mut Ui) -> InnerResponse<Vec2> {
         let eid = Id::new(id);
 
         // let (dragging, item) = match drag_item.as_ref() {
         //     Some(drag) if drag.item.id == self.id => (true, &drag.item),
         //     _ => (false, self),
         // };
-        let dragging = drag_item.as_ref().is_some_and(|d| d.id == id);
+        let dragging = drag.is_some_and(|d| d.id == id);
 
         // Allocate the original size so the contents draws
         // consistenly when the dragged item is scaled.
@@ -134,7 +130,7 @@ impl<T: Clone> Item<T> {
         slot: usize,
         id: Entity,
         name: &str,
-        drag_item: &Option<DragItem<T>>,
+        drag: Option<&DragItem<T>>,
         ui: &mut Ui,
     ) -> Option<ItemResponse<T>> {
         let eid = ui.id().with(id);
@@ -143,7 +139,7 @@ impl<T: Clone> Item<T> {
         // This was a bug: "being dragged" is false on the frame in which we release the button. This means that if we dragged the item onto itself, it would return a hover and prevent a move.
         // let drag = ui.ctx().is_being_dragged(id);
 
-        match drag_item.as_ref() {
+        match drag {
             // This item is being dragged. We never return an item response.
             Some(drag) if drag.id == id => {
                 // Half of these cursors do not work in X11. See about using custom cursors in bevy and sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
@@ -157,14 +153,14 @@ impl<T: Clone> Item<T> {
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
-                        .show(ui.ctx(), |ui| self.body(id, drag_item, ui));
+                        .show(ui.ctx(), |ui| self.body(id, Some(drag), ui));
                 }
 
                 None
             }
             // This item is not being dragged (but maybe something else is).
             _ => {
-                let response = self.body(id, drag_item, ui).response;
+                let response = self.body(id, drag, ui).response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|p| response.rect.contains(*p))
@@ -183,8 +179,8 @@ impl<T: Clone> Item<T> {
                         })
                     })
                     .map(|offset| {
-                        if drag_item.is_some() {
-                            Some(ItemResponse::DragToItem((slot, id)))
+                        if drag.is_some() {
+                            Some(ItemResponse::NewTarget(id, slot))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::drag());
@@ -195,6 +191,7 @@ impl<T: Clone> Item<T> {
                                     item: self.clone(),
                                     // Contents::ui sets this.
                                     source: None,
+                                    target: None,
                                     offset,
                                 })
                             })

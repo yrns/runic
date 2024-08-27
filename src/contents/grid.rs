@@ -1,4 +1,5 @@
-use egui::style::WidgetVisuals;
+use egui::{style::WidgetVisuals, Rect, Ui};
+use itertools::Itertools;
 
 use super::*;
 
@@ -15,7 +16,7 @@ pub struct GridContents<T> {
 
 impl<T> GridContents<T>
 where
-    T: Accepts,
+    T: Accepts + std::fmt::Debug,
 {
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
@@ -81,7 +82,7 @@ where
         }));
 
         lines.push(egui::Shape::Rect(egui::epaint::RectShape::new(
-            egui::Rect::from_min_size(egui::Pos2::ZERO, pixel_size),
+            Rect::from_min_size(egui::Pos2::ZERO, pixel_size),
             style.visuals.widgets.noninteractive.rounding,
             // style.visuals.window_rounding,
             Color32::TRANSPARENT, // fill covers the grid
@@ -93,7 +94,7 @@ where
     }
 }
 
-impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
+impl<T: Accepts + Copy + std::fmt::Debug> Contents<T> for GridContents<T> {
     fn len(&self) -> usize {
         if self.expands {
             1
@@ -132,41 +133,40 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
         self.flags.accepts(item.flags)
     }
 
-    fn fits(&self, ctx: &Context, drag: &DragItem<T>, slot: usize) -> bool {
+    fn fits(&self, id: Entity, drag: &DragItem<T>, slot: usize) -> bool {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
         let shape = match &drag.source {
-            Some((id, _, shape)) if ctx.container_id == *id => shape,
+            Some((source_id, _, shape)) if id == *source_id => shape,
             _ => &self.shape,
         };
 
         shape.fits(&drag.item.shape, slot)
     }
 
-    fn find_slot(&self, ctx: &Context, drag: &DragItem<T>) -> Option<(Entity, usize)> {
+    fn find_slot(&self, id: Entity, drag: &DragItem<T>) -> Option<(Entity, usize)> {
         if !self.accepts(&drag.item) {
             return None;
         }
 
         // TODO test multiple rotations (if non-square) and return it?
         (0..self.len())
-            .find(|slot| self.fits(ctx, drag, *slot))
-            .map(|slot| (ctx.container_id, slot))
+            .find(|slot| self.fits(id, drag, *slot))
+            .map(|slot| (id, slot))
     }
 
     fn body(
         &self,
-        ctx: &Context,
-        q: &ContentsStorage<T>,
-        drag_item: &Option<DragItem<T>>,
+        id: Entity,
+        contents: &ContentsStorage<T>,
         items: &ContentsItems,
-        ui: &mut egui::Ui,
+        ui: &mut Ui,
     ) -> InnerResponse<Option<ItemResponse<T>>> {
         assert!(items.0.len() <= self.len());
 
         // For expanding contents we need to see the size of the first item before looping.
-        let mut items = q.items(items).peekable();
+        let mut items = contents.items(items).peekable();
 
         let grid_size = if self.expands {
             items
@@ -186,43 +186,40 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .map(|((slot, id), (name, item))| {
-                    // If this item is being dragged, we want to use the dragged rotation.
-                    // Everything else should be the same.
-                    let (dragged, item) = drag::item!(drag_item, id, item);
+                .filter_map(|((slot, item_id), (name, item))| {
+                    // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
+                    let item = contents
+                        .drag
+                        .as_ref()
+                        .filter(|d| d.id == item_id)
+                        .map_or(item, |d| &d.item);
 
-                    let item_rect = egui::Rect::from_min_size(
-                        rect.min + self.pos(slot),
-                        if dragged {
-                            // Only allocate the slot otherwise we'll blow out the contents if it
-                            // doesn't fit.
-                            slot_size()
-                        } else {
-                            item.size()
-                        },
-                    );
+                    // Only allocate the slot otherwise we'll blow out the contents if it doesn't fit.
+                    let item_rect = Rect::from_min_size(rect.min + self.pos(slot), slot_size());
 
                     // item returns a clone if it's being dragged
-                    ui.allocate_ui_at_rect(item_rect, |ui| item.ui(slot, id, name, drag_item, ui))
-                        .inner
-                        .map(|new_drag| (slot, new_drag))
+                    ui.allocate_ui_at_rect(item_rect, |ui| {
+                        item.ui(slot, item_id, name, contents.drag.as_ref(), ui)
+                    })
+                    .inner
+                    .map(|ir| match ir {
+                        // Set drag source. Contents id, current slot and container shape w/ the item unpainted.
+                        ItemResponse::NewDrag(mut drag) => {
+                            let mut cshape = self.shape.clone();
+                            cshape.unpaint(&drag.item.shape, slot);
+                            drag.source = Some((id, slot, cshape));
+                            ItemResponse::NewDrag(drag)
+                        }
+                        _ => ir,
+                    })
                 })
-                // Reduce down to one response.
-                .reduce(|a, b| {
-                    assert!(!(a.is_some() && b.is_some()), "single item response");
-                    a.or(b)
+                .at_most_one()
+                //.expect("at most one item response");
+                .map_err(|mut e| {
+                    tracing::warn!("more than one item response");
+                    e.next()
                 })
-                .flatten()
-                // Set drag source. Contents id, current slot and container shape w/ the item unpainted.
-                .map(|(slot, ir)| match ir {
-                    ItemResponse::NewDrag(mut drag) => {
-                        let mut cshape = self.shape.clone();
-                        cshape.unpaint(&drag.item.shape, slot);
-                        drag.source = Some((ctx.container_id, slot, cshape));
-                        ItemResponse::NewDrag(drag)
-                    }
-                    _ => ir,
-                });
+                .unwrap();
 
             let mut grid = self.grid_shape(ui.style(), grid_size);
             grid.translate(rect.min.to_vec2());
@@ -231,10 +228,11 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
             // debug paint the container "shape" (filled slots)
             if ui.ctx().debug_on_hover() {
                 // Use the cached shape if the dragged item is ours. This rehashes what's in `fits`.
-                let shape = drag_item
+                let shape = contents
+                    .drag
                     .as_ref()
                     .and_then(|d| d.source.as_ref())
-                    .filter(|s| ctx.container_id == s.0)
+                    .filter(|s| id == s.0)
                     .map(|d| &d.2)
                     .unwrap_or(&self.shape);
 
@@ -257,12 +255,11 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
 
     fn ui(
         &self,
-        ctx: &Context,
-        q: &ContentsStorage<T>,
-        drag_item: &Option<DragItem<T>>,
+        id: Entity,
+        contents: &ContentsStorage<T>,
         items: &ContentsItems,
-        ui: &mut egui::Ui,
-    ) -> InnerResponse<MoveData<T>> {
+        ui: &mut Ui,
+    ) -> InnerResponse<Option<ItemResponse<T>>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
         // dragged_id will be unset before drag_item for one frame.
 
@@ -280,23 +277,27 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
         //     _ => (), // we could be dragging something else
         // }
 
-        let header_frame = |ui: &mut egui::Ui, add_contents| {
+        let header_frame = |ui: &mut Ui, add_contents| {
+            // With layout?
             ui.vertical(|ui| {
                 // Sections.
-                let section_data = if let Ok(Sections(layout, sections)) =
-                    q.sections.get(ctx.container_id)
-                {
-                    ui.with_layout(*layout, |ui| {
-                        // TODO faster to fetch many first?
-                        sections
-                            .iter()
-                            .filter_map(|id| q.show_contents(*id, drag_item, ui).map(|ir| ir.inner))
-                            .reduce(|acc, data| acc.merge(data))
-                    })
-                    .inner
-                } else {
-                    None
-                };
+                let section_ir =
+                    contents
+                        .sections
+                        .get(id)
+                        .ok()
+                        .and_then(|Sections(layout, sections)| {
+                            ui.with_layout(*layout, |ui| {
+                                // TODO faster to fetch many first?
+                                sections
+                                    .iter()
+                                    .filter_map(|id| contents.show_contents(*id, ui))
+                                    .filter_map(|ir| ir.inner)
+                                    .at_most_one()
+                                    .expect("at most one item response")
+                            })
+                            .inner
+                        });
 
                 match self.header.as_ref() {
                     Some(header) => _ = ui.label(header),
@@ -304,63 +305,62 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
                 }
 
                 // TODO: Make the order and layout configurable.
-                ui.horizontal_top(|ui| {
-                    let data: MoveData<T> = crate::min_frame::min_frame(ui, add_contents).inner;
+                section_ir.or(ui
+                    .horizontal_top(|ui| {
+                        // Go back to with_bg/min_frame since egui::Frame takes up all available space.
+                        let inner: Option<ItemResponse<T>> =
+                            crate::min_frame::min_frame(ui, add_contents).inner;
 
-                    let data = match section_data {
-                        Some(section_data) => section_data.merge(data),
-                        None => data,
-                    };
+                        inner.or(
+                            // Show inline contents.
+                            self.inline
+                                .then(|| {
+                                    let drag_id = contents.drag.as_ref().map(|d| d.id);
 
-                    // Show inline contents.
-                    if self.inline {
-                        // What if there's more than one item?
-                        if let Some((_slot, id)) = items.0.first() {
-                            // Don't add contents if the container is being dragged.
-                            if !drag_item.as_ref().is_some_and(|d| d.id == *id) {
-                                if let Some(inline_data) = q.show_contents(*id, drag_item, ui) {
-                                    return data.merge(inline_data.inner);
-                                }
-                            }
-                        }
-                    }
-
-                    data
-                })
+                                    items
+                                        .0
+                                        .iter()
+                                        .map(|(_, id)| *id)
+                                        // Don't add contents if the container is being dragged.
+                                        .filter(|id| drag_id != Some(*id))
+                                        .filter_map(|id| contents.show_contents(id, ui))
+                                        .filter_map(|ir| ir.inner)
+                                        .at_most_one()
+                                        .expect("at most one item response")
+                                })
+                                .flatten(),
+                        )
+                    })
+                    .inner)
             })
-            .inner
         };
 
-        // Go back to with_bg/min_frame since egui::Frame takes up all available space.
-        header_frame(ui, |style: &mut WidgetVisuals, ui: &mut egui::Ui| {
+        header_frame(ui, |style: &mut WidgetVisuals, ui: &mut Ui| {
             // Reserve shape for the dragged item's shadow.
             let shadow = ui.painter().add(egui::Shape::Noop);
 
-            let InnerResponse { inner, response } = self.body(ctx, q, drag_item, items, ui);
+            let InnerResponse { inner, response } = self.body(id, contents, items, ui);
             let min_rect = response.rect;
 
             // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
-            let move_data = match (drag_item, inner) {
-                (Some(drag), Some(ItemResponse::DragToItem((slot, id)))) if q.is_container(id) => {
+            let inner = match (contents.drag.as_ref(), inner) {
+                (Some(drag), Some(ItemResponse::NewTarget(id, slot)))
+                    if contents.is_container(id) =>
+                {
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
-                    let item = q.items.get(id).expect("item exists").1;
-                    let target = q.find_slot(id, drag);
+                    let item = contents.items.get(id).expect("item exists").1;
+                    let target = contents.find_slot(id, drag);
 
                     // The item shadow is the target item for drag-to-item, not the dragged item.
                     let color = self.shadow_color(true, target.is_some(), ui);
                     let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, SLOT_SIZE);
                     ui.painter().set(shadow, mesh);
 
-                    MoveData { drag: None, target }
+                    target.map(|(slot, item)| ItemResponse::NewTarget(slot, item))
                 }
                 // Unless the drag is released and pressed in the same frame, we should never have a new drag while dragging?
-                (None, ir) => MoveData {
-                    drag: ir.map(|ir| match ir {
-                        ItemResponse::DragToItem(_) => unreachable!(),
-                        ItemResponse::NewDrag(drag) => drag,
-                    }),
-                    target: None,
-                },
+                (None, Some(ir)) if matches!(ir, ItemResponse::NewDrag(_)) => Some(ir),
+
                 (Some(drag), None) => {
                     // tarkov also checks if containers are full, even if not
                     // hovering -- maybe track min size free? TODO just do
@@ -387,10 +387,11 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
                         // the hover includes the outer_rect?
                         .filter(|p| min_rect.contains(*p))
                         // Add (inset) a bit so it's easier to target from the upper left. TODO: Fix the weird clamping on the top and left?
+                        // Shape::slot needs to return an option
                         .map(|p| self.slot(p - min_rect.min - drag.offset.1 + Vec2::splat(10.0)));
 
                     let fits = slot
-                        .map(|slot| self.fits(ctx, drag, slot))
+                        .map(|slot| self.fits(id, drag, slot))
                         .unwrap_or_default();
 
                     // Paint the dragged item's shadow, showing which slots will be filled.
@@ -406,23 +407,18 @@ impl<T: Accepts + Copy> Contents<T> for GridContents<T> {
                     if released && fits && !accepts {
                         tracing::info!(
                             "container {:?} does not accept item!",
-                            ctx.container_id,
-                            // drag.item.flags,
+                            id,
+                            // drag.item.flags
                         );
                     }
 
-                    MoveData {
-                        // So this gets merged?
-                        drag: None,
-                        target: slot
-                            .filter(|_| accepts && fits)
-                            .map(|slot| (ctx.container_id, slot)),
-                    }
+                    slot.filter(|_| accepts && fits)
+                        .map(|slot| ItemResponse::NewTarget(id, slot))
                 }
-                _ => MoveData::<T>::default(),
+                _ => None,
             };
 
-            InnerResponse::new(move_data, response)
+            InnerResponse::new(inner, response)
         })
     }
 }

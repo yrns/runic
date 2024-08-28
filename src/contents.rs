@@ -12,7 +12,7 @@ use egui::{
 
 pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
-// Generic over contents?
+// In order to make this generic over a contents parameter (`C`), we'd also have to add the parameter to storage, which would then make the Contents trait self-referential (which makes it not object-safe). So we'd have to add a new Storage trait.
 #[derive(Component)]
 pub struct ContentsLayout<T>(pub BoxedContents<T>);
 
@@ -66,7 +66,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         'w,
         's,
         (
-            &'static mut ContentsLayout<T>, // Change to Contents parameter?
+            &'static mut ContentsLayout<T>,
             &'static mut ContentsItems,
             // &'static ContainerFlags<T>,
             // TODO?

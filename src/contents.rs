@@ -19,9 +19,9 @@ pub struct ContentsLayout<T>(pub BoxedContents<T>);
 #[derive(Component, Default)]
 pub struct ContentsItems(pub Vec<(usize, Entity)>);
 
-// TODO layout per contents?
+/// List of section (containers). Optional layout overrides the default in `Options`.
 #[derive(Component)]
-pub struct Sections(pub egui::Layout, pub Vec<Entity>);
+pub struct Sections(pub Option<egui::Layout>, pub Vec<Entity>);
 
 // #[derive(Component)]
 // pub struct ItemFlags<T: Accepts + 'static>(T);
@@ -60,6 +60,28 @@ where
     }
 }
 
+/// Contents layout options.
+#[derive(Resource)]
+pub struct Options {
+    /// Controls the layout of contents relative to sections. The default is vertical, sections last.
+    pub layout: egui::Layout,
+    /// Default layout for sections.
+    pub section_layout: egui::Layout,
+    /// Inline contents layout.
+    pub inline_layout: egui::Layout,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self {
+            layout: egui::Layout::top_down(egui::Align::Min), // FIX: Center does not work
+            section_layout: egui::Layout::left_to_right(egui::Align::Min),
+            inline_layout: egui::Layout::left_to_right(egui::Align::Min),
+        }
+    }
+}
+
+/// Contents storage.
 #[derive(SystemParam)]
 pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub contents: Query<
@@ -77,7 +99,11 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub sections: Query<'w, 's, &'static Sections>,
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
     // pub item_flags: Query<'w, 's, &'static ItemFlags<T>>,
+
+    // TODO: This should probably be a Resource in case you are showing containers from multiple different systems.
     pub drag: Local<'s, Option<DragItem<T>>>,
+
+    pub options: Res<'w, Options>,
 }
 
 impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {

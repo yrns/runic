@@ -50,6 +50,9 @@ fn setup_items(
     asset_server: Res<AssetServer>,
     mut textures: ResMut<EguiUserTextures>,
 ) {
+    // TODO plugin
+    commands.insert_resource(Options::default());
+
     let _boomerang = commands
         .spawn((
             Item::new(Flags::Weapon)
@@ -86,7 +89,7 @@ fn setup_items(
                 .boxed(),
         ),
         ContentsItems::default(),
-        Sections(egui::Layout::default(), vec![potion_section]),
+        Sections(None, vec![potion_section]),
     ));
 
     let _short_sword = commands
@@ -135,19 +138,18 @@ fn setup_items(
         .id();
 
     let sub_sections = [
-        GridContents::<Flags>::new((1, 2)),
-        GridContents::<Flags>::new((1, 2)),
+        GridContents::<Flags>::new((1, 2)).with_header("A1"),
+        GridContents::<Flags>::new((1, 2)).with_header("A2"),
         // the last section only accepts weapons
-        GridContents::<Flags>::new((1, 2)).with_flags(Flags::Weapon),
+        GridContents::<Flags>::new((1, 2))
+            .with_header("W1")
+            .with_flags(Flags::Weapon),
     ]
     .map(|s| {
         commands
             .spawn((ContentsLayout(s.boxed()), ContentsItems::default()))
             .id()
     });
-
-    let horizontal =
-        egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Min);
 
     let section3 = commands
         .spawn((
@@ -160,7 +162,7 @@ fn setup_items(
                     .boxed(),
             ),
             ContentsItems(vec![]),
-            Sections(horizontal, sub_sections.to_vec()),
+            Sections(None, sub_sections.to_vec()),
         ))
         .id();
 
@@ -173,7 +175,7 @@ fn setup_items(
             ),
             ContentsItems(vec![]),
             Sections(
-                egui::Layout::top_down(egui::Align::Center),
+                Some(egui::Layout::top_down(egui::Align::Center)), // FIX: center does nothing?
                 vec![section1, section2, section3],
             ),
         ))

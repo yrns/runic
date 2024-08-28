@@ -283,35 +283,27 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         // }
 
         let header_frame = |ui: &mut Ui, add_contents| {
-            // With layout?
-            ui.vertical(|ui| {
+            ui.with_layout(contents.options.layout, |ui| {
                 // Sections.
-                let section_ir =
-                    contents
-                        .sections
-                        .get(id)
-                        .ok()
-                        .and_then(|Sections(layout, sections)| {
-                            ui.with_layout(*layout, |ui| {
-                                // TODO faster to fetch many first?
-                                sections
-                                    .iter()
-                                    .filter_map(|id| contents.show_contents(*id, ui))
-                                    .filter_map(|ir| ir.inner)
-                                    .at_most_one()
-                                    .expect("at most one item response")
-                            })
-                            .inner
-                        });
+                let section_ir = contents.sections.get(id).ok().and_then(|s| {
+                    ui.with_layout(s.0.unwrap_or(contents.options.section_layout), |ui| {
+                        // TODO faster to fetch many first?
+                        s.1.iter()
+                            .filter_map(|id| contents.show_contents(*id, ui))
+                            .filter_map(|ir| ir.inner)
+                            .at_most_one()
+                            .expect("at most one item response")
+                    })
+                    .inner
+                });
 
                 match self.header.as_ref() {
                     Some(header) => _ = ui.label(header),
                     _ => (),
                 }
 
-                // TODO: Make the order and layout configurable.
                 section_ir.or(ui
-                    .horizontal_top(|ui| {
+                    .with_layout(contents.options.inline_layout, |ui| {
                         // Go back to with_bg/min_frame since egui::Frame takes up all available space.
                         let inner: Option<ItemResponse<T>> =
                             crate::min_frame::min_frame(ui, add_contents).inner;
@@ -393,6 +385,8 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                         .filter(|p| min_rect.contains(*p))
                         // Add (inset) a bit so it's easier to target from the upper left. TODO: Fix the weird clamping on the top and left?
                         // Shape::slot needs to return an option
+                        // FIX expanding does not work well w/ the offset
+                        // also rotating a non-square dragged item
                         .map(|p| self.slot(p - min_rect.min - drag.offset.1 + Vec2::splat(10.0)));
 
                     let fits = slot

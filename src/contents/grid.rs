@@ -297,23 +297,23 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                     .inner
                 });
 
+                // TODO? The header should always be above the contents that it describes (i.e. use Ui::vertical here)?
                 match self.header.as_ref() {
                     Some(header) => _ = ui.label(header),
                     _ => (),
                 }
 
-                section_ir.or(ui
+                let ir = ui
                     .with_layout(contents.options.inline_layout, |ui| {
                         // Go back to with_bg/min_frame since egui::Frame takes up all available space.
-                        let inner: Option<ItemResponse<T>> =
+                        let ir: Option<ItemResponse<T>> =
                             crate::min_frame::min_frame(ui, add_contents).inner;
 
-                        inner.or(
+                        ir.or(
                             // Show inline contents.
                             self.inline
                                 .then(|| {
                                     let drag_id = contents.drag.as_ref().map(|d| d.id);
-
                                     items
                                         .0
                                         .iter()
@@ -328,7 +328,9 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                                 .flatten(),
                         )
                     })
-                    .inner)
+                    .inner;
+
+                section_ir.or(ir)
             })
         };
 

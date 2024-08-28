@@ -74,7 +74,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            layout: egui::Layout::top_down(egui::Align::Min), // FIX: Center does not work
+            // Align center does not work due to limitations w/ egui.
+            layout: egui::Layout::top_down(egui::Align::Min),
             section_layout: egui::Layout::left_to_right(egui::Align::Min),
             inline_layout: egui::Layout::left_to_right(egui::Align::Min),
         }

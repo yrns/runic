@@ -71,10 +71,23 @@ fn setup_items(
         ))
         .id();
 
-    let potion_section = commands
+    let potion_section1 = commands
         .spawn((
             ContentsLayout(
                 GridContents::<Flags>::new((1, 1))
+                    .with_header("P1:")
+                    .with_flags(Flags::Potion)
+                    .boxed(),
+            ),
+            ContentsItems(vec![]),
+        ))
+        .id();
+
+    let potion_section2 = commands
+        .spawn((
+            ContentsLayout(
+                GridContents::<Flags>::new((1, 1))
+                    .with_header("P2:")
                     .with_flags(Flags::Potion)
                     .boxed(),
             ),
@@ -85,11 +98,16 @@ fn setup_items(
     commands.entity(pouch).insert((
         ContentsLayout(
             GridContents::<Flags>::new((3, 2))
+                .with_header("Weapons:")
                 .with_flags(Flags::Weapon)
                 .boxed(),
         ),
         ContentsItems::default(),
-        Sections(None, vec![potion_section]),
+        Sections(
+            // This only works for sections, not the main container. So in this case, the main container will still be below the sections.
+            Some(egui::Layout::left_to_right(egui::Align::Min)),
+            vec![potion_section1, potion_section2],
+        ),
     ));
 
     let _short_sword = commands
@@ -175,7 +193,7 @@ fn setup_items(
             ),
             ContentsItems(vec![]),
             Sections(
-                Some(egui::Layout::top_down(egui::Align::Center)), // FIX: center does nothing?
+                Some(egui::Layout::top_down(egui::Align::Min)), // Center does not work.
                 vec![section1, section2, section3],
             ),
         ))
@@ -210,17 +228,18 @@ fn update(
 ) {
     contents.update(contexts.ctx_mut());
 
-    //egui::CentralPanel::default().show(ctx, |ui| {});
-    egui::Window::new("runic - ex1")
+    egui::Window::new("Paper doll:")
         .resizable(false)
-        .movable(false)
+        .movable(true)
+        .max_width(512.0)
         .show(contexts.ctx_mut(), |ui| {
-            ui.columns(2, |cols| {
-                cols[0].label("Paper doll:");
-                contents.show(paper_doll.0, &mut cols[0]);
+            contents.show(paper_doll.0, ui);
+        });
 
-                cols[1].label("Ground 10x10:");
-                contents.show(ground.0, &mut cols[1]);
-            })
+    egui::Window::new("Ground 10x10:")
+        .resizable(false)
+        .movable(true)
+        .show(contexts.ctx_mut(), |ui| {
+            contents.show(ground.0, ui);
         });
 }

@@ -1,10 +1,10 @@
-use egui::*;
+use egui::{style::WidgetVisuals, InnerResponse, Margin, Rect, Sense, Shape, Ui};
 
 /// This is similar to Frame::group except, critically, it takes up the minimum space, not the
 /// maximum. The style is mutable so it can be modified based on the contents.
 pub fn min_frame<R>(
     ui: &mut Ui,
-    add_contents: impl FnOnce(&mut egui::style::WidgetVisuals, &mut Ui) -> InnerResponse<R>,
+    add_contents: impl FnOnce(&mut WidgetVisuals, &mut Ui) -> InnerResponse<R>,
 ) -> InnerResponse<R> {
     let margin = Margin::same(4.0);
     let outer_rect = ui.available_rect_before_wrap();

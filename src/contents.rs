@@ -1,6 +1,8 @@
+mod builder;
 pub mod grid;
 
 use crate::*;
+pub use builder::*;
 pub use grid::*;
 
 use bevy_core::Name;
@@ -14,10 +16,10 @@ pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
 // In order to make this generic over a contents parameter (`C`), we'd also have to add the parameter to storage, which would then make the Contents trait self-referential (which makes it not object-safe). So we'd have to add a new Storage trait.
 #[derive(Component)]
-pub struct ContentsLayout<T>(pub BoxedContents<T>);
-
-#[derive(Component, Default)]
-pub struct ContentsItems(pub Vec<(usize, Entity)>);
+pub struct ContentsItems<T> {
+    pub contents: BoxedContents<T>,
+    pub items: Vec<(usize, Entity)>,
+}
 
 /// List of section (containers). Optional layout overrides the default in `Options`.
 #[derive(Component)]
@@ -40,6 +42,18 @@ pub struct DragItem<T> {
     pub target: Option<(Entity, usize)>,
     /// Slot and offset inside the item when drag started. FIX: Is the slot used?
     pub offset: (usize, egui::Vec2),
+}
+
+impl<T> DragItem<T> {
+    pub fn new(id: Entity, item: Item<T>) -> Self {
+        Self {
+            id,
+            item,
+            source: None,
+            target: None,
+            offset: Default::default(),
+        }
+    }
 }
 
 pub trait Accepts: Send + Sync + 'static {
@@ -85,19 +99,17 @@ impl Default for Options {
 /// Contents storage.
 #[derive(SystemParam)]
 pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
+    pub commands: Commands<'w, 's>,
     pub contents: Query<
         'w,
         's,
-        (
-            &'static mut ContentsLayout<T>,
-            &'static mut ContentsItems,
-            // &'static ContainerFlags<T>,
-            // TODO?
-            // Option<&'static mut Sections>,
-        ),
+        &'static mut ContentsItems<T>,
+        // TODO?
+        // Option<&'static mut Sections>,
     >,
     pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>)>,
     pub sections: Query<'w, 's, &'static Sections>,
+
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
     // pub item_flags: Query<'w, 's, &'static ItemFlags<T>>,
 
@@ -160,27 +172,20 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
         id: Entity,
         ui: &mut Ui,
     ) -> Option<InnerResponse<Option<ItemResponse<T>>>> {
-        self.get(id)
-            .map(|(layout, items)| layout.0.ui(id, self, items, ui))
+        self.get(id).map(|c| c.contents.ui(id, self, &c.items, ui))
     }
 
-    pub fn get(
-        &self,
-        id: Entity,
-    ) -> Option<(
-        &ContentsLayout<T>,
-        &ContentsItems,
-        // &ContainerFlags<T>,
-    )> {
+    pub fn get(&self, id: Entity) -> Option<&ContentsItems<T>> {
         self.contents.get(id).ok()
     }
 
+    // TODO: naming
     pub fn items<'a>(
         &'a self,
-        contents_items: &'a ContentsItems,
+        items: &'a [(usize, Entity)],
     ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>))> + 'a {
-        let q_items = self.items.iter_many(contents_items.0.iter().map(|i| i.1));
-        contents_items.0.iter().copied().zip(q_items)
+        let q_items = self.items.iter_many(items.iter().map(|i| i.1));
+        items.iter().copied().zip(q_items)
     }
 
     /// Inserts item with `id` into `container`. Returns final container id and slot.
@@ -188,22 +193,14 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
         let item = self.items.get(id).ok()?.1;
 
         // fits/find_slot only accept DragItem...
-        let drag = DragItem {
-            id,
-            item: item.clone(),
-            source: None,
-            target: None,
-            // unused...
-            offset: Default::default(),
-        };
+        let drag = DragItem::new(id, item.clone());
 
         // This is fetching twice...
         let (container, slot) = self.find_slot(container, &drag)?;
-        let (mut layout, mut items) = self.contents.get_mut(container).ok()?;
+        let mut ci = self.contents.get_mut(container).ok()?;
 
-        items.insert(slot, id);
         let DragItem { item, .. } = drag;
-        layout.0.insert(slot, &item);
+        ci.insert(slot, id, &item);
         Some((container, slot))
     }
 
@@ -217,7 +214,7 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
             self.contents
                 .get(id)
                 .ok()
-                .and_then(|(contents, _items)| contents.0.find_slot(id, drag_item))
+                .and_then(|ci| ci.contents.find_slot(id, drag_item))
         };
 
         find_slot(id).or_else(|| {
@@ -266,16 +263,7 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
         };
 
         // Remove from source container.
-        src.1.remove(container_slot, id);
-        (src.0).0.remove(container_slot, item.as_ref());
-
-        // Insert into destination container (or source if same).
-        let (mut dest_layout, mut dest) = dest.unwrap_or(src);
-
-        assert!(
-            slot < dest_layout.0.len(),
-            "destination slot in container range"
-        );
+        src.remove(container_slot, id, item.as_ref());
 
         // Copy rotation and shape from the dragged item. Do this before inserting so the shape is painted correctly.
         if item.rotation != rotation {
@@ -283,32 +271,42 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
             item.rotation = rotation;
         }
 
-        // TODO: put slot_item back on error?
-        dest.insert(slot, id);
-        dest_layout.0.insert(slot, item.as_ref());
+        // Insert into destination container (or source if same). TODO: put slot_item back on error?
+        dest.unwrap_or(src).insert(slot, id, item.as_ref());
 
         tracing::info!("moved item {name} {id} {rotation:?} -> container {target_id} slot {slot}");
     }
 }
 
-impl ContentsItems {
-    pub fn insert(&mut self, slot: usize, id: Entity) {
+impl<T> ContentsItems<T>
+where
+    T: Accepts,
+{
+    // TODO: more checking and return a Result? same for removal
+    pub fn insert(&mut self, slot: usize, id: Entity, item: &Item<T>) {
+        assert!(slot < self.contents.len(), "slot in contents length");
+
         // Multiple items can share the same slot if they fit together.
         let i = self
-            .0
+            .items
             .binary_search_by(|(k, _)| k.cmp(&slot))
             // .expect_err("item slot free");
             .unwrap_or_else(|i| i);
-        self.0.insert(i, (slot, id));
+        self.items.insert(i, (slot, id));
+
+        self.contents.insert(slot, item);
     }
 
-    pub fn remove(&mut self, slot: usize, id: Entity) {
-        self.0
+    // return something must_use? no dangling items...
+    pub fn remove(&mut self, slot: usize, id: Entity, item: &Item<T>) {
+        self.items
             .iter()
             .position(|slot_item| *slot_item == (slot, id))
             //.position(|(_, item)| item == id)
-            .map(|i| self.0.remove(i))
+            .map(|i| self.items.remove(i))
             .expect("item exists");
+
+        self.contents.remove(slot, item);
     }
 }
 
@@ -359,7 +357,7 @@ pub trait Contents<T: Accepts> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &ContentsItems,
+        items: &[(usize, Entity)],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ItemResponse<T>>>;
 
@@ -368,7 +366,7 @@ pub trait Contents<T: Accepts> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &ContentsItems,
+        items: &[(usize, Entity)],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ItemResponse<T>>>;
 }

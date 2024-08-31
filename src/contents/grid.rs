@@ -9,7 +9,7 @@ pub struct GridContents<T, const N: usize = 48> {
     pub expands: bool,
     /// If true, show inline contents for the contained item.
     pub inline: bool,
-    pub header: Option<String>,
+    pub header: Option<String>, // Use Name?
     pub shape: Shape,
     pub flags: T,
 }
@@ -165,10 +165,10 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &ContentsItems,
+        items: &[(usize, Entity)],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ItemResponse<T>>> {
-        assert!(items.0.len() <= self.len());
+        assert!(items.len() <= self.len());
 
         // For expanding contents we need to see the size of the first item before looping.
         let mut items = contents.items(items).peekable();
@@ -262,7 +262,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &ContentsItems,
+        items: &[(usize, Entity)],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ItemResponse<T>>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
@@ -315,7 +315,6 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                                 .then(|| {
                                     let drag_id = contents.drag.as_ref().map(|d| d.id);
                                     items
-                                        .0
                                         .iter()
                                         .map(|(_, id)| *id)
                                         // Don't add contents if the container is being dragged.

@@ -162,6 +162,7 @@ fn update(
         .resizable(false)
         .movable(true)
         .max_width(512.0)
+        .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
         .show(contexts.ctx_mut(), |ui| {
             contents.show(paper_doll.0, ui);
         });
@@ -169,6 +170,7 @@ fn update(
     egui::Window::new("Ground 10x10:")
         .resizable(false)
         .movable(true)
+        .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
         .show(contexts.ctx_mut(), |ui| {
             contents.show(ground.0, ui);
         });

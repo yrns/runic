@@ -55,7 +55,8 @@ fn setup_items(
 ) {
     // Spawn a bunch of items on the ground.
     let ground = storage.spawn(
-        ContentsBuilder::contents(GridContents::<Flags>::new((10, 10)))
+        GridContents::<_>::new((10, 10))
+            .builder()
             .with_name("Ground".into())
             .with_items([
                 ContentsBuilder::item(
@@ -71,17 +72,17 @@ fn setup_items(
                 )
                 .with_name("Pouch".into())
                 .with_contents(
-                    GridContents::<Flags>::new((3, 2))
+                    GridContents::<_>::new((3, 2))
                         .with_header("Weapons:")
                         .with_flags(Flags::Weapon),
                 )
                 // This only works for sections, not the main container. So in this case, the main container will still be below the sections.
                 .with_section_layout(egui::Layout::left_to_right(egui::Align::Min))
                 .with_sections([
-                    GridContents::<Flags>::new((1, 1))
+                    GridContents::new((1, 1))
                         .with_header("P1:")
                         .with_flags(Flags::Potion),
-                    GridContents::<Flags>::new((1, 1))
+                    GridContents::new((1, 1))
                         .with_header("P2:")
                         .with_flags(Flags::Potion),
                 ]),
@@ -107,46 +108,42 @@ fn setup_items(
             ]),
     );
 
-    // Setup sections.
-    let section1 = ContentsBuilder::contents(
-        GridContents::<Flags>::new((2, 2))
-            .with_header("Only potions! 2x2:")
-            .with_flags(Flags::Potion),
-    );
-
-    let section2 = ContentsBuilder::contents(
-        GridContents::<Flags>::new((3, 2))
-            .with_expands(true)
-            .with_header("Weapon (3x2 MAX):")
-            .with_flags(Flags::Weapon),
-    );
-
+    // Setup paper doll sections.
     let sub_sections = [
-        GridContents::<Flags>::new((1, 2)).with_header("A1"),
-        GridContents::<Flags>::new((1, 2)).with_header("A2"),
+        GridContents::new((1, 2)).with_header("A1"),
+        GridContents::new((1, 2)).with_header("A2"),
         // the last section only accepts weapons
-        GridContents::<Flags>::new((1, 2))
+        GridContents::new((1, 2))
             .with_header("W1")
             .with_flags(Flags::Weapon),
-    ]
-    .map(ContentsBuilder::contents);
+    ];
 
-    let section3 = ContentsBuilder::contents(
-        GridContents::<Flags>::new((2, 2))
+    let sections = [
+        GridContents::<_>::new((2, 2))
+            .with_header("Only potions! 2x2:")
+            .with_flags(Flags::Potion)
+            .builder(),
+        GridContents::<_>::new((3, 2))
+            .with_expands(true)
+            .with_header("Weapon (3x2 MAX):")
+            .with_flags(Flags::Weapon)
+            .builder(),
+        GridContents::<_>::new((2, 2))
             .with_header("Holds a container:")
             .with_expands(true)
             .with_inline(true)
-            .with_flags(Flags::Container),
-    )
-    .with_sections(sub_sections);
+            .with_flags(Flags::Container)
+            .builder()
+            .with_sections(sub_sections),
+    ];
 
     let paper_doll = storage.spawn(
-        ContentsBuilder::contents(
-            GridContents::<Flags>::new((4, 4)).with_header("Bag of any! 4x4:"),
-        )
-        .with_name("Paper doll".into())
-        .with_section_layout(egui::Layout::top_down(egui::Align::Min)) // Center does not work.
-        .with_sections([section1, section2, section3]),
+        GridContents::<_>::new((4, 4))
+            .with_header("Bag of any! 4x4:")
+            .builder()
+            .with_name("Paper doll".into())
+            .with_section_layout(egui::Layout::top_down(egui::Align::Min)) // Center does not work.
+            .with_sections(sections),
     );
 
     commands.insert_resource(PaperDoll(paper_doll));

@@ -44,6 +44,20 @@ where
     }
 }
 
+pub trait ContentsExt<T> {
+    fn builder(self) -> ContentsBuilder<T>;
+}
+
+impl<C, T> ContentsExt<T> for C
+where
+    T: Accepts,
+    C: Contents<T> + Send + Sync + 'static,
+{
+    fn builder(self) -> ContentsBuilder<T> {
+        ContentsBuilder::contents(self)
+    }
+}
+
 impl<T> ContentsBuilder<T> {
     pub fn name(name: Name) -> Self {
         Self {
@@ -103,7 +117,7 @@ impl<T> ContentsBuilder<T> {
 }
 
 impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
-    pub fn spawn(&mut self, contents: ContentsBuilder<T>) -> Entity {
+    pub fn spawn(&mut self, contents: impl Into<ContentsBuilder<T>>) -> Entity {
         let ContentsBuilder {
             name,
             item,
@@ -111,7 +125,7 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
             section_layout,
             sections,
             items,
-        } = contents;
+        } = contents.into();
 
         assert!(item.is_some() || contents.is_some(), "item and/or contents");
 

@@ -13,13 +13,6 @@ pub struct Item<T> {
     pub flags: T,
 }
 
-// TODO: move/rename to contents
-#[derive(Debug)]
-pub enum ItemResponse<T> {
-    NewTarget(Entity, usize),
-    NewDrag(DragItem<T>),
-}
-
 impl<T: Clone> Item<T> {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
@@ -139,7 +132,7 @@ impl<T: Clone> Item<T> {
         drag: Option<&DragItem<T>>,
         slot_dim: f32,
         ui: &mut Ui,
-    ) -> Option<ItemResponse<T>> {
+    ) -> Option<ContentsResponse<T>> {
         let eid = ui.id().with(id);
         let p = ui.ctx().pointer_latest_pos();
 
@@ -187,13 +180,13 @@ impl<T: Clone> Item<T> {
                     })
                     .map(|offset| {
                         if drag.is_some() {
-                            Some(ItemResponse::NewTarget(id, slot))
+                            Some(ContentsResponse::NewTarget(id, slot))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::drag());
                             let response = response.on_hover_text_at_pointer(name);
                             response.drag_started().then(|| {
-                                ItemResponse::NewDrag(DragItem {
+                                ContentsResponse::NewDrag(DragItem {
                                     id,
                                     item: self.clone(),
                                     // Contents::ui sets this.

@@ -167,7 +167,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         contents: &ContentsStorage<T>,
         items: &[(usize, Entity)],
         ui: &mut Ui,
-    ) -> InnerResponse<Option<ItemResponse<T>>> {
+    ) -> InnerResponse<Option<ContentsResponse<T>>> {
         assert!(items.len() <= self.len());
 
         // For expanding contents we need to see the size of the first item before looping.
@@ -210,11 +210,11 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                     .inner
                     .map(|ir| match ir {
                         // Set drag source. Contents id, current slot and container shape w/ the item unpainted.
-                        ItemResponse::NewDrag(mut drag) => {
+                        ContentsResponse::NewDrag(mut drag) => {
                             let mut cshape = self.shape.clone();
                             cshape.unpaint(&drag.item.shape, slot);
                             drag.source = Some((id, slot, cshape));
-                            ItemResponse::NewDrag(drag)
+                            ContentsResponse::NewDrag(drag)
                         }
                         _ => ir,
                     })
@@ -264,7 +264,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         contents: &ContentsStorage<T>,
         items: &[(usize, Entity)],
         ui: &mut Ui,
-    ) -> InnerResponse<Option<ItemResponse<T>>> {
+    ) -> InnerResponse<Option<ContentsResponse<T>>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
         // dragged_id will be unset before drag_item for one frame.
 
@@ -306,7 +306,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                 let ir = ui
                     .with_layout(contents.options.inline_layout, |ui| {
                         // Go back to with_bg/min_frame since egui::Frame takes up all available space.
-                        let ir: Option<ItemResponse<T>> =
+                        let ir: Option<ContentsResponse<T>> =
                             crate::min_frame::min_frame(ui, add_contents).inner;
 
                         ir.or(
@@ -342,7 +342,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
 
             // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
             let inner = match (contents.drag.as_ref(), inner) {
-                (Some(drag), Some(ItemResponse::NewTarget(id, slot)))
+                (Some(drag), Some(ContentsResponse::NewTarget(id, slot)))
                     if contents.is_container(id) =>
                 {
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
@@ -354,10 +354,10 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                     let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
                     ui.painter().set(shadow, mesh);
 
-                    target.map(|(slot, item)| ItemResponse::NewTarget(slot, item))
+                    target.map(|(slot, item)| ContentsResponse::NewTarget(slot, item))
                 }
                 // Unless the drag is released and pressed in the same frame, we should never have a new drag while dragging?
-                (None, Some(ir)) if matches!(ir, ItemResponse::NewDrag(_)) => Some(ir),
+                (None, Some(ir)) if matches!(ir, ContentsResponse::NewDrag(_)) => Some(ir),
 
                 (Some(drag), None) => {
                     // tarkov also checks if containers are full, even if not
@@ -413,7 +413,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                     }
 
                     slot.filter(|_| accepts && fits)
-                        .map(|slot| ItemResponse::NewTarget(id, slot))
+                        .map(|slot| ContentsResponse::NewTarget(id, slot))
                 }
                 _ => None,
             };

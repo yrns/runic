@@ -31,8 +31,16 @@ pub struct Sections(pub Option<egui::Layout>, pub Vec<Entity>);
 // #[derive(Component)]
 // pub struct ContainerFlags<T: Accepts + 'static>(T);
 
+/// Response (inner) returned from `Contents::ui` and `Item::ui`. Sets new drag or current drag target.
+#[derive(Debug)]
+pub enum ContentsResponse<T> {
+    NewTarget(Entity, usize),
+    NewDrag(DragItem<T>),
+}
+
 #[derive(Debug)]
 pub struct DragItem<T> {
+    /// Dragged item id.
     pub id: Entity,
     /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
     pub item: Item<T>,
@@ -157,11 +165,11 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
     pub fn show(&mut self, id: Entity, ui: &mut Ui) -> Option<Response> {
         let InnerResponse { inner, response } = self.show_contents(id, ui)?;
         match inner {
-            Some(ItemResponse::NewTarget(id, slot)) => match self.drag.as_mut() {
+            Some(ContentsResponse::NewTarget(id, slot)) => match self.drag.as_mut() {
                 Some(drag) => drag.target = Some((id, slot)),
                 None => (),
             },
-            Some(ItemResponse::NewDrag(new_drag)) => *self.drag = Some(new_drag),
+            Some(ContentsResponse::NewDrag(new_drag)) => *self.drag = Some(new_drag),
             None => (),
         }
         Some(response)
@@ -171,7 +179,7 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
         &self,
         id: Entity,
         ui: &mut Ui,
-    ) -> Option<InnerResponse<Option<ItemResponse<T>>>> {
+    ) -> Option<InnerResponse<Option<ContentsResponse<T>>>> {
         self.get(id).map(|c| c.contents.ui(id, self, &c.items, ui))
     }
 
@@ -359,7 +367,7 @@ pub trait Contents<T: Accepts> {
         contents: &ContentsStorage<T>,
         items: &[(usize, Entity)],
         ui: &mut egui::Ui,
-    ) -> InnerResponse<Option<ItemResponse<T>>>;
+    ) -> InnerResponse<Option<ContentsResponse<T>>>;
 
     /// Draw container.
     fn ui(
@@ -368,7 +376,7 @@ pub trait Contents<T: Accepts> {
         contents: &ContentsStorage<T>,
         items: &[(usize, Entity)],
         ui: &mut egui::Ui,
-    ) -> InnerResponse<Option<ItemResponse<T>>>;
+    ) -> InnerResponse<Option<ContentsResponse<T>>>;
 }
 
 pub fn xy(slot: usize, width: usize) -> egui::Vec2 {

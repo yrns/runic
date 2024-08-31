@@ -138,26 +138,31 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         self.flags.accepts(item.flags)
     }
 
-    fn fits(&self, id: Entity, drag: &DragItem<T>, slot: usize) -> bool {
+    fn fits(&self, id: Entity, item: &Item<T>, slot: usize, source: &DragSource) -> bool {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
-        let shape = match &drag.source {
+        let shape = match source {
             Some((source_id, _, shape)) if id == *source_id => shape,
             _ => &self.shape,
         };
 
-        shape.fits(&drag.item.shape, slot)
+        shape.fits(&item.shape, slot)
     }
 
-    fn find_slot(&self, id: Entity, drag: &DragItem<T>) -> Option<(Entity, usize)> {
-        if !self.accepts(&drag.item) {
+    fn find_slot(
+        &self,
+        id: Entity,
+        item: &Item<T>,
+        source: &DragSource,
+    ) -> Option<(Entity, usize)> {
+        if !self.accepts(item) {
             return None;
         }
 
         // TODO test multiple rotations (if non-square) and return it?
         (0..self.len())
-            .find(|slot| self.fits(id, drag, *slot))
+            .find(|slot| self.fits(id, item, *slot, source))
             .map(|slot| (id, slot))
     }
 
@@ -347,7 +352,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                 {
                     // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
                     let item = contents.items.get(id).expect("item exists").1;
-                    let target = contents.find_slot(id, drag);
+                    let target = contents.find_slot(id, &drag.item, &drag.source);
 
                     // The item shadow is the target item for drag-to-item, not the dragged item.
                     let color = self.shadow_color(true, target.is_some(), ui);
@@ -391,7 +396,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                         .map(|p| self.slot(p - min_rect.min - drag.offset.1 + Vec2::splat(10.0)));
 
                     let fits = slot
-                        .map(|slot| self.fits(id, drag, slot))
+                        .map(|slot| self.fits(id, &drag.item, slot, &drag.source))
                         .unwrap_or_default();
 
                     // Paint the dragged item's shadow, showing which slots will be filled.

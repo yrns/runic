@@ -38,14 +38,17 @@ pub enum ContentsResponse<T> {
     NewDrag(DragItem<T>),
 }
 
+/// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
+pub type DragSource = Option<(Entity, usize, Shape)>;
+
 #[derive(Debug)]
 pub struct DragItem<T> {
     /// Dragged item id.
     pub id: Entity,
     /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
     pub item: Item<T>,
-    /// Source location container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
-    pub source: Option<(Entity, usize, Shape)>,
+    /// Source location.
+    pub source: DragSource,
     /// Target container id and slot.
     pub target: Option<(Entity, usize)>,
     /// Slot and offset inside the item when drag started. FIX: Is the slot used?
@@ -200,15 +203,11 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
     pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, usize)> {
         let item = self.items.get(id).ok()?.1;
 
-        // fits/find_slot only accept DragItem...
-        let drag = DragItem::new(id, item.clone());
-
         // This is fetching twice...
-        let (container, slot) = self.find_slot(container, &drag)?;
+        let (container, slot) = self.find_slot(container, &item, &None)?;
         let mut ci = self.contents.get_mut(container).ok()?;
 
-        let DragItem { item, .. } = drag;
-        ci.insert(slot, id, &item);
+        ci.insert(slot, id, item);
         Some((container, slot))
     }
 
@@ -217,12 +216,17 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
     }
 
     // Check sections first or last? Last is less recursion.
-    pub fn find_slot(&self, id: Entity, drag_item: &DragItem<T>) -> Option<(Entity, usize)> {
+    pub fn find_slot(
+        &self,
+        id: Entity,
+        item: &Item<T>,
+        source: &DragSource,
+    ) -> Option<(Entity, usize)> {
         let find_slot = |id| {
             self.contents
                 .get(id)
                 .ok()
-                .and_then(|ci| ci.contents.find_slot(id, drag_item))
+                .and_then(|ci| ci.contents.find_slot(id, item, source))
         };
 
         find_slot(id).or_else(|| {
@@ -344,10 +348,11 @@ pub trait Contents<T: Accepts> {
     fn accepts(&self, item: &Item<T>) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, id: Entity, item: &DragItem<T>, slot: usize) -> bool;
+    fn fits(&self, id: Entity, item: &Item<T>, slot: usize, source: &DragSource) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot(&self, id: Entity, item: &DragItem<T>) -> Option<(Entity, usize)>;
+    fn find_slot(&self, id: Entity, item: &Item<T>, source: &DragSource)
+        -> Option<(Entity, usize)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {

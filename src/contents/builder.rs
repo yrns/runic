@@ -149,7 +149,7 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
 
             // This is convoluted because we can't fetch anything. None of these items exist yet.
             for item in items {
-                // This clone is not ideal.
+                // We need the item to find a slot and to insert it, and the original gets moved into the spawn to get an id.
                 let Some(item_clone) = item.item.clone() else {
                     panic!("not an item")
                 };
@@ -157,17 +157,15 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
                 // Recursively spawn the item (and its contents, if any).
                 let id = self.spawn(item);
 
-                // Fake drag again...
-                let drag = DragItem::new(id, item_clone);
-                let Some((_id, slot)) = contents_items.contents.find_slot(id, &drag) else {
+                let Some((_id, slot)) = contents_items.contents.find_slot(id, &item_clone, &None)
+                else {
                     panic!("no slot for item");
                 };
 
                 // The item might fit in a sub-container, but we don't have access to place it there. It would otherwise be viable. Fix?
                 assert_eq!(id, _id, "item fits in current container");
 
-                let DragItem { item, .. } = drag;
-                contents_items.insert(slot, id, &item);
+                contents_items.insert(slot, id, &item_clone);
             }
 
             contents_items

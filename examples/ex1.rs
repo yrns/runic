@@ -152,11 +152,14 @@ fn setup_items(
 
 fn update(
     mut contexts: EguiContexts,
-    mut contents: ContentsStorage<Flags>,
+    mut storage: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
 ) {
-    contents.update(contexts.ctx_mut());
+    storage.update(contexts.ctx_mut());
+
+    // Control-clicking items in the inventory will send them to ground.
+    *storage.target = Some(ground.0);
 
     egui::Window::new("Paper doll:")
         .resizable(false)
@@ -164,14 +167,17 @@ fn update(
         .max_width(512.0)
         .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
         .show(contexts.ctx_mut(), |ui| {
-            contents.show(paper_doll.0, ui);
+            storage.show(paper_doll.0, ui);
         });
+
+    // Control-clicking items on the ground will send them to the inventory.
+    *storage.target = Some(paper_doll.0);
 
     egui::Window::new("Ground 10x10:")
         .resizable(false)
         .movable(true)
         .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
         .show(contexts.ctx_mut(), |ui| {
-            contents.show(ground.0, ui);
+            storage.show(ground.0, ui);
         });
 }

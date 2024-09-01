@@ -36,6 +36,7 @@ pub struct Sections(pub Option<egui::Layout>, pub Vec<Entity>);
 pub enum ContentsResponse<T> {
     NewTarget(Entity, usize),
     NewDrag(DragItem<T>),
+    SendItem(DragItem<T>),
 }
 
 /// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
@@ -127,6 +128,9 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     // TODO: This should probably be a Resource in case you are showing containers from multiple different systems.
     pub drag: Local<'s, Option<DragItem<T>>>,
 
+    // Target container for sending items directly (via control click, etc.).
+    pub target: Local<'s, Option<Entity>>,
+
     pub options: Res<'w, Options>,
 }
 
@@ -173,6 +177,12 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
                 None => (),
             },
             Some(ContentsResponse::NewDrag(new_drag)) => *self.drag = Some(new_drag),
+            Some(ContentsResponse::SendItem(mut item)) => {
+                item.target = self
+                    .target
+                    .and_then(|t| self.find_slot(t, &item.item, &item.source));
+                self.resolve_drag(item);
+            }
             None => (),
         }
         Some(response)

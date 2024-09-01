@@ -213,15 +213,18 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                         item.ui(slot, item_id, name, contents.drag.as_ref(), N as f32, ui)
                     })
                     .inner
-                    .map(|ir| match ir {
-                        // Set drag source. Contents id, current slot and container shape w/ the item unpainted.
-                        ContentsResponse::NewDrag(mut drag) => {
-                            let mut cshape = self.shape.clone();
-                            cshape.unpaint(&drag.item.shape, slot);
-                            drag.source = Some((id, slot, cshape));
-                            ContentsResponse::NewDrag(drag)
+                    .map(|mut cr| {
+                        match cr {
+                            // Set source. Contents id, current slot and container shape w/ the item unpainted.
+                            ContentsResponse::NewDrag(ref mut drag)
+                            | ContentsResponse::SendItem(ref mut drag) => {
+                                let mut cshape = self.shape.clone();
+                                cshape.unpaint(&drag.item.shape, slot);
+                                drag.source = Some((id, slot, cshape));
+                            }
+                            _ => (),
                         }
-                        _ => ir,
+                        cr
                     })
                 })
                 .at_most_one()
@@ -345,8 +348,8 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
             let InnerResponse { inner, response } = self.body(id, contents, items, ui);
             let min_rect = response.rect;
 
-            // If we are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
             let inner = match (contents.drag.as_ref(), inner) {
+                // We are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
                 (Some(drag), Some(ContentsResponse::NewTarget(id, slot)))
                     if contents.is_container(id) =>
                 {
@@ -361,9 +364,8 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
 
                     target.map(|(slot, item)| ContentsResponse::NewTarget(slot, item))
                 }
-                // Unless the drag is released and pressed in the same frame, we should never have a new drag while dragging?
-                (None, Some(ir)) if matches!(ir, ContentsResponse::NewDrag(_)) => Some(ir),
 
+                // Dragging over an empty slot.
                 (Some(drag), None) => {
                     // tarkov also checks if containers are full, even if not
                     // hovering -- maybe track min size free? TODO just do
@@ -420,7 +422,8 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                     slot.filter(|_| accepts && fits)
                         .map(|slot| ContentsResponse::NewTarget(id, slot))
                 }
-                _ => None,
+
+                (_, inner) => inner,
             };
 
             InnerResponse::new(inner, response)

@@ -1,5 +1,6 @@
 use egui::{
-    emath::Rot2, CursorIcon, Id, Image, InnerResponse, Pos2, Rect, Rgba, Sense, TextureId, Ui, Vec2,
+    emath::Rot2, CursorIcon, Id, Image, InnerResponse, Modifiers, Pos2, Rect, Rgba, Sense,
+    TextureId, Ui, Vec2,
 };
 
 use crate::*;
@@ -67,6 +68,7 @@ impl<T: Clone> Item<T> {
 
     const PIVOT: Vec2 = Vec2::splat(0.5);
 
+    /// Show item body (icon, etc.).
     pub fn body(
         &self,
         id: Entity,
@@ -123,7 +125,7 @@ impl<T: Clone> Item<T> {
         InnerResponse::new(size, response)
     }
 
-    /// `slot` is the slot we occupy in the container.
+    /// Show item. `slot` is the slot we occupy in the container.
     pub fn ui(
         &self,
         slot: usize,
@@ -183,18 +185,24 @@ impl<T: Clone> Item<T> {
                             Some(ContentsResponse::NewTarget(id, slot))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
-                            let response = ui.interact(response.rect, eid, Sense::drag());
+                            let response = ui.interact(response.rect, eid, Sense::click_and_drag());
                             let response = response.on_hover_text_at_pointer(name);
-                            response.drag_started().then(|| {
-                                ContentsResponse::NewDrag(DragItem {
+                            if response.clicked()
+                                && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
+                            {
+                                Some(ContentsResponse::SendItem(DragItem::new(id, self.clone())))
+                            } else if response.drag_started() {
+                                Some(ContentsResponse::NewDrag(DragItem {
                                     id,
                                     item: self.clone(),
                                     // Contents::ui sets this.
                                     source: None,
                                     target: None,
                                     offset,
-                                })
-                            })
+                                }))
+                            } else {
+                                None
+                            }
                         }
                     })
                     .flatten()

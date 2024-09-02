@@ -2,12 +2,14 @@ mod builder;
 pub mod grid;
 
 use crate::*;
+use bevy_egui::EguiUserTextures;
 pub use builder::*;
 pub use grid::*;
 
 use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
-use egui::{
+use bevy_egui::egui::{
+    self,
     ecolor::{tint_color_towards, Color32},
     InnerResponse, Response, Ui, Vec2,
 };
@@ -132,6 +134,8 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub target: Local<'s, Option<Entity>>,
 
     pub options: Res<'w, Options>,
+
+    pub textures: Res<'w, EguiUserTextures>,
 }
 
 impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {

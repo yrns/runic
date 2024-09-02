@@ -8,15 +8,17 @@
 //     fill: bits![1],
 // };
 
-use glam::U16Vec2;
+use bevy_egui::egui;
+use bevy_math::UVec2;
+use bevy_reflect::prelude::*;
 
-pub use glam::U16Vec2 as Size;
+pub use bevy_math::UVec2 as Size;
 
 pub fn to_size(v: egui::Vec2) -> Size {
-    Size::new(v.x as u16, v.y as u16)
+    Size::new(v.x as u32, v.y as u32)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Reflect)]
 pub struct Shape {
     pub size: Size,
     pub fill: Vec<bool>,
@@ -56,7 +58,7 @@ impl Shape {
         let fill: Vec<_> = fill.into_iter().collect();
         assert!(fill.len() % width == 0, "is rect");
         Self {
-            size: [width as u16, (fill.len() / width) as u16].into(),
+            size: Size::new(width as u32, (fill.len() / width) as u32),
             fill,
         }
     }
@@ -73,14 +75,14 @@ impl Shape {
         self.size.element_product() as usize
     }
 
-    pub fn contains(&self, pt: U16Vec2) -> bool {
+    pub fn contains(&self, pt: UVec2) -> bool {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
     fn overlay_range(&self, other: &Shape, slot: usize) -> Option<std::ops::RangeInclusive<usize>> {
         let p1 = self.pos(slot);
         let p2 = p1 + other.size;
-        (self.contains(p1) && self.contains(p2)).then(|| slot..=self.slot(p2 - U16Vec2::ONE))
+        (self.contains(p1) && self.contains(p2)).then(|| slot..=self.slot(p2 - UVec2::ONE))
     }
 
     pub fn overlay_mut(&mut self, other: &Shape, slot: usize, f: impl Fn(&mut bool, &bool)) {
@@ -131,13 +133,13 @@ impl Shape {
     }
 
     /// Return slot for position.
-    pub fn slot(&self, U16Vec2 { x, y }: U16Vec2) -> usize {
+    pub fn slot(&self, UVec2 { x, y }: UVec2) -> usize {
         x as usize + y as usize * self.width()
     }
 
     /// Return position for slot.
-    pub fn pos(&self, slot: usize) -> U16Vec2 {
-        U16Vec2::new((slot % self.width()) as u16, (slot / self.width()) as u16)
+    pub fn pos(&self, slot: usize) -> UVec2 {
+        UVec2::new((slot % self.width()) as u32, (slot / self.width()) as u32)
     }
 
     /// Returns an iterator over filled slots.
@@ -162,7 +164,7 @@ impl Shape {
         let slice = &mut dest.fill;
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(U16Vec2::new(x, y))];
+                let b = self.fill[self.slot(UVec2::new(x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
                 slice[slot as usize] = b;
@@ -176,7 +178,7 @@ impl Shape {
         let mut dest = Shape::new((w, h), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(U16Vec2::new(x, y))];
+                let b = self.fill[self.slot(UVec2::new(x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
                 dest.fill[slot as usize] = b;
@@ -190,7 +192,7 @@ impl Shape {
         let mut dest = Shape::new((h, w), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(U16Vec2::new(x, y))];
+                let b = self.fill[self.slot(UVec2::new(x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
                 dest.fill[slot as usize] = b;
@@ -222,7 +224,7 @@ impl From<Size> for Shape {
 
 impl From<(usize, usize)> for Shape {
     fn from((w, h): (usize, usize)) -> Self {
-        Shape::new(Size::new(w as u16, h as u16), true)
+        Shape::new(Size::new(w as u32, h as u32), true)
     }
 }
 
@@ -246,10 +248,10 @@ mod tests {
     fn fits() {
         let a = Shape::from_ones(4, [1, 1, 0, 0, 1, 1, 0, 0]);
         let b = Shape::from_ones(2, [1, 1, 1, 1]);
-        assert!(a.fits(&b, a.slot(U16Vec2::new(0, 0))) == false);
-        assert!(a.fits(&b, a.slot(U16Vec2::new(1, 0))) == false);
-        assert!(a.fits(&b, a.slot(U16Vec2::new(2, 0))) == true);
-        assert!(a.fits(&b, a.slot(U16Vec2::new(3, 0))) == false); // outside
+        assert!(a.fits(&b, a.slot(UVec2::new(0, 0))) == false);
+        assert!(a.fits(&b, a.slot(UVec2::new(1, 0))) == false);
+        assert!(a.fits(&b, a.slot(UVec2::new(2, 0))) == true);
+        assert!(a.fits(&b, a.slot(UVec2::new(3, 0))) == false); // outside
     }
 
     #[test]

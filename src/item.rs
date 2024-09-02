@@ -1,16 +1,19 @@
-use egui::{
-    emath::Rot2, CursorIcon, Id, Image, InnerResponse, Modifiers, Pos2, Rect, Rgba, Sense,
+use bevy_asset::Handle;
+use bevy_ecs::prelude::*;
+use bevy_egui::egui::{
+    self, emath::Rot2, CursorIcon, Id, InnerResponse, Modifiers, Pos2, Rect, Rgba, Sense,
     TextureId, Ui, Vec2,
 };
+use bevy_reflect::prelude::*;
+use bevy_render::texture::Image;
 
 use crate::*;
-use bevy_ecs::prelude::*;
 
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Clone, Debug, Reflect)]
 pub struct Item<T> {
     pub rotation: ItemRotation,
     pub shape: shape::Shape,
-    pub icon: TextureId,
+    pub icon: Handle<Image>, // TextureId,
     pub flags: T,
 }
 
@@ -27,7 +30,7 @@ impl<T: Clone> Item<T> {
         }
     }
 
-    pub fn with_icon(mut self, icon: TextureId) -> Self {
+    pub fn with_icon(mut self, icon: Handle<Image>) -> Self {
         self.icon = icon;
         self
     }
@@ -73,6 +76,7 @@ impl<T: Clone> Item<T> {
         &self,
         id: Entity,
         drag: Option<&DragItem<T>>,
+        icon: TextureId,
         slot_dim: f32,
         ui: &mut Ui,
     ) -> InnerResponse<Vec2> {
@@ -98,7 +102,7 @@ impl<T: Clone> Item<T> {
 
         if ui.is_rect_visible(rect) {
             // This size is a hint and isn't used since the image is always(?) already loaded.
-            let image = Image::new((self.icon, size));
+            let image = egui::Image::new((icon, size));
             let image = if dragging {
                 image.tint(Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
             } else {
@@ -132,6 +136,7 @@ impl<T: Clone> Item<T> {
         id: Entity,
         name: &str,
         drag: Option<&DragItem<T>>,
+        icon: TextureId,
         slot_dim: f32,
         ui: &mut Ui,
     ) -> Option<ContentsResponse<T>> {
@@ -155,14 +160,14 @@ impl<T: Clone> Item<T> {
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
-                        .show(ui.ctx(), |ui| self.body(id, Some(drag), slot_dim, ui));
+                        .show(ui.ctx(), |ui| self.body(id, Some(drag), icon, slot_dim, ui));
                 }
 
                 None
             }
             // This item is not being dragged (but maybe something else is).
             _ => {
-                let response = self.body(id, drag, slot_dim, ui).response;
+                let response = self.body(id, drag, icon, slot_dim, ui).response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|p| response.rect.contains(*p))
@@ -235,7 +240,7 @@ impl<T: Clone> Item<T> {
 //     }
 // }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
 pub enum ItemRotation {
     #[default]
     None,

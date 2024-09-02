@@ -1,5 +1,9 @@
-use bevy::{prelude::*, window::RequestRedraw, winit::WinitSettings};
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiUserTextures};
+use bevy::{
+    prelude::*,
+    window::{PrimaryWindow, RequestRedraw},
+    winit::WinitSettings,
+};
+use bevy_egui::{egui, EguiContext, EguiPlugin, EguiUserTextures};
 use runic::*;
 
 bitflags::bitflags! {
@@ -27,7 +31,7 @@ fn main() {
         // TODO plugin
         .insert_resource(Options::default())
         .add_systems(Startup, setup_items)
-        .add_systems(Update, update)
+        .add_systems(Update, (item_icon_changed::<Flags>, update).chain())
         // .add_systems(
         //     Last,
         //     redraw
@@ -50,7 +54,6 @@ fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<Re
 fn setup_items(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut textures: ResMut<EguiUserTextures>,
     mut storage: ContentsStorage<Flags>,
 ) {
     // Spawn a bunch of items on the ground.
@@ -61,13 +64,13 @@ fn setup_items(
             .with_items([
                 ContentsBuilder::item(
                     Item::new(Flags::Weapon)
-                        .with_icon(textures.add_image(asset_server.load("boomerang.png")))
+                        .with_icon(asset_server.load("boomerang.png"))
                         .with_shape(Shape::from_ones(2, [1, 1, 1, 0])),
                 )
                 .with_name("Boomerang".into()),
                 ContentsBuilder::item(
                     Item::new(Flags::Container)
-                        .with_icon(textures.add_image(asset_server.load("pouch.png")))
+                        .with_icon(asset_server.load("pouch.png"))
                         .with_shape((2, 2)),
                 )
                 .with_name("Pouch".into())
@@ -88,23 +91,29 @@ fn setup_items(
                 ]),
                 ContentsBuilder::item(
                     Item::new(Flags::Weapon)
-                        .with_icon(textures.add_image(asset_server.load("short-sword.png")))
+                        .with_icon(asset_server.load("short-sword.png"))
                         .with_shape((3, 1))
                         .with_rotation(ItemRotation::R90),
                 )
                 .with_name(Name::from("Short sword")),
                 ContentsBuilder::item(
                     Item::new(Flags::Potion)
-                        .with_icon(textures.add_image(asset_server.load("potion.png")))
+                        .with_icon(asset_server.load("potion.png"))
                         .with_shape((1, 1)),
                 )
                 .with_name(Name::from("Potion 1")),
                 ContentsBuilder::item(
                     Item::new(Flags::Potion)
-                        .with_icon(textures.add_image(asset_server.load("potion.png")))
+                        .with_icon(asset_server.load("potion.png"))
                         .with_shape((1, 1)),
                 )
                 .with_name(Name::from("Potion 2")),
+                // ContentsBuilder::item(
+                //     Item::new(Flags::TradeGood)
+                //         .with_icon(textures.add_image(asset_server.load("artifact.png")))
+                //         .with_shape((1, 1)),
+                // )
+                // .with_name(Name::from("Artifact")),
             ]),
     );
 
@@ -150,13 +159,27 @@ fn setup_items(
     commands.insert_resource(Ground(ground));
 }
 
+fn item_icon_changed<T: Accepts>(
+    items: Query<&Item<T>, Changed<Item<T>>>,
+    mut textures: ResMut<EguiUserTextures>,
+) {
+    for item in &items {
+        _ = textures
+            .image_id(&item.icon)
+            .unwrap_or_else(|| textures.add_image(item.icon.clone_weak()));
+    }
+}
+
 fn update(
-    mut contexts: EguiContexts,
+    mut egui_ctx: Query<&mut EguiContext, With<PrimaryWindow>>,
     mut storage: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
 ) {
-    storage.update(contexts.ctx_mut());
+    let mut egui_ctx = egui_ctx.single_mut();
+    let ctx = egui_ctx.get_mut();
+
+    storage.update(ctx);
 
     // Control-clicking items in the inventory will send them to ground.
     *storage.target = Some(ground.0);
@@ -166,7 +189,7 @@ fn update(
         .movable(true)
         .max_width(512.0)
         .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
-        .show(contexts.ctx_mut(), |ui| {
+        .show(ctx, |ui| {
             storage.show(paper_doll.0, ui);
         });
 
@@ -177,7 +200,7 @@ fn update(
         .resizable(false)
         .movable(true)
         .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
-        .show(contexts.ctx_mut(), |ui| {
+        .show(ctx, |ui| {
             storage.show(ground.0, ui);
         });
 }

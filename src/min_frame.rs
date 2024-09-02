@@ -1,4 +1,4 @@
-use egui::{style::WidgetVisuals, InnerResponse, Margin, Rect, Sense, Shape, Ui};
+use bevy_egui::egui::{self, style::WidgetVisuals, InnerResponse, Margin, Rect, Sense, Shape, Ui};
 
 /// This is similar to Frame::group except, critically, it takes up the minimum space, not the
 /// maximum. The style is mutable so it can be modified based on the contents.

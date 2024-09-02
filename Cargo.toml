@@ -12,12 +12,15 @@ edition = "2021"
 name = "ex1"
 
 [dependencies]
-bevy_core = "0.14"
-bevy_ecs = "0.14"
+bevy_asset = "0.14.1"
+bevy_core = "0.14.1"
+bevy_ecs = "0.14.1"
+bevy_math = "0.14.1"
+bevy_reflect = "0.14.1"
+bevy_render = "0.14.1"
 bitflags = "2.6.0"
 # egui = { version = "0.28", features = ["callstack"] }
-egui = "0.28"
-glam = "0.27"
+bevy_egui = "0.28"
 itertools = "0.13"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
@@ -36,4 +39,3 @@ bevy = { version = "0.14", default-features = false, features = [
   "tonemapping_luts",
   "x11",
 ] }
-bevy_egui = "0.28"

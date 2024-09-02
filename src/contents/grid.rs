@@ -1,4 +1,4 @@
-use egui::{style::WidgetVisuals, Rect, Ui};
+use bevy_egui::egui::{self, style::WidgetVisuals, Rect, Ui};
 use itertools::Itertools;
 
 use super::*;
@@ -210,7 +210,16 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
 
                     // item returns a clone if it's being dragged
                     ui.allocate_ui_at_rect(item_rect, |ui| {
-                        item.ui(slot, item_id, name, contents.drag.as_ref(), N as f32, ui)
+                        item.ui(
+                            slot,
+                            item_id,
+                            name,
+                            contents.drag.as_ref(),
+                            // TODO A better default texture.
+                            contents.textures.image_id(&item.icon).unwrap_or_default(),
+                            N as f32,
+                            ui,
+                        )
                     })
                     .inner
                     .map(|mut cr| {

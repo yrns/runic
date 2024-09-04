@@ -1,11 +1,7 @@
 mod builder;
-pub mod grid;
+mod grid;
 
-use crate::*;
-use bevy_egui::EguiUserTextures;
-pub use builder::*;
-pub use grid::*;
-
+use bevy_asset::Handle;
 use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
@@ -13,19 +9,30 @@ use bevy_egui::egui::{
     ecolor::{tint_color_towards, Color32},
     InnerResponse, Response, Ui, Vec2,
 };
+use bevy_egui::EguiUserTextures;
+use bevy_reflect::Reflect;
+use bevy_render::texture::Image;
 
+use crate::*;
+pub use builder::*;
+pub use grid::*;
+
+// TODO: maybe this is doable https://github.com/bevyengine/bevy/blob/latest/examples/reflection/trait_reflection.rs
 pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
 // In order to make this generic over a contents parameter (`C`), we'd also have to add the parameter to storage, which would then make the Contents trait self-referential (which makes it not object-safe). So we'd have to add a new Storage trait.
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct ContentsItems<T> {
-    pub contents: BoxedContents<T>,
+    pub contents: GridContents<T>,
     pub items: Vec<(usize, Entity)>,
 }
 
-/// List of section (containers). Optional layout overrides the default in `Options`.
-#[derive(Component)]
-pub struct Sections(pub Option<egui::Layout>, pub Vec<Entity>);
+/// List of sections (sub-containers). Optional layout overrides the default in `Options`.
+#[derive(Component, Reflect)]
+#[reflect(Component)]
+// FIX ignore
+pub struct Sections(#[reflect(ignore)] pub Option<egui::Layout>, pub Vec<Entity>);
 
 // #[derive(Component)]
 // pub struct ItemFlags<T: Accepts + 'static>(T);
@@ -70,17 +77,19 @@ impl<T> DragItem<T> {
     }
 }
 
-pub trait Accepts: Send + Sync + 'static {
-    fn accepts(&self, other: Self) -> bool;
+/// Accepts must be cloned because items must be cloned.
+// TODO Display? And/or indicate textually why something does't accept another.
+pub trait Accepts: Clone + Send + Sync + 'static {
+    fn accepts(&self, other: &Self) -> bool;
     fn all() -> Self;
 }
 
 impl<T> Accepts for T
 where
-    T: bitflags::Flags + Send + Sync + 'static,
+    T: bitflags::Flags + Copy + Send + Sync + 'static,
 {
-    fn accepts(&self, other: Self) -> bool {
-        self.contains(other)
+    fn accepts(&self, other: &Self) -> bool {
+        self.contains(*other)
     }
 
     fn all() -> Self {
@@ -121,7 +130,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         // TODO?
         // Option<&'static mut Sections>,
     >,
-    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>)>,
+    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, &'static Handle<Image>)>,
     pub sections: Query<'w, 's, &'static Sections>,
 
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
@@ -130,7 +139,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     // TODO: This should probably be a Resource in case you are showing containers from multiple different systems.
     pub drag: Local<'s, Option<DragItem<T>>>,
 
-    // Target container for sending items directly (via control click, etc.).
+    // Target container for sending items directly (via control click, etc.). TODO: Parameter to Self::show?
     pub target: Local<'s, Option<Entity>>,
 
     pub options: Res<'w, Options>,
@@ -138,7 +147,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub textures: Res<'w, EguiUserTextures>,
 }
 
-impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
+impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn update(&mut self, ctx: &mut egui::Context) {
         // If the pointer is released, resolve drag, if any.
         if ctx.input(|i| i.pointer.any_released()) {
@@ -208,7 +217,7 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
     pub fn items<'a>(
         &'a self,
         items: &'a [(usize, Entity)],
-    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>))> + 'a {
+    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>, &Handle<Image>))> + 'a {
         let q_items = self.items.iter_many(items.iter().map(|i| i.1));
         items.iter().copied().zip(q_items)
     }
@@ -273,7 +282,7 @@ impl<'w, 's, T: Accepts + Clone> ContentsStorage<'w, 's, T> {
             id
         );
 
-        let (name, mut item) = self.items.get_mut(id).expect("item exists");
+        let (name, mut item, _icon) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
         let (mut src, dest) = if container_id == target_id {

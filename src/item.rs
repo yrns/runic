@@ -1,19 +1,19 @@
-use bevy_asset::Handle;
 use bevy_ecs::prelude::*;
 use bevy_egui::egui::{
     self, emath::Rot2, CursorIcon, Id, InnerResponse, Modifiers, Pos2, Rect, Rgba, Sense,
     TextureId, Ui, Vec2,
 };
 use bevy_reflect::prelude::*;
-use bevy_render::texture::Image;
 
 use crate::*;
 
+/// An item.
 #[derive(Component, Clone, Debug, Reflect)]
+#[reflect(Component)]
 pub struct Item<T> {
     pub rotation: ItemRotation,
-    pub shape: shape::Shape,
-    pub icon: Handle<Image>, // TextureId,
+    /// The shape represents this items dimensions (and filled "slots" in case it is not rectangular).
+    pub shape: Shape,
     pub flags: T,
 }
 
@@ -24,15 +24,8 @@ impl<T: Clone> Item<T> {
         Self {
             rotation: Default::default(),
             shape: Shape::new([1, 1], true),
-            // TODO better default texture
-            icon: Default::default(),
             flags,
         }
-    }
-
-    pub fn with_icon(mut self, icon: Handle<Image>) -> Self {
-        self.icon = icon;
-        self
     }
 
     /// Set the item shape and unset its rotation.
@@ -200,7 +193,7 @@ impl<T: Clone> Item<T> {
                                 Some(ContentsResponse::NewDrag(DragItem {
                                     id,
                                     item: self.clone(),
-                                    // Contents::ui sets this.
+                                    // Contents::body sets the source.
                                     source: None,
                                     target: None,
                                     offset,

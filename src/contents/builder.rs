@@ -1,19 +1,21 @@
 use super::*;
 
-pub struct ContentsBuilder<T> {
+pub struct ContentsBuilder<C, T> {
     name: Option<Name>,
     item: Option<Item<T>>,
-    contents: Option<BoxedContents<T>>,
+    icon: Option<Handle<Image>>,
+    contents: Option<C>,
     section_layout: Option<egui::Layout>,
-    sections: Vec<ContentsBuilder<T>>,
-    items: Vec<ContentsBuilder<T>>,
+    sections: Vec<ContentsBuilder<C, T>>,
+    items: Vec<ContentsBuilder<C, T>>,
 }
 
-impl<T> Default for ContentsBuilder<T> {
+impl<C, T> Default for ContentsBuilder<C, T> {
     fn default() -> Self {
         Self {
             name: None,
             item: None,
+            icon: None,
             contents: None,
             section_layout: None,
             sections: Vec::new(),
@@ -23,42 +25,42 @@ impl<T> Default for ContentsBuilder<T> {
 }
 
 // Too bad we can't do contents generically.
-impl<T> From<BoxedContents<T>> for ContentsBuilder<T> {
-    fn from(contents: BoxedContents<T>) -> Self {
-        Self {
-            contents: Some(contents),
-            ..Default::default()
-        }
-    }
-}
+// impl<T> From<BoxedContents<T>> for ContentsBuilder<T> {
+//     fn from(contents: BoxedContents<T>) -> Self {
+//         Self {
+//             contents: Some(contents),
+//             ..Default::default()
+//         }
+//     }
+// }
 
-impl<T> From<GridContents<T>> for ContentsBuilder<T>
+impl<T> From<GridContents<T>> for ContentsBuilder<GridContents<T>, T>
 where
     T: Accepts + Copy + std::fmt::Debug,
 {
     fn from(contents: GridContents<T>) -> Self {
         Self {
-            contents: Some(contents.boxed()),
+            contents: Some(contents), //.boxed(),
             ..Default::default()
         }
     }
 }
 
-pub trait ContentsExt<T> {
-    fn builder(self) -> ContentsBuilder<T>;
+pub trait ContentsExt<C, T> {
+    fn builder(self) -> ContentsBuilder<C, T>;
 }
 
-impl<C, T> ContentsExt<T> for C
+impl<C, T> ContentsExt<C, T> for C
 where
     T: Accepts,
     C: Contents<T> + Send + Sync + 'static,
 {
-    fn builder(self) -> ContentsBuilder<T> {
+    fn builder(self) -> ContentsBuilder<Self, T> {
         ContentsBuilder::contents(self)
     }
 }
 
-impl<T> ContentsBuilder<T> {
+impl<C, T> ContentsBuilder<C, T> {
     pub fn name(name: Name) -> Self {
         Self {
             name: Some(name),
@@ -80,7 +82,7 @@ impl<T> ContentsBuilder<T> {
         self
     }
 
-    pub fn contents<C>(contents: C) -> Self
+    pub fn contents(contents: C) -> Self
     where
         T: Accepts,
         C: Contents<T> + Send + Sync + 'static,
@@ -88,12 +90,12 @@ impl<T> ContentsBuilder<T> {
         Self::default().with_contents(contents)
     }
 
-    pub fn with_contents<C>(mut self, contents: C) -> Self
+    pub fn with_contents(mut self, contents: C) -> Self
     where
         T: Accepts,
         C: Contents<T> + Send + Sync + 'static,
     {
-        self.contents = Some(contents.boxed());
+        self.contents = Some(contents); // .boxed();
         self
     }
 
@@ -102,7 +104,7 @@ impl<T> ContentsBuilder<T> {
         self
     }
 
-    pub fn with_sections<C: Into<ContentsBuilder<T>>, I: IntoIterator<Item = C>>(
+    pub fn with_sections<U: Into<ContentsBuilder<C, T>>, I: IntoIterator<Item = U>>(
         mut self,
         sections: I,
     ) -> Self {
@@ -110,17 +112,23 @@ impl<T> ContentsBuilder<T> {
         self
     }
 
-    pub fn with_items(mut self, items: impl IntoIterator<Item = ContentsBuilder<T>>) -> Self {
+    pub fn with_items(mut self, items: impl IntoIterator<Item = ContentsBuilder<C, T>>) -> Self {
         self.items = items.into_iter().collect();
+        self
+    }
+
+    pub fn with_icon(mut self, icon: Handle<Image>) -> Self {
+        self.icon = Some(icon);
         self
     }
 }
 
 impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
-    pub fn spawn(&mut self, contents: impl Into<ContentsBuilder<T>>) -> Entity {
+    pub fn spawn(&mut self, contents: impl Into<ContentsBuilder<GridContents<T>, T>>) -> Entity {
         let ContentsBuilder {
             name,
             item,
+            icon,
             contents,
             section_layout,
             sections,
@@ -186,7 +194,11 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
         // Insert item.
         if let Some(item) = item {
             // TODO: name optional?
-            e.insert((name.expect("item has a name"), item));
+            e.insert((
+                name.expect("item has a name"),
+                item,
+                icon.expect("item has an icon"),
+            ));
         }
 
         e.id()

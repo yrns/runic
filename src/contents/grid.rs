@@ -3,20 +3,23 @@ use itertools::Itertools;
 
 use super::*;
 
-#[derive(Clone, Debug)]
+/// Contains items in a 2d grid.
+#[derive(Clone, Debug, Reflect)]
 pub struct GridContents<T, const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     /// If true, show inline contents for the contained item.
     pub inline: bool,
     pub header: Option<String>, // Use Name?
+    /// The shape describes the dimensions of the container and which slots are filled.
     pub shape: Shape,
+    /// Flags determine what kinds of items will be accepted (see `Accepts`).
     pub flags: T,
 }
 
 impl<T, const N: usize> GridContents<T, N>
 where
-    T: Accepts + std::fmt::Debug,
+    T: Accepts,
 {
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
@@ -53,11 +56,12 @@ where
         egui::Vec2::splat(N as f32)
     }
 
+    /// Grid dimensions in pixels.
     pub fn grid_size(&self, size: Size) -> egui::Vec2 {
         (size.as_vec2() * N as f32).as_ref().into()
     }
 
-    // Grid lines shape.
+    /// Grid lines shape.
     pub fn grid_shape(&self, style: &egui::Style, size: Size) -> egui::Shape {
         let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
         let mut stroke2 = stroke1.clone();
@@ -99,7 +103,7 @@ where
     }
 }
 
-impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridContents<T, N> {
+impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
     fn len(&self) -> usize {
         if self.expands {
             1
@@ -135,7 +139,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
     }
 
     fn accepts(&self, item: &Item<T>) -> bool {
-        self.flags.accepts(item.flags)
+        self.flags.accepts(&item.flags)
     }
 
     fn fits(&self, id: Entity, item: &Item<T>, slot: usize, source: &DragSource) -> bool {
@@ -181,7 +185,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
         let grid_size = if self.expands {
             items
                 .peek()
-                .map(|(_, (_, item))| item.shape.size)
+                .map(|(_, (_, item, _))| item.shape.size)
                 .unwrap_or(Size::ONE)
         } else {
             self.shape.size
@@ -196,7 +200,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .filter_map(|((slot, item_id), (name, item))| {
+                .filter_map(|((slot, item_id), (name, item, icon))| {
                     // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
                     let item = contents
                         .drag
@@ -216,7 +220,7 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                             name,
                             contents.drag.as_ref(),
                             // TODO A better default texture.
-                            contents.textures.image_id(&item.icon).unwrap_or_default(),
+                            contents.textures.image_id(icon).unwrap_or_default(),
                             N as f32,
                             ui,
                         )
@@ -309,7 +313,10 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                             .filter_map(|id| contents.show_contents(*id, ui))
                             .filter_map(|ir| ir.inner)
                             .at_most_one()
-                            .expect("at most one item response")
+                            .unwrap_or_else(|mut e| {
+                                tracing::error!("at most one item response");
+                                e.next()
+                            })
                     })
                     .inner
                 });
@@ -339,7 +346,10 @@ impl<T: Accepts + Copy + std::fmt::Debug, const N: usize> Contents<T> for GridCo
                                         .filter_map(|id| contents.show_contents(id, ui))
                                         .filter_map(|ir| ir.inner)
                                         .at_most_one()
-                                        .expect("at most one item response")
+                                        .unwrap_or_else(|mut e| {
+                                            tracing::error!("at most one item response");
+                                            e.next()
+                                        })
                                 })
                                 .flatten(),
                         )

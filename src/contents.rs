@@ -1,7 +1,6 @@
 mod builder;
 mod grid;
 
-use bevy_asset::Handle;
 use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
@@ -11,7 +10,6 @@ use bevy_egui::egui::{
 };
 use bevy_egui::EguiUserTextures;
 use bevy_reflect::Reflect;
-use bevy_render::texture::Image;
 
 use crate::*;
 pub use builder::*;
@@ -130,7 +128,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         // TODO?
         // Option<&'static mut Sections>,
     >,
-    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, &'static Handle<Image>)>,
+    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, &'static Icon)>,
     pub sections: Query<'w, 's, &'static Sections>,
 
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
@@ -217,7 +215,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn items<'a>(
         &'a self,
         items: &'a [(usize, Entity)],
-    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>, &Handle<Image>))> + 'a {
+    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>, &Icon))> + 'a {
         let q_items = self.items.iter_many(items.iter().map(|i| i.1));
         items.iter().copied().zip(q_items)
     }

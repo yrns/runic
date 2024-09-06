@@ -12,6 +12,7 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath> Plugin for Runic
     fn build(&self, app: &mut App) {
         app.register_type::<ContentsItems<T>>()
             .register_type::<Sections>()
-            .register_type::<Item<T>>();
+            .register_type::<Item<T>>()
+            .register_type::<Icon>();
     }
 }

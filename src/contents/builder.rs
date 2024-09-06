@@ -3,7 +3,7 @@ use super::*;
 pub struct ContentsBuilder<C, T> {
     name: Option<Name>,
     item: Option<Item<T>>,
-    icon: Option<Handle<Image>>,
+    icon: Option<Icon>,
     contents: Option<C>,
     section_layout: Option<egui::Layout>,
     sections: Vec<ContentsBuilder<C, T>>,
@@ -117,8 +117,8 @@ impl<C, T> ContentsBuilder<C, T> {
         self
     }
 
-    pub fn with_icon(mut self, icon: Handle<Image>) -> Self {
-        self.icon = Some(icon);
+    pub fn with_icon(mut self, icon: impl Into<Icon>) -> Self {
+        self.icon = Some(icon.into());
         self
     }
 }

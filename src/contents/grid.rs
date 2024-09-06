@@ -220,7 +220,10 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                             name,
                             contents.drag.as_ref(),
                             // TODO A better default texture.
-                            contents.textures.image_id(icon).unwrap_or_default(),
+                            contents
+                                .textures
+                                .image_id(icon.handle())
+                                .unwrap_or_default(),
                             N as f32,
                             ui,
                         )

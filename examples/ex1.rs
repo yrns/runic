@@ -2,7 +2,6 @@ use bevy::{
     asset::AssetLoadFailedEvent,
     ecs::system::SystemId,
     prelude::*,
-    reflect::Reflect,
     tasks::IoTaskPool,
     window::{PrimaryWindow, RequestRedraw},
     winit::WinitSettings,
@@ -11,11 +10,12 @@ use bevy_egui::{egui, EguiContext, EguiPlugin, EguiUserTextures};
 use runic::*;
 use serde::{Deserialize, Serialize};
 
-// TODO Why do I have to implement de/serialize when it reflects from a value and the values are already serializable? In this case, a u32. What does the bitflags serde feature do?
+// You can get flags to serialize with the reflect serialization if you derive reflect outside the bitflags! macro (and NOT use reflect_value) as described here (https://docs.rs/bitflags/latest/bitflags/#custom-derives). This serializes as a struct tuple containing a u32. If you use reflect_value you're pretty much required to implement Serialize yourself. The serde flag for bitflags enables the fancy serialization with flag names.
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Serialize, Deserialize)]
-    #[reflect_value(Hash, PartialEq, Debug, Serialize, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Deserialize, Serialize)]
+    #[serde(transparent)]
+    #[reflect_value(Hash, PartialEq, Debug, Deserialize, Serialize)]
     pub struct Flags: u32 {
         const Weapon = 1;
         const Armor = 1 << 1;
@@ -32,10 +32,13 @@ impl Default for Flags {
     }
 }
 
-#[derive(Resource)]
+// These need to be reflectable to be written to the contents scene, as well as the type registered. An alternative would be to show windows for all root level contents that aren't items.
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 struct PaperDoll(Entity);
 
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
+#[reflect(Resource)]
 struct Ground(Entity);
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
@@ -48,6 +51,8 @@ enum AppState {
 fn main() {
     App::new()
         .insert_resource(WinitSettings::default())
+        .register_type::<PaperDoll>()
+        .register_type::<Ground>()
         .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
         .init_state::<AppState>()
         .add_plugins(EguiPlugin)
@@ -58,8 +63,8 @@ fn main() {
         .add_systems(
             Update,
             spawn_items
-                //.run_if(in_state(AppState::Loading))
-                .run_if(on_event::<AssetLoadFailedEvent<Scene>>()),
+                .run_if(in_state(AppState::Loading))
+                .run_if(on_event::<AssetLoadFailedEvent<DynamicScene>>()),
         )
         .add_systems(
             Update,
@@ -96,25 +101,24 @@ const CONTENTS_FILE_PATH: &str = "contents.scn.ron";
 fn load_items(mut commands: Commands, asset_server: Res<AssetServer>) {
     let id = commands.register_one_shot_system(save_items_scene);
     commands.insert_resource(SaveItems(id));
-    let _scene: Handle<Scene> = asset_server.load(CONTENTS_FILE_PATH);
+
+    commands.spawn((
+        Name::new("contents scene"),
+        DynamicSceneBundle {
+            scene: asset_server.load(CONTENTS_FILE_PATH),
+            ..default()
+        },
+    ));
 }
 
 fn wait_for_items(
-    mut asset_events: EventReader<AssetEvent<Scene>>,
-    // mut commands: Commands,
-    // asset_server: Res<AssetServer>,
-    // mut storage: ContentsStorage<Flags>,
+    mut asset_events: EventReader<AssetEvent<DynamicScene>>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for event in asset_events.read() {
-        dbg!(&event);
         match event {
-            // AssetEvent::Added { id } => todo!(),
-            // AssetEvent::Modified { id } => todo!(),
-            // AssetEvent::Removed { id } => todo!(),
-            // AssetEvent::Unused { id } => todo!(),
-            AssetEvent::LoadedWithDependencies { id } => {
-                dbg!("loaded!");
+            AssetEvent::LoadedWithDependencies { id: _ } => {
+                info!("contents loaded!");
                 next_state.set(AppState::Running);
             }
             _ => (),
@@ -136,15 +140,27 @@ fn save_items(
 }
 
 fn save_items_scene(world: &mut World) {
+    // Turn all icons to paths.
+    let mut query = world.query::<&mut Icon>();
+    for mut icon in query.iter_mut(world) {
+        // TODO This makes the icons flicker.
+        icon.to_path()
+        // icon.bypass_change_detection().to_path()
+    }
+
     let mut query =
         world.query_filtered::<Entity, Or<(With<Item<Flags>>, With<ContentsItems<Flags>>)>>();
     let scene = DynamicSceneBuilder::from_world(&world)
-        .deny_all_resources()
-        .allow_all()
+        // .deny_all_resources()
+        .allow_resource::<Ground>()
+        .allow_resource::<PaperDoll>()
+        // Bevy does not serialize handles.
+        // .deny::<Handle<Image>>()
+        .extract_resources()
         .extract_entities(query.iter(&world))
-        // .allow::<Name>()
-        // .allow::<Item<Flags>>()
         .build();
+
+    assert!(!scene.resources.is_empty());
 
     let type_registry = world.resource::<AppTypeRegistry>();
     let type_registry = type_registry.read();
@@ -152,10 +168,7 @@ fn save_items_scene(world: &mut World) {
         .serialize(&type_registry)
         .expect("error serializing scene!");
 
-    // let reflect_serializer = ReflectSerializer::new(&scene, &type_registry);
-    // let serialized_scene: String = ron::to_string(&reflect_serializer).unwrap();
-
-    info!("{}", serialized_scene);
+    // info!("{}", serialized_scene);
 
     #[cfg(not(target_arch = "wasm32"))]
     IoTaskPool::get()
@@ -271,13 +284,28 @@ fn spawn_items(
 }
 
 fn item_icon_changed<T: Accepts>(
-    items: Query<&Handle<Image>, (Changed<Handle<Image>>, With<Item<T>>)>,
+    mut items: Query<&mut Icon, Changed<Icon>>,
     mut textures: ResMut<EguiUserTextures>,
+    asset_server: Res<AssetServer>,
 ) {
-    for icon in &items {
+    for mut icon in &mut items {
+        // if !matches!(icon.as_ref(), Icon::Path(_)) {
+        //     continue;
+        // }
+        match std::mem::take(icon.as_mut()) {
+            Icon::Path(p) => {
+                let h = asset_server.load(p);
+                *icon = Icon::Handle(h);
+            }
+            Icon::Handle(h) => *icon = Icon::Handle(h),
+            Icon::None => continue,
+        };
+
+        // Add the icon to egui textures if it doesn't already exist.
+        let h = icon.handle();
         _ = textures
-            .image_id(icon)
-            .unwrap_or_else(|| textures.add_image(icon.clone_weak()));
+            .image_id(&h)
+            .unwrap_or_else(|| textures.add_image(h.clone_weak()));
     }
 }
 

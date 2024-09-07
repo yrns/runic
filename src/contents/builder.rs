@@ -5,7 +5,7 @@ pub struct ContentsBuilder<C, T> {
     item: Option<Item<T>>,
     icon: Option<Icon>,
     contents: Option<C>,
-    section_layout: Option<egui::Layout>,
+    section_layout: Option<Layout>,
     sections: Vec<ContentsBuilder<C, T>>,
     items: Vec<ContentsBuilder<C, T>>,
 }
@@ -99,7 +99,7 @@ impl<C, T> ContentsBuilder<C, T> {
         self
     }
 
-    pub fn with_section_layout(mut self, layout: egui::Layout) -> Self {
+    pub fn with_section_layout(mut self, layout: Layout) -> Self {
         self.section_layout = Some(layout);
         self
     }

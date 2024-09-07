@@ -6,7 +6,10 @@ use bevy::{
     window::{PrimaryWindow, RequestRedraw},
     winit::WinitSettings,
 };
-use bevy_egui::{egui, EguiContext, EguiPlugin, EguiUserTextures};
+use bevy_egui::{
+    egui::{self, Direction},
+    EguiContext, EguiPlugin, EguiUserTextures,
+};
 use runic::*;
 use serde::{Deserialize, Serialize};
 
@@ -210,7 +213,7 @@ fn spawn_items(
                             .with_flags(Flags::Weapon),
                     )
                     // This only works for sections, not the main container. So in this case, the main container will still be below the sections.
-                    .with_section_layout(egui::Layout::left_to_right(egui::Align::Min))
+                    .with_section_layout(Layout::new(Direction::LeftToRight, false))
                     .with_sections([
                         GridContents::new((1, 1))
                             .with_header("P1:")
@@ -275,7 +278,7 @@ fn spawn_items(
             .with_header("Bag of any! 4x4:")
             .builder()
             .with_name("Paper doll".into())
-            .with_section_layout(egui::Layout::top_down(egui::Align::Min)) // Center does not work.
+            .with_section_layout(Layout::new(Direction::TopDown, false))
             .with_sections(sections),
     );
 

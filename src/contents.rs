@@ -6,10 +6,11 @@ use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
-    InnerResponse, Response, Ui, Vec2,
+    Align, Direction, InnerResponse, Response, Ui, Vec2,
 };
 use bevy_egui::EguiUserTextures;
-use bevy_reflect::Reflect;
+use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
+use serde::{Deserialize, Serialize};
 
 use crate::*;
 pub use builder::*;
@@ -26,11 +27,43 @@ pub struct ContentsItems<T> {
     pub items: Vec<(usize, Entity)>,
 }
 
+/// egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
+#[derive(Copy, Clone, Debug, PartialEq, Reflect, Deserialize, Serialize)]
+#[reflect_value(PartialEq, Debug, Deserialize, Serialize)]
+pub struct Layout {
+    pub direction: egui::Direction,
+    pub wrap: bool,
+}
+
+impl Default for Layout {
+    fn default() -> Self {
+        Self {
+            direction: Direction::LeftToRight,
+            wrap: false,
+        }
+    }
+}
+
+impl Layout {
+    pub fn new(direction: Direction, wrap: bool) -> Self {
+        Self { direction, wrap }
+    }
+
+    pub fn to_egui_layout(&self) -> egui::Layout {
+        egui::Layout {
+            main_dir: self.direction,
+            main_wrap: self.wrap,
+            main_align: Align::Min,
+            cross_align: Align::Min,
+            ..Default::default()
+        }
+    }
+}
+
 /// List of sections (sub-containers). Optional layout overrides the default in `Options`.
-#[derive(Component, Reflect)]
-#[reflect(Component)]
-// FIX ignore
-pub struct Sections(#[reflect(ignore)] pub Option<egui::Layout>, pub Vec<Entity>);
+#[derive(Component, Debug, Reflect)]
+#[reflect(Component, Debug)]
+pub struct Sections(pub Option<Layout>, pub Vec<Entity>);
 
 // #[derive(Component)]
 // pub struct ItemFlags<T: Accepts + 'static>(T);
@@ -96,23 +129,23 @@ where
 }
 
 /// Contents layout options.
-#[derive(Resource)]
+#[derive(Clone, Debug, Resource)]
 pub struct Options {
     /// Controls the layout of contents relative to sections. The default is vertical, sections last.
-    pub layout: egui::Layout,
+    pub layout: Layout,
     /// Default layout for sections.
-    pub section_layout: egui::Layout,
+    pub section_layout: Layout,
     /// Inline contents layout.
-    pub inline_layout: egui::Layout,
+    pub inline_layout: Layout,
 }
 
 impl Default for Options {
     fn default() -> Self {
         Self {
             // Align center does not work due to limitations w/ egui.
-            layout: egui::Layout::top_down(egui::Align::Min),
-            section_layout: egui::Layout::left_to_right(egui::Align::Min),
-            inline_layout: egui::Layout::left_to_right(egui::Align::Min),
+            layout: Layout::new(Direction::TopDown, false),
+            section_layout: Default::default(),
+            inline_layout: Default::default(),
         }
     }
 }

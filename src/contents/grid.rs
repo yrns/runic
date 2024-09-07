@@ -307,20 +307,24 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         // }
 
         let header_frame = |ui: &mut Ui, add_contents| {
-            ui.with_layout(contents.options.layout, |ui| {
+            ui.with_layout(contents.options.layout.to_egui_layout(), |ui| {
                 // Sections.
                 let section_ir = contents.sections.get(id).ok().and_then(|s| {
-                    ui.with_layout(s.0.unwrap_or(contents.options.section_layout), |ui| {
-                        // TODO faster to fetch many first?
-                        s.1.iter()
-                            .filter_map(|id| contents.show_contents(*id, ui))
-                            .filter_map(|ir| ir.inner)
-                            .at_most_one()
-                            .unwrap_or_else(|mut e| {
-                                tracing::error!("at most one item response");
-                                e.next()
-                            })
-                    })
+                    ui.with_layout(
+                        s.0.unwrap_or(contents.options.section_layout)
+                            .to_egui_layout(),
+                        |ui| {
+                            // TODO faster to fetch many first?
+                            s.1.iter()
+                                .filter_map(|id| contents.show_contents(*id, ui))
+                                .filter_map(|ir| ir.inner)
+                                .at_most_one()
+                                .unwrap_or_else(|mut e| {
+                                    tracing::error!("at most one item response");
+                                    e.next()
+                                })
+                        },
+                    )
                     .inner
                 });
 
@@ -331,7 +335,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                 }
 
                 let ir = ui
-                    .with_layout(contents.options.inline_layout, |ui| {
+                    .with_layout(contents.options.inline_layout.to_egui_layout(), |ui| {
                         // Go back to with_bg/min_frame since egui::Frame takes up all available space.
                         let ir: Option<ContentsResponse<T>> =
                             crate::min_frame::min_frame(ui, add_contents).inner;

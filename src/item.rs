@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::*;
 use bevy_egui::egui::{
-    self, emath::Rot2, CursorIcon, Id, InnerResponse, Modifiers, Pos2, Rect, Rgba, Sense,
-    TextureId, Ui, Vec2,
+    self, emath::Rot2, text::LayoutJob, Align, CursorIcon, FontSelection, Id, InnerResponse,
+    Modifiers, Pos2, Rect, Rgba, RichText, Sense, Style, TextureId, Ui, Vec2,
 };
 use bevy_reflect::prelude::*;
 
@@ -184,8 +184,10 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::click_and_drag());
+
                             let response = response
-                                .on_hover_text_at_pointer(format!("{name} ({})", self.flags));
+                                .on_hover_text_at_pointer(self.hover_text(name, ui.style()));
+
                             if response.clicked()
                                 && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
                             {
@@ -207,6 +209,19 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                     .flatten()
             }
         }
+    }
+
+    fn hover_text(&self, name: &str, style: &Style) -> LayoutJob {
+        let mut job = LayoutJob::default();
+        RichText::new(name)
+            .color(style.visuals.text_color())
+            .append_to(&mut job, style, FontSelection::Default, Align::Center);
+
+        RichText::new(format!("\n{}", self.flags))
+            .small()
+            .color(style.visuals.text_color())
+            .append_to(&mut job, style, FontSelection::Default, Align::Center);
+        job
     }
 
     // Apply rotation to shape.

@@ -92,7 +92,8 @@ pub struct DragItem<T> {
     pub source: DragSource,
     /// Target container id and slot.
     pub target: Option<(Entity, usize)>,
-    /// Slot and offset inside the item when drag started. FIX: Is the slot used?
+    /// Slot and offset inside the item when drag started.
+    // TODO: The slot is not used currently.
     pub offset: (usize, egui::Vec2),
 }
 
@@ -119,14 +120,14 @@ impl<T> DragItem<T> {
 }
 
 /// Accepts must be cloned because items must be cloned.
-// TODO Display? And/or indicate textually why something does't accept another.
-pub trait Accepts: Clone + Default + Send + Sync + 'static {
+// TODO Indicate textually why something does't accept another?
+pub trait Accepts: Clone + Default + std::fmt::Display + Send + Sync + 'static {
     fn accepts(&self, other: &Self) -> bool;
 }
 
 impl<T> Accepts for T
 where
-    T: bitflags::Flags + Copy + Default + Send + Sync + 'static,
+    T: bitflags::Flags + Copy + Default + std::fmt::Display + Send + Sync + 'static,
 {
     fn accepts(&self, other: &Self) -> bool {
         self.contains(*other)

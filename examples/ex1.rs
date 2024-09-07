@@ -35,6 +35,13 @@ impl Default for Flags {
     }
 }
 
+impl std::fmt::Display for Flags {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names = self.iter_names().map(|(n, _)| n);
+        f.write_str(&itertools::join(names, "|"))
+    }
+}
+
 // These need to be reflectable to be written to the contents scene, as well as the type registered. An alternative would be to show windows for all root level contents that aren't items.
 #[derive(Resource, Reflect)]
 #[reflect(Resource)]

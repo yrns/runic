@@ -17,7 +17,7 @@ pub struct Item<T> {
     pub flags: T,
 }
 
-impl<T: Clone> Item<T> {
+impl<T: Clone + std::fmt::Display> Item<T> {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
     pub fn new(flags: T) -> Self {
@@ -184,7 +184,8 @@ impl<T: Clone> Item<T> {
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::click_and_drag());
-                            let response = response.on_hover_text_at_pointer(name);
+                            let response = response
+                                .on_hover_text_at_pointer(format!("{name} ({})", self.flags));
                             if response.clicked()
                                 && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
                             {

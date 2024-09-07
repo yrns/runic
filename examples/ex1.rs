@@ -28,7 +28,7 @@ bitflags::bitflags! {
     }
 }
 
-// TODO work this out, remove all from trait?
+// By default, containers can contain any item. The derived default (0) does not work well, see https://docs.rs/bitflags/latest/bitflags/index.html#zero-bit-flags. This is why items require flags.
 impl Default for Flags {
     fn default() -> Self {
         Self::all()

@@ -27,7 +27,7 @@ where
             inline: false,
             header: None,
             shape: Shape::new(size.into(), false),
-            flags: T::all(),
+            flags: T::default(),
         }
     }
 

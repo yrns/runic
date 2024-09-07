@@ -120,21 +120,16 @@ impl<T> DragItem<T> {
 
 /// Accepts must be cloned because items must be cloned.
 // TODO Display? And/or indicate textually why something does't accept another.
-pub trait Accepts: Clone + Send + Sync + 'static {
+pub trait Accepts: Clone + Default + Send + Sync + 'static {
     fn accepts(&self, other: &Self) -> bool;
-    fn all() -> Self;
 }
 
 impl<T> Accepts for T
 where
-    T: bitflags::Flags + Copy + Send + Sync + 'static,
+    T: bitflags::Flags + Copy + Default + Send + Sync + 'static,
 {
     fn accepts(&self, other: &Self) -> bool {
         self.contains(*other)
-    }
-
-    fn all() -> Self {
-        Self::all()
     }
 }
 

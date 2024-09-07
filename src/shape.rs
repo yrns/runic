@@ -75,6 +75,10 @@ impl Shape {
         self.size.element_product() as usize
     }
 
+    pub fn is_square(&self) -> bool {
+        self.size.x == self.size.y
+    }
+
     pub fn contains(&self, pt: UVec2) -> bool {
         pt.x <= self.size.x && pt.y <= self.size.y
     }

@@ -106,6 +106,16 @@ impl<T> DragItem<T> {
             offset: Default::default(),
         }
     }
+
+    fn rotate90(&mut self) {
+        self.item.rotation = self.item.rotation.increment();
+        self.item.shape = self.item.shape.rotate90();
+
+        // This is close but not quite right. This also leaves the slot incorrect...
+        if !self.item.shape.is_square() {
+            self.offset.1 = self.offset.1.yx();
+        }
+    }
 }
 
 /// Accepts must be cloned because items must be cloned.
@@ -193,9 +203,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
 
             // Rotate the dragged item.
             if ctx.input(|i| i.key_pressed(egui::Key::R)) {
-                // Make this a method.
-                drag.item.rotation = drag.item.rotation.increment();
-                drag.item.shape = drag.item.shape.rotate90();
+                drag.rotate90();
             }
         }
 

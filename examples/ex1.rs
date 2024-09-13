@@ -91,7 +91,47 @@ fn main() {
         //         //.run_if(on_event::<AssetEvent<Image>>())
         //         .after(Assets::<Image>::asset_events),
         // )
+        .observe(item_insert)
+        .observe(item_remove)
+        .observe(item_move)
         .run();
+}
+
+fn item_insert(trigger: Trigger<ItemInsert>, names: Query<Option<&Name>>) {
+    let insert = trigger.event();
+    let [target, item] = names.many([trigger.entity(), insert.item]);
+    let target = target.map(|n| n.as_str()).unwrap_or("section");
+    info!(
+        target,
+        item = item.unwrap().as_str(),
+        slot = insert.slot,
+        "insert"
+    );
+}
+
+fn item_remove(trigger: Trigger<ItemRemove>, names: Query<Option<&Name>>) {
+    let remove = trigger.event();
+    let [target, item] = names.many([trigger.entity(), remove.item]);
+    let target = target.map(|n| n.as_str()).unwrap_or("section");
+    info!(
+        target,
+        item = item.unwrap().as_str(),
+        slot = remove.slot,
+        "remove"
+    );
+}
+
+fn item_move(trigger: Trigger<ItemMove>, names: Query<Option<&Name>>) {
+    let moved = trigger.event();
+    let [target, item] = names.many([trigger.entity(), moved.item]);
+    let target = target.map(|n| n.as_str()).unwrap_or("section");
+    info!(
+        target,
+        item = item.unwrap().as_str(),
+        "move slot {} -> {}",
+        moved.old_slot,
+        moved.new_slot
+    );
 }
 
 // This isn't actually reliable.

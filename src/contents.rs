@@ -317,7 +317,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             id
         );
 
-        let (name, mut item, _icon) = self.items.get_mut(id).expect("item exists");
+        let (_name, mut item, _icon) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
         let (mut src, dest) = if container_id == target_id {
@@ -344,7 +344,28 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Insert into destination container (or source if same). TODO: put slot_item back on error?
         dest.unwrap_or(src).insert(slot, id, item.as_ref());
 
-        tracing::info!("moved item {name} {id} {rotation:?} -> container {target_id} slot {slot}");
+        // Fire events.
+        if container_id == target_id {
+            self.commands.trigger_targets(
+                ItemMove {
+                    old_slot: container_slot,
+                    new_slot: slot,
+                    item: id,
+                },
+                container_id,
+            );
+        } else {
+            self.commands.trigger_targets(
+                ItemRemove {
+                    slot: container_slot,
+                    item: id,
+                },
+                container_id,
+            );
+
+            self.commands
+                .trigger_targets(ItemInsert { slot, item: id }, target_id);
+        }
     }
 }
 

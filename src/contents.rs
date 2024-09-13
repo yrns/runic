@@ -193,10 +193,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             }
         }
 
-        // Clear the target every frame.
         if let Some(drag) = self.drag.as_mut() {
-            drag.target = None;
-
             // Rotate the dragged item.
             if ctx.input(|i| i.key_pressed(egui::Key::R)) {
                 drag.rotate90();
@@ -221,7 +218,20 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         let InnerResponse { inner, response } = self.show_contents(id, ui)?;
         match inner {
             Some(ContentsResponse::NewTarget(id, slot)) => match self.drag.as_mut() {
-                Some(drag) => drag.target = Some((id, slot)),
+                Some(drag) => {
+                    let new_target = Some((id, slot));
+                    // set_if_neq?
+                    if drag.target != new_target {
+                        drag.target = new_target;
+                        self.commands.trigger_targets(
+                            ItemDragOver {
+                                slot,
+                                item: drag.id,
+                            },
+                            id,
+                        );
+                    }
+                }
                 None => (),
             },
             Some(ContentsResponse::NewDrag(new_drag)) => *self.drag = Some(new_drag),
@@ -328,8 +338,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 None,
             )
         } else {
-            let [src, dest] = self.contents.many_mut([container_id, target_id]);
-            (src, Some(dest))
+            if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
+                (src, Some(dest))
+            } else {
+                return tracing::error!("no contents for source or destination");
+            }
         };
 
         // Remove from source container.

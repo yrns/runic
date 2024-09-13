@@ -35,19 +35,21 @@ pub struct ItemDragStart {
     // pub container: Entity,
 }
 
-/// Item `item` drag ended at target container at `slot`. If slot is `None` the item is being dragged over another item, not an empty slot. No event is fired if the drag is not released over a target item or container
-// TODO: add "drag canceled"?
+/// Item `item` drag ended at target container at `slot`. No event is fired if the drag is not released over a target item or container.
+// TODO: add "drag canceled"? or make slot/item an option
 #[derive(Event, Debug)]
 pub struct ItemDragEnd {
-    pub slot: Option<usize>,
+    pub slot: usize,
     pub item: Entity,
     // pub container: Entity,
 }
 
-/// Item `item` dragged over target container at `slot`. If slot is `None` the item is being dragged over another item, not an empty slot.
+/// Item `item` dragged over target container at `slot`.
 #[derive(Event, Debug)]
 pub struct ItemDragOver {
-    pub slot: Option<usize>,
+    /// If we are dragging over an item that's a container, and it accepts the dragged item, then the target and slot will be accurate even if the contents are not visible. If the container does not accept the dragged item the target and slot will be of the occupied item.
+    // TODO: this is confusing; distinguish "drag to item"?
+    pub slot: usize,
     pub item: Entity,
     // pub container: Entity,
 }

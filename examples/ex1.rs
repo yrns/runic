@@ -94,6 +94,9 @@ fn main() {
         .observe(item_insert)
         .observe(item_remove)
         .observe(item_move)
+        // .observe(drag_start)
+        // .observe(drag_end)
+        .observe(drag_over)
         .run();
 }
 
@@ -131,6 +134,18 @@ fn item_move(trigger: Trigger<ItemMove>, names: Query<Option<&Name>>) {
         "move slot {} -> {}",
         moved.old_slot,
         moved.new_slot
+    );
+}
+
+fn drag_over(trigger: Trigger<ItemDragOver>, names: Query<Option<&Name>>) {
+    let drag_over = trigger.event();
+    let [target, item] = names.many([trigger.entity(), drag_over.item]);
+    let target = target.map(|n| n.as_str()).unwrap_or("section");
+    info!(
+        target,
+        item = item.unwrap().as_str(),
+        slot = drag_over.slot,
+        "drag over"
     );
 }
 

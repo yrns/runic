@@ -376,19 +376,23 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
             let inner = match (contents.drag.as_ref(), inner) {
                 // We are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
-                (Some(drag), Some(ContentsResponse::NewTarget(id, slot)))
-                    if contents.is_container(id) =>
-                {
-                    // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
-                    let item = contents.items.get(id).expect("item exists").1;
-                    let target = contents.find_slot(id, &drag.item, &drag.source);
+                (Some(drag), Some(ContentsResponse::NewTarget(id, slot))) => {
+                    if contents.is_container(id) {
+                        // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
+                        let item = contents.items.get(id).expect("item exists").1;
+                        let target = contents.find_slot(id, &drag.item, &drag.source);
 
-                    // The item shadow is the target item for drag-to-item, not the dragged item.
-                    let color = self.shadow_color(true, target.is_some(), ui);
-                    let mesh = shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
-                    ui.painter().set(shadow, mesh);
+                        // The item shadow is the target item for drag-to-item, not the dragged item.
+                        let color = self.shadow_color(true, target.is_some(), ui);
+                        let mesh =
+                            shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
+                        ui.painter().set(shadow, mesh);
 
-                    target.map(|(slot, item)| ContentsResponse::NewTarget(slot, item))
+                        target.map(|(item, slot)| ContentsResponse::NewTarget(item, slot))
+                    } else {
+                        // Don't set target to non-contents.
+                        None // FIX: this needs to clear the target
+                    }
                 }
 
                 // Dragging over an empty slot.

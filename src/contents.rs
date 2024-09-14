@@ -189,6 +189,16 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // If the pointer is released, resolve drag, if any.
         if ctx.input(|i| i.pointer.any_released()) {
             if let Some(drag) = self.drag.take() {
+                if let Some((id, slot)) = drag.target {
+                    self.commands.trigger_targets(
+                        ItemDragEnd {
+                            slot,
+                            item: drag.id,
+                        },
+                        id, // target contents
+                    )
+                }
+
                 self.resolve_drag(drag);
             }
         }
@@ -234,7 +244,24 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 }
                 None => (),
             },
-            Some(ContentsResponse::NewDrag(new_drag)) => *self.drag = Some(new_drag),
+            Some(ContentsResponse::NewDrag(new_drag)) => {
+                *self.drag = Some(new_drag);
+
+                if let Some(DragItem {
+                    id: item,
+                    source: Some((id, slot, _)),
+                    ..
+                }) = &*self.drag
+                {
+                    self.commands.trigger_targets(
+                        ItemDragStart {
+                            slot: *slot,
+                            item: *item,
+                        },
+                        *id, // source contents
+                    );
+                }
+            }
             Some(ContentsResponse::SendItem(mut item)) => {
                 item.target = self
                     .target

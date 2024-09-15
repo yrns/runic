@@ -94,13 +94,18 @@ fn main() {
         .observe(item_insert)
         .observe(item_remove)
         .observe(item_move)
-        // .observe(drag_start)
+        .observe(drag_start)
         // .observe(drag_end)
         .observe(drag_over)
         .run();
 }
 
-fn item_insert(trigger: Trigger<ItemInsert>, names: Query<Option<&Name>>) {
+fn item_insert(
+    trigger: Trigger<ItemInsert>,
+    mut commands: Commands,
+    names: Query<Option<&Name>>,
+    asset_server: Res<AssetServer>,
+) {
     let insert = trigger.event();
     let [target, item] = names.many([trigger.entity(), insert.item]);
     let target = target.map(|n| n.as_str()).unwrap_or("section");
@@ -110,6 +115,14 @@ fn item_insert(trigger: Trigger<ItemInsert>, names: Query<Option<&Name>>) {
         slot = insert.slot,
         "insert"
     );
+
+    commands
+        .entity(trigger.entity())
+        .insert(AudioBundle {
+            source: asset_server.load("sfx100v2_wood_03.ogg"),
+            settings: PlaybackSettings::REMOVE,
+        })
+        .remove::<AudioSink>();
 }
 
 fn item_remove(trigger: Trigger<ItemRemove>, names: Query<Option<&Name>>) {
@@ -124,7 +137,12 @@ fn item_remove(trigger: Trigger<ItemRemove>, names: Query<Option<&Name>>) {
     );
 }
 
-fn item_move(trigger: Trigger<ItemMove>, names: Query<Option<&Name>>) {
+fn item_move(
+    trigger: Trigger<ItemMove>,
+    mut commands: Commands,
+    names: Query<Option<&Name>>,
+    asset_server: Res<AssetServer>,
+) {
     let moved = trigger.event();
     let [target, item] = names.many([trigger.entity(), moved.item]);
     let target = target.map(|n| n.as_str()).unwrap_or("section");
@@ -135,9 +153,36 @@ fn item_move(trigger: Trigger<ItemMove>, names: Query<Option<&Name>>) {
         moved.old_slot,
         moved.new_slot
     );
+
+    commands
+        .entity(trigger.entity())
+        .insert(AudioBundle {
+            source: asset_server.load("sfx100v2_misc_09.ogg"),
+            settings: PlaybackSettings::REMOVE,
+        })
+        .remove::<AudioSink>();
 }
 
-fn drag_over(trigger: Trigger<ItemDragOver>, names: Query<Option<&Name>>) {
+fn drag_start(
+    trigger: Trigger<ItemDragStart>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    commands
+        .entity(trigger.entity())
+        .insert(AudioBundle {
+            source: asset_server.load("sfx100v2_metal_03.ogg"),
+            settings: PlaybackSettings::REMOVE,
+        })
+        .remove::<AudioSink>();
+}
+
+fn drag_over(
+    trigger: Trigger<ItemDragOver>,
+    mut commands: Commands,
+    names: Query<Option<&Name>>,
+    asset_server: Res<AssetServer>,
+) {
     let drag_over = trigger.event();
     let [target, item] = names.many([trigger.entity(), drag_over.item]);
     let target = target.map(|n| n.as_str()).unwrap_or("section");
@@ -147,6 +192,15 @@ fn drag_over(trigger: Trigger<ItemDragOver>, names: Query<Option<&Name>>) {
         slot = drag_over.slot,
         "drag over"
     );
+
+    commands
+        .entity(trigger.entity())
+        .insert(AudioBundle {
+            source: asset_server.load("sfx100v2_misc_11.ogg"),
+            settings: PlaybackSettings::REMOVE,
+        })
+        // This restarts the audio. Maybe we should detach first.
+        .remove::<AudioSink>();
 }
 
 // This isn't actually reliable.

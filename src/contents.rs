@@ -77,6 +77,7 @@ pub enum ContentsResponse<T> {
     NewTarget(Entity, usize),
     NewDrag(DragItem<T>),
     SendItem(DragItem<T>),
+    Open(Entity),
 }
 
 /// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
@@ -267,6 +268,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                     .target
                     .and_then(|t| self.find_slot(t, &item.item, &item.source));
                 self.resolve_drag(item);
+            }
+            Some(ContentsResponse::Open(item)) => {
+                if self.is_container(item) {
+                    self.commands.trigger_targets(ContainerOpen, item);
+                }
             }
             None => (),
         }

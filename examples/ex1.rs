@@ -51,6 +51,12 @@ struct PaperDoll(Entity);
 #[reflect(Resource)]
 struct Ground(Entity);
 
+// Remembers which containers are opened.
+#[derive(Component, Reflect)]
+#[reflect(Component)]
+#[component(storage = "SparseSet")]
+struct Open;
+
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 enum AppState {
     #[default]
@@ -95,6 +101,7 @@ fn main() {
         .observe(drag_start)
         // .observe(drag_end)
         .observe(drag_over)
+        .observe(container_open)
         .run();
 }
 
@@ -199,6 +206,14 @@ fn drag_over(
         })
         // This restarts the audio. Maybe we should detach first.
         .remove::<AudioSink>();
+}
+
+fn container_open(
+    trigger: Trigger<ContainerOpen>,
+    mut commands: Commands,
+    // asset_server: Res<AssetServer>,
+) {
+    commands.entity(trigger.entity()).insert(Open);
 }
 
 // This isn't actually reliable.
@@ -431,6 +446,7 @@ fn update(
     mut storage: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
+    opened: Query<(Entity, &Name), With<Open>>,
 ) {
     let mut egui_ctx = egui_ctx.single_mut();
     let ctx = egui_ctx.get_mut();
@@ -459,4 +475,22 @@ fn update(
         .show(ctx, |ui| {
             storage.show(ground.0, ui);
         });
+
+    // Show all open containers.
+    for (c, name) in &opened {
+        let mut open = true;
+        egui::Window::new(name.as_str())
+            .resizable(false)
+            .movable(true)
+            .open(&mut open)
+            // .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
+            .show(ctx, |ui| {
+                storage.show(c, ui);
+            });
+        if !open {
+            storage.commands.entity(c).remove::<Open>();
+            // .trigger(ContainerClose); // 14.2 doesn't have this yet
+            storage.commands.trigger_targets(ContainerClose, c);
+        }
+    }
 }

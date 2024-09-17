@@ -188,7 +188,9 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                             let response = response
                                 .on_hover_text_at_pointer(self.hover_text(name, ui.style()));
 
-                            if response.clicked()
+                            if response.double_clicked() {
+                                Some(ContentsResponse::Open(id))
+                            } else if response.clicked()
                                 && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
                             {
                                 Some(ContentsResponse::SendItem(DragItem::new(id, self.clone())))

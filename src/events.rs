@@ -53,3 +53,9 @@ pub struct ItemDragOver {
     pub item: Entity,
     // pub container: Entity,
 }
+
+#[derive(Event, Debug)]
+pub struct ContainerOpen;
+
+#[derive(Event, Debug)]
+pub struct ContainerClose;

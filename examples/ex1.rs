@@ -66,8 +66,6 @@ fn main() {
         .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
         .init_state::<AppState>()
         .add_plugins(EguiPlugin)
-        // TODO plugin
-        .insert_resource(Options::default())
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
         .add_systems(

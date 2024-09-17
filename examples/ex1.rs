@@ -211,9 +211,17 @@ fn drag_over(
 fn container_open(
     trigger: Trigger<ContainerOpen>,
     mut commands: Commands,
-    // asset_server: Res<AssetServer>,
+    asset_server: Res<AssetServer>,
 ) {
     commands.entity(trigger.entity()).insert(Open);
+
+    commands
+        .entity(trigger.entity())
+        .insert(AudioBundle {
+            source: asset_server.load("sfx100v2_door_02.ogg"),
+            settings: PlaybackSettings::REMOVE,
+        })
+        .remove::<AudioSink>();
 }
 
 // This isn't actually reliable.

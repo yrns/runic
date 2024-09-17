@@ -1,2 +1,4 @@
 * runic
-A prototype inventory system for [[https://github.com/emilk/egui][egui]].
+A prototype inventory system for [[https://bevyengine.org][Bevy]] using [[https://github.com/emilk/egui][egui]].
+
+Audio used in the example is by [[https://opengameart.org/content/100-cc0-sfx-2][rubberduck]] ([[https://creativecommons.org/publicdomain/zero/1.0/][CC0]]).

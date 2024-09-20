@@ -437,15 +437,15 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                         ui.painter().set(shadow, mesh);
                     }
 
-                    // Only send target on release?
-                    let released = ui.input(|i| i.pointer.any_released());
-                    if released && fits && !accepts {
-                        tracing::info!(
-                            "container {:?} does not accept item!",
-                            id,
-                            // drag.item.flags
-                        );
-                    }
+                    // This no longer works since we resolve before we even get here.
+                    // let released = ui.input(|i| i.pointer.any_released());
+                    // if released && fits && !accepts {
+                    //     tracing::info!(
+                    //         "container {:?} does not accept item {}!",
+                    //         id,
+                    //         drag.item.flags
+                    //     );
+                    // }
 
                     slot.filter(|_| accepts && fits)
                         .map(|slot| ContentsResponse::NewTarget(id, slot))

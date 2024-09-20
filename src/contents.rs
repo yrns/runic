@@ -335,6 +335,18 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         self.contents.contains(id)
     }
 
+    /// Returns true if the contents of `a` contains `b`. Recursively checks both contained items and sections so `b` can be an item or contents.
+    pub fn contains(&self, a: Entity, b: Entity) -> bool {
+        // a == b ||
+        self.contents
+            .get(a)
+            .is_ok_and(|c| c.items.iter().any(|(_, i)| *i == b || self.contains(*i, b)))
+            || self
+                .sections
+                .get(a)
+                .is_ok_and(|s| s.1.iter().any(|s| *s == b || self.contains(*s, b)))
+    }
+
     // Check sections first or last? Last is less recursion.
     pub fn find_slot(
         &self,
@@ -372,12 +384,9 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             return;
         };
 
-        // TODO better check for cycles?
-        assert_ne!(
-            id, container_id,
-            "cannot move an item inside itself: {}",
-            id
-        );
+        if id == target_id || self.contains(id, target_id) {
+            return tracing::info!("cannot move an item inside itself");
+        }
 
         let (_name, mut item, _icon) = self.items.get_mut(id).expect("item exists");
 

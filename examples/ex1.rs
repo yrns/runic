@@ -345,9 +345,7 @@ fn spawn_items(
                     .with_icon(asset_server.load("pouch.png"))
                     .with_name("Pouch".into())
                     .with_contents(
-                        GridContents::<_>::new((3, 2))
-                            .with_header("Weapons:")
-                            .with_flags(Flags::Weapon),
+                        GridContents::<_>::new((3, 2)).with_header("Any:"), // .with_flags(Flags::Container),
                     )
                     // This only works for sections, not the main container. So in this case, the main container will still be below the sections.
                     .with_section_layout(Layout::new(Direction::LeftToRight, false))
@@ -483,6 +481,8 @@ fn update(
         .show(ctx, |ui| {
             storage.show(ground.0, ui);
         });
+
+    // TODO Should containers opened in a window auto-raise, when dragged to? They can end up behind the fixed contents (ground, etc.).
 
     // Show all open containers.
     for (c, name) in &opened {

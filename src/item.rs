@@ -161,7 +161,7 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                 let response = self.body(id, drag, icon, slot_dim, ui).response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
-                p.filter(|p| response.rect.contains(*p))
+                p.filter(|_| response.contains_pointer())
                     .map(|p| p - response.rect.min)
                     .map(|offset| (self.slot(offset / slot_dim), offset))
                     .filter(|(slot, _)| {

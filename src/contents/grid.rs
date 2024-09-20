@@ -414,13 +414,10 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                     // This is ugly w/ the default theme.
                     // *style = ui.style().interact_selectable(&response, accepts);
 
-                    // `contains_pointer` does not work for the target because only the dragged items'
-                    // response will contain the pointer.
                     let slot = ui
                         .ctx()
                         .pointer_latest_pos()
-                        // the hover includes the outer_rect?
-                        .filter(|p| min_rect.contains(*p))
+                        .filter(|_| response.contains_pointer())
                         // Add (inset) a bit so it's easier to target from the upper left. TODO: Fix the weird clamping on the top and left?
                         // Shape::slot needs to return an option
                         // FIX expanding does not work well w/ the offset

@@ -6,7 +6,7 @@ use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
-    Align, Direction, InnerResponse, Response, Ui, Vec2,
+    Align, Direction, InnerResponse, Rect, Response, Ui, Vec2,
 };
 use bevy_egui::EguiUserTextures;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
@@ -83,6 +83,7 @@ pub enum ContentsResponse<T> {
 /// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
 pub type DragSource = Option<(Entity, usize, Shape)>;
 
+/// An item being dragged.
 #[derive(Debug)]
 pub struct DragItem<T> {
     /// Dragged item id.
@@ -93,10 +94,15 @@ pub struct DragItem<T> {
     pub source: DragSource,
     /// Target container id and slot.
     pub target: Option<(Entity, usize)>,
-    /// Slot and offset inside the item when drag started.
-    // TODO: The slot is not used currently.
-    pub offset: (usize, egui::Vec2),
+    /// Relative offset inside the item where clicked when the drag started.
+    pub offset: Vec2,
+    /// Relative offset outside the item, close to the inner offset.
+    pub outer_offset: Vec2,
+    // The slot is not used currently.
+    pub offset_slot: usize,
 }
+
+pub const OUTER_DISTANCE: f32 = 6.0;
 
 impl<T> DragItem<T> {
     pub fn new(id: Entity, item: Item<T>) -> Self {
@@ -105,7 +111,9 @@ impl<T> DragItem<T> {
             item,
             source: None,
             target: None,
-            offset: Default::default(),
+            offset: Vec2::ZERO,
+            outer_offset: Vec2::ZERO,
+            offset_slot: 0,
         }
     }
 
@@ -115,7 +123,9 @@ impl<T> DragItem<T> {
 
         // This is close but not quite right. This also leaves the slot incorrect...
         if !self.item.shape.is_square() {
-            self.offset.1 = self.offset.1.yx();
+            self.offset = self.offset.yx();
+            // We need the slot dimensions to recalculate. This works?
+            self.outer_offset = self.outer_offset.yx();
         }
     }
 }
@@ -224,27 +234,31 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         }
     }
 
+    pub fn set_drag_target(&mut self, target: Option<(Entity, usize)>) {
+        if let Some(drag) = self.drag.as_mut() {
+            // set_if_neq?
+            if drag.target != target {
+                drag.target = target;
+
+                if let Some((id, slot)) = target {
+                    self.commands.trigger_targets(
+                        ItemDragOver {
+                            slot,
+                            item: drag.id,
+                        },
+                        id,
+                    );
+                }
+            }
+        }
+    }
+
     /// Show contents for container `id` and update the current drag.
     pub fn show(&mut self, id: Entity, ui: &mut Ui) -> Option<Response> {
         let InnerResponse { inner, response } = self.show_contents(id, ui)?;
+
         match inner {
-            Some(ContentsResponse::NewTarget(id, slot)) => match self.drag.as_mut() {
-                Some(drag) => {
-                    let new_target = Some((id, slot));
-                    // set_if_neq?
-                    if drag.target != new_target {
-                        drag.target = new_target;
-                        self.commands.trigger_targets(
-                            ItemDragOver {
-                                slot,
-                                item: drag.id,
-                            },
-                            id,
-                        );
-                    }
-                }
-                None => (),
-            },
+            Some(ContentsResponse::NewTarget(id, slot)) => self.set_drag_target(Some((id, slot))),
             Some(ContentsResponse::NewDrag(new_drag)) => {
                 *self.drag = Some(new_drag);
 
@@ -274,8 +288,13 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                     self.commands.trigger_targets(ContainerOpen, item);
                 }
             }
-            None => (),
+            None => {
+                if response.contains_pointer() {
+                    self.set_drag_target(None);
+                }
+            }
         }
+
         Some(response)
     }
 
@@ -464,11 +483,11 @@ pub trait Contents<T: Accepts> {
     fn remove(&mut self, slot: usize, item: &Item<T>);
 
     /// Returns a position for a given slot relative to the contents' origin.
-    fn pos(&self, slot: usize) -> egui::Vec2;
+    fn pos(&self, slot: usize) -> Vec2;
 
     /// Returns a container slot for a given offset. May return
     /// invalid results if the offset is outside the container.
-    fn slot(&self, offset: egui::Vec2) -> usize;
+    fn slot(&self, offset: Vec2) -> usize;
 
     fn accepts(&self, item: &Item<T>) -> bool;
 
@@ -509,8 +528,8 @@ pub trait Contents<T: Accepts> {
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 }
 
-pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
-    egui::Vec2::new((slot % width) as f32, (slot / width) as f32)
+pub fn xy(slot: usize, width: usize) -> Vec2 {
+    Vec2::new((slot % width) as f32, (slot / width) as f32)
 }
 
 // pub fn paint_shape(
@@ -541,9 +560,9 @@ pub fn xy(slot: usize, width: usize) -> egui::Vec2 {
 // have to reserve multiple. There is Shape::Vec, too.
 pub fn shape_mesh(
     shape: &shape::Shape,
-    grid_rect: egui::Rect,
-    offset: egui::Vec2,
-    color: egui::Color32,
+    grid_rect: Rect,
+    offset: Vec2,
+    color: Color32,
     //texture_id: egui::TextureId,
     scale: f32,
 ) -> egui::Mesh {
@@ -556,7 +575,7 @@ pub fn shape_mesh(
         .map(|slot| offset + xy(slot, shape.width()) * scale)
         // TODO use clip rect instead of remaking vertices every frame
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
-        .map(|p| egui::Rect::from_min_size(p, egui::Vec2::splat(scale)))
+        .map(|p| Rect::from_min_size(p, Vec2::splat(scale)))
         .for_each(|rect| {
             mesh.add_colored_rect(rect, color);
         });

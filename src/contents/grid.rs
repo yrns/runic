@@ -424,7 +424,9 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                         // Add (inset) a bit so it's easier to target from the upper left. TODO: Fix the weird clamping on the top and left?
                         // Shape::slot needs to return an option
                         // FIX expanding does not work well w/ the offset
-                        .map(|p| self.slot(p - min_rect.min - drag.offset.1 + Vec2::splat(10.0)));
+                        .map(|p| {
+                            self.slot(p - min_rect.min - drag.offset + Self::slot_size() * 0.5)
+                        });
 
                     let fits = slot
                         .map(|slot| self.fits(id, &drag.item, slot, &drag.source))

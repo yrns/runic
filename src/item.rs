@@ -81,13 +81,11 @@ impl<T: Clone + std::fmt::Display> Item<T> {
         // };
         let dragging = drag.is_some_and(|d| d.id == id);
 
-        // Allocate the original size so the contents draws
-        // consistenly when the dragged item is scaled.
+        // Allocate the original size so the contents draws consistenly when the dragged item is scaled.
         let size = self.size(slot_dim);
         let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
 
-        // Scale down slightly even when not dragging in lieu of baking a border into every item
-        // icon. TODO This needs to be configurable.
+        // Scale down slightly even when not dragging in lieu of baking a border into every item icon. TODO Configurable?
         let drag_scale = ui
             .ctx()
             // ui.id() is diff while dragging...
@@ -108,8 +106,7 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                 rect.size() * egui::lerp(1.0..=0.88, drag_scale),
             );
 
-            // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug
-            // in egui...
+            // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug in egui...
             match self.rotation {
                 ItemRotation::None => image.paint_at(ui, rect),
                 r @ ItemRotation::R180 => image.rotate(r.angle(), Self::PIVOT).paint_at(ui, rect),
@@ -145,11 +142,12 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                 // Half of these cursors do not work in X11. See about using custom cursors in bevy and sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
                 ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
 
-                // Draw the dragged item in a new area so it does not affect the size of the contents, which could occur with a large item rotated outside the bounds of the contents.
+                // Draw the dragged item in a new area so it does not affect the size of the contents, which could occur with a large item rotated outside the bounds of the contents. We always draw the dragged item using the outer offset so that the pointer is never inside the area. That way we can reliably use egui's hit detection for widgets under the pointer.
                 if let Some(p) = p {
-                    // from egui::containers::show_tooltip_area_dyn
                     egui::containers::Area::new(eid)
-                        .fixed_pos(p - drag.offset.1)
+                        // TODO: The offset needs to account for the drag scaling.
+                        .fixed_pos(p - drag.outer_offset)
+                        // .order(egui::Order::Tooltip)
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
@@ -178,7 +176,7 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                             false
                         })
                     })
-                    .map(|offset| {
+                    .map(|(offset_slot, offset)| {
                         if drag.is_some() {
                             Some(ContentsResponse::NewTarget(id, slot))
                         } else {
@@ -202,6 +200,12 @@ impl<T: Clone + std::fmt::Display> Item<T> {
                                     source: None,
                                     target: None,
                                     offset,
+                                    outer_offset: outer_offset(
+                                        offset,
+                                        response.rect.size(),
+                                        OUTER_DISTANCE,
+                                    ),
+                                    offset_slot,
                                 }))
                             } else {
                                 None
@@ -235,6 +239,23 @@ impl<T: Clone + std::fmt::Display> Item<T> {
             ItemRotation::R270 => self.shape = self.shape.rotate270(),
         };
     }
+}
+
+// Finds the closest edge to the point and extends the point outside the edge by some distance.
+// TODO This treats the item as a rectangle and does not take into account empty slots. See boomerang. This should probably extend a line from the center through the point, to a point outside the shape.
+fn outer_offset(Vec2 { x, y }: Vec2, size: Vec2, d: f32) -> Vec2 {
+    // left/right/top/bottom
+    [
+        // (distance to edge, new point)
+        (x, (-d, y)),
+        (size.x - x, (size.x + d, y)),
+        (y, (x, -d)),
+        (size.y - y, (x, size.y + d)),
+    ]
+    .iter()
+    .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+    .map(|a| a.1.into())
+    .unwrap()
 }
 
 // impl std::fmt::Display for Item {

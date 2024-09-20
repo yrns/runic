@@ -289,6 +289,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 }
             }
             None => {
+                // TODO This needs to happen when the pointer leaves the contents, too.
                 if response.contains_pointer() {
                     self.set_drag_target(None);
                 }

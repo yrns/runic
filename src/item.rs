@@ -17,7 +17,7 @@ pub struct Item<T> {
     pub flags: T,
 }
 
-impl<T: Clone + std::fmt::Display> Item<T> {
+impl<T> Item<T> {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
     pub fn new(flags: T) -> Self {
@@ -129,7 +129,10 @@ impl<T: Clone + std::fmt::Display> Item<T> {
         icon: TextureId,
         slot_dim: f32,
         ui: &mut Ui,
-    ) -> Option<ContentsResponse<T>> {
+    ) -> Option<ContentsResponse<T>>
+    where
+        T: Clone + std::fmt::Display,
+    {
         let eid = ui.id().with(id);
         let p = ui.ctx().pointer_latest_pos();
 
@@ -217,7 +220,10 @@ impl<T: Clone + std::fmt::Display> Item<T> {
         }
     }
 
-    fn hover_text(&self, name: &str, style: &Style) -> LayoutJob {
+    fn hover_text(&self, name: &str, style: &Style) -> LayoutJob
+    where
+        T: std::fmt::Display,
+    {
         let mut job = LayoutJob::default();
         RichText::new(name)
             .color(style.visuals.text_color())
@@ -257,20 +263,6 @@ fn outer_offset(Vec2 { x, y }: Vec2, size: Vec2, d: f32) -> Vec2 {
     .map(|a| a.1.into())
     .unwrap()
 }
-
-// impl std::fmt::Display for Item {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.write_str(&self.name)?;
-//         f.write_str(" ")?;
-
-//         // FIX: require Display for flags?
-//         //f.write_fmt(format_args!("{}", self.flags))
-
-//         f.debug_list()
-//             .entries(self.flags.iter_names().map(|f| f.0)) // format_args!("{}", f.0)
-//             .finish()
-//     }
-// }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
 pub enum ItemRotation {

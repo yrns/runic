@@ -67,40 +67,27 @@ impl<T> Item<T> {
     /// Show item body (icon, etc.).
     pub fn body(
         &self,
-        id: Entity,
-        drag: Option<&DragItem<T>>,
+        _id: Entity,
+        drag_scale: f32,
         icon: TextureId,
         slot_dim: f32,
         ui: &mut Ui,
     ) -> InnerResponse<Vec2> {
-        let eid = Id::new(id);
-
-        // let (dragging, item) = match drag_item.as_ref() {
-        //     Some(drag) if drag.item.id == self.id => (true, &drag.item),
-        //     _ => (false, self),
-        // };
-        let dragging = drag.is_some_and(|d| d.id == id);
-
         // Allocate the original size so the contents draws consistenly when the dragged item is scaled.
         let size = self.size(slot_dim);
         let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
 
-        // Scale down slightly even when not dragging in lieu of baking a border into every item icon. TODO Configurable?
-        let drag_scale = ui
-            .ctx()
-            // ui.id() is diff while dragging...
-            .animate_bool(eid.with("scale"), dragging);
-
         if ui.is_rect_visible(rect) {
             // This size is a hint and isn't used since the image is always(?) already loaded.
             let image = egui::Image::new((icon, size));
-            let image = if dragging {
-                image.tint(Rgba::from_rgba_premultiplied(1.0, 1.0, 1.0, 0.8))
-            } else {
-                image
-            };
+            let image = image.tint(Rgba::from_rgba_premultiplied(
+                1.0,
+                1.0,
+                1.0,
+                egui::lerp(1.0..=0.8, drag_scale),
+            ));
 
-            // Scale down if dragging from center.
+            // Scale down if dragging from center. The offset is not scaled, so for a really large item, the distance from the item to the pointer could be relatively large, which might look bad.
             let rect = Rect::from_center_size(
                 rect.center(),
                 rect.size() * egui::lerp(1.0..=0.88, drag_scale),
@@ -133,35 +120,39 @@ impl<T> Item<T> {
     where
         T: Clone + std::fmt::Display,
     {
-        let eid = ui.id().with(id);
+        let eid = Id::new(id);
         let p = ui.ctx().pointer_latest_pos();
 
         // This was a bug: "being dragged" is false on the frame in which we release the button. This means that if we dragged the item onto itself, it would return a hover and prevent a move.
         // let drag = ui.ctx().is_being_dragged(id);
 
+        // Scale down slightly while dragging so more of the shadow is visible. It also offsets the offset.
+        let drag = drag.filter(|d| d.id == id);
+        let drag_scale = ui.ctx().animate_bool(eid.with("scale"), drag.is_some());
+
         match drag {
             // This item is being dragged. We never return an item response.
-            Some(drag) if drag.id == id => {
+            Some(drag) => {
                 // Half of these cursors do not work in X11. See about using custom cursors in bevy and sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
                 ui.output_mut(|o| o.cursor_icon = CursorIcon::Grab);
 
                 // Draw the dragged item in a new area so it does not affect the size of the contents, which could occur with a large item rotated outside the bounds of the contents. We always draw the dragged item using the outer offset so that the pointer is never inside the area. That way we can reliably use egui's hit detection for widgets under the pointer.
                 if let Some(p) = p {
                     egui::containers::Area::new(eid)
-                        // TODO: The offset needs to account for the drag scaling.
-                        .fixed_pos(p - drag.outer_offset)
+                        // Animate from the origin to the offset position.
+                        .fixed_pos(drag.origin.lerp(p - drag.outer_offset, drag_scale))
                         // .order(egui::Order::Tooltip)
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
-                        .show(ui.ctx(), |ui| self.body(id, Some(drag), icon, slot_dim, ui));
+                        .show(ui.ctx(), |ui| self.body(id, drag_scale, icon, slot_dim, ui));
                 }
 
                 None
             }
             // This item is not being dragged (but maybe something else is).
             _ => {
-                let response = self.body(id, drag, icon, slot_dim, ui).response;
+                let response = self.body(id, drag_scale, icon, slot_dim, ui).response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|_| response.contains_pointer())
@@ -196,19 +187,18 @@ impl<T> Item<T> {
                             {
                                 Some(ContentsResponse::SendItem(DragItem::new(id, self.clone())))
                             } else if response.drag_started() {
+                                // Contents::body sets the source.
                                 Some(ContentsResponse::NewDrag(DragItem {
-                                    id,
-                                    item: self.clone(),
-                                    // Contents::body sets the source.
-                                    source: None,
-                                    target: None,
                                     offset,
                                     outer_offset: outer_offset(
                                         offset,
                                         response.rect.size(),
                                         OUTER_DISTANCE,
                                     ),
+                                    origin: response.rect.min,
                                     offset_slot,
+
+                                    ..DragItem::new(id, self.clone())
                                 }))
                             } else {
                                 None

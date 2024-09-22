@@ -6,7 +6,7 @@ use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
-    Align, Direction, InnerResponse, Rect, Response, Ui, Vec2,
+    Align, Direction, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
 use bevy_egui::EguiUserTextures;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
@@ -94,10 +94,12 @@ pub struct DragItem<T> {
     pub source: DragSource,
     /// Target container id and slot.
     pub target: Option<(Entity, usize)>,
-    /// Relative offset inside the item where clicked when the drag started.
+    /// Relative offset inside the item where the drag started.
     pub offset: Vec2,
     /// Relative offset outside the item, close to the inner offset.
     pub outer_offset: Vec2,
+    /// Screen space origin of the original location.
+    pub origin: Pos2,
     // The slot is not used currently.
     pub offset_slot: usize,
 }
@@ -113,6 +115,7 @@ impl<T> DragItem<T> {
             target: None,
             offset: Vec2::ZERO,
             outer_offset: Vec2::ZERO,
+            origin: Pos2::ZERO,
             offset_slot: 0,
         }
     }

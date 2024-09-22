@@ -6,7 +6,7 @@ use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
-    Align, Direction, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
+    Align, Direction, Id, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
 use bevy_egui::EguiUserTextures;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
@@ -74,7 +74,7 @@ pub struct Sections(pub Option<Layout>, pub Vec<Entity>);
 /// Response (inner) returned from `Contents::ui` and `Item::ui`. Sets new drag or current drag target.
 #[derive(Debug)]
 pub enum ContentsResponse<T> {
-    NewTarget(Entity, usize),
+    NewTarget((Entity, usize, Id)),
     NewDrag(DragItem<T>),
     SendItem(DragItem<T>),
     Open(Entity),
@@ -92,8 +92,8 @@ pub struct DragItem<T> {
     pub item: Item<T>,
     /// Source location.
     pub source: DragSource,
-    /// Target container id and slot.
-    pub target: Option<(Entity, usize)>,
+    /// Target container id and slot, and the egui Id of the widget who set the target.
+    pub target: Option<(Entity, usize, Id)>,
     /// Relative offset inside the item where the drag started.
     pub offset: Vec2,
     /// Relative offset outside the item, close to the inner offset.
@@ -203,7 +203,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // If the pointer is released, resolve drag, if any.
         if ctx.input(|i| i.pointer.any_released()) {
             if let Some(drag) = self.drag.take() {
-                if let Some((id, slot)) = drag.target {
+                if let Some((id, slot, _)) = drag.target {
                     self.commands.trigger_targets(
                         ItemDragEnd {
                             slot,
@@ -237,13 +237,13 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         }
     }
 
-    pub fn set_drag_target(&mut self, target: Option<(Entity, usize)>) {
+    pub fn set_drag_target(&mut self, target: Option<(Entity, usize, Id)>) {
         if let Some(drag) = self.drag.as_mut() {
             // set_if_neq?
             if drag.target != target {
                 drag.target = target;
 
-                if let Some((id, slot)) = target {
+                if let Some((id, slot, _)) = target {
                     self.commands.trigger_targets(
                         ItemDragOver {
                             slot,
@@ -261,7 +261,10 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         let InnerResponse { inner, response } = self.show_contents(id, ui)?;
 
         match inner {
-            Some(ContentsResponse::NewTarget(id, slot)) => self.set_drag_target(Some((id, slot))),
+            Some(ContentsResponse::NewTarget((id, slot, _))) => {
+                // Overwrite the egui id. The original is effectively unused.
+                self.set_drag_target(Some((id, slot, ui.id())))
+            }
             Some(ContentsResponse::NewDrag(new_drag)) => {
                 *self.drag = Some(new_drag);
 
@@ -281,9 +284,10 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 }
             }
             Some(ContentsResponse::SendItem(mut item)) => {
-                item.target = self
-                    .target
-                    .and_then(|t| self.find_slot(t, &item.item, &item.source));
+                item.target = self.target.and_then(|t| {
+                    self.find_slot(t, &item.item, &item.source)
+                        .map(|(id, slot)| (id, slot, ui.id()))
+                });
                 self.resolve_drag(item);
             }
             Some(ContentsResponse::Open(item)) => {
@@ -292,14 +296,19 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 }
             }
             None => {
-                // TODO This needs to happen when the pointer leaves the contents, too.
-                if response.contains_pointer() {
+                // If we contain the pointer and we didn't get a new target, clear the target. Or if we don't contain the pointer and we originally set the target, then clear it. We check the widget id rather than the contents because the same contents may be shown twice (due to inline contents and open contents).
+                if response.contains_pointer() || self.target_eid().is_some_and(|id| id == ui.id())
+                {
                     self.set_drag_target(None);
                 }
             }
         }
 
         Some(response)
+    }
+
+    pub fn target_eid(&self) -> Option<Id> {
+        Some(self.drag.as_ref()?.target?.2)
     }
 
     pub fn show_contents(

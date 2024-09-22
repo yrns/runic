@@ -172,7 +172,7 @@ impl<T> Item<T> {
                     })
                     .map(|(offset_slot, offset)| {
                         if drag.is_some() {
-                            Some(ContentsResponse::NewTarget(id, slot))
+                            Some(ContentsResponse::NewTarget((id, slot, ui.id())))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
                             let response = ui.interact(response.rect, eid, Sense::click_and_drag());

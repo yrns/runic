@@ -376,7 +376,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
             let inner = match (contents.drag.as_ref(), inner) {
                 // We are dragging onto another item, check to see if the dragged item will fit anywhere within its contents.
-                (Some(drag), Some(ContentsResponse::NewTarget(id, slot))) => {
+                (Some(drag), Some(ContentsResponse::NewTarget((id, slot, _)))) => {
                     if contents.is_container(id) {
                         // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
                         let item = contents.items.get(id).expect("item exists").1;
@@ -388,10 +388,11 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                             shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
                         ui.painter().set(shadow, mesh);
 
-                        target.map(|(item, slot)| ContentsResponse::NewTarget(item, slot))
+                        target
+                            .map(|(item, slot)| ContentsResponse::NewTarget((item, slot, ui.id())))
                     } else {
                         // Don't set target to non-contents.
-                        None // FIX: this needs to clear the target
+                        None
                     }
                 }
 
@@ -448,7 +449,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                     // }
 
                     slot.filter(|_| accepts && fits)
-                        .map(|slot| ContentsResponse::NewTarget(id, slot))
+                        .map(|slot| ContentsResponse::NewTarget((id, slot, ui.id())))
                 }
 
                 (_, inner) => inner,

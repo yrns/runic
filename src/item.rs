@@ -127,10 +127,10 @@ impl<T> Item<T> {
         // let drag = ui.ctx().is_being_dragged(id);
 
         // Scale down slightly while dragging so more of the shadow is visible. It also offsets the offset.
-        let drag = drag.filter(|d| d.id == id);
-        let drag_scale = ui.ctx().animate_bool(eid.with("scale"), drag.is_some());
+        let drag_id = drag.filter(|d| d.id == id);
+        let drag_scale = ui.ctx().animate_bool(eid.with("scale"), drag_id.is_some());
 
-        match drag {
+        match drag_id {
             // This item is being dragged. We never return an item response.
             Some(drag) => {
                 // Half of these cursors do not work in X11. See about using custom cursors in bevy and sharing that w/ bevy_egui. See also: https://github.com/mvlabat/bevy_egui/issues/229
@@ -171,6 +171,7 @@ impl<T> Item<T> {
                         })
                     })
                     .map(|(offset_slot, offset)| {
+                        // Dragging a different item? Drag to item.
                         if drag.is_some() {
                             Some(ContentsResponse::NewTarget((id, slot, ui.id())))
                         } else {

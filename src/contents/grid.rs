@@ -5,7 +5,7 @@ use super::*;
 
 /// Contains items in a 2d grid.
 #[derive(Clone, Debug, Reflect)]
-pub struct GridContents<T, const N: usize = 48> {
+pub struct GridContents<T, const N: usize = 64> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     /// If true, show inline contents for the contained item.
@@ -64,7 +64,7 @@ where
     /// Grid lines shape.
     pub fn grid_shape(&self, style: &egui::Style, size: Size) -> egui::Shape {
         let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
-        let mut stroke2 = stroke1.clone();
+        let mut stroke2 = stroke1;
         stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
         let stroke2 = egui::epaint::PathStroke::from(stroke2);
 
@@ -104,7 +104,7 @@ where
 }
 
 impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
-    fn len(&self) -> usize {
+    fn slots(&self) -> usize {
         if self.expands {
             1
         } else {
@@ -165,7 +165,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         }
 
         // TODO test multiple rotations (if non-square) and return it?
-        (0..self.len())
+        (0..self.slots())
             .find(|slot| self.fits(id, item, *slot, source))
             .map(|slot| (id, slot))
     }
@@ -177,7 +177,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         items: &[(usize, Entity)],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>> {
-        assert!(items.len() <= self.len());
+        assert!(items.len() <= self.slots());
 
         // For expanding contents we need to see the size of the first item before looping.
         let mut items = contents.items(items).peekable();
@@ -329,9 +329,8 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                 });
 
                 // TODO? The header should always be above the contents that it describes (i.e. use Ui::vertical here)?
-                match self.header.as_ref() {
-                    Some(header) => _ = ui.label(header),
-                    _ => (),
+                if let Some(header) = self.header.as_ref() {
+                    _ = ui.label(header)
                 }
 
                 let ir = ui
@@ -434,7 +433,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                     if let Some(slot) = slot {
                         let color = self.shadow_color(accepts, fits, ui);
                         let shape = &drag.item.shape;
-                        let mesh = shape_mesh(&shape, min_rect, self.pos(slot), color, N as f32);
+                        let mesh = shape_mesh(shape, min_rect, self.pos(slot), color, N as f32);
                         ui.painter().set(shadow, mesh);
                     }
 

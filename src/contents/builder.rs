@@ -199,10 +199,8 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
                 item,
                 icon.expect("item has an icon"),
             ));
-        } else {
-            if let Some(name) = name {
-                e.insert(name);
-            }
+        } else if let Some(name) = name {
+            e.insert(name);
         }
 
         e.id()

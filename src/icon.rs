@@ -15,9 +15,8 @@ pub enum Icon {
 
 impl Icon {
     pub fn to_path(&mut self) {
-        match &self {
-            Icon::Handle(h) => *self = Icon::Path(h.path().expect("icon has a path").clone()),
-            _ => (),
+        if let Icon::Handle(h) = &self {
+            *self = Icon::Path(h.path().expect("icon has a path").clone())
         }
     }
 

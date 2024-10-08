@@ -24,9 +24,9 @@ pub struct Shape {
     pub fill: Vec<bool>,
 }
 
-#[allow(unused)]
-const MAX_SLOT: u32 = (u16::MAX as u32).pow(2) - 1;
-const _: () = assert!(MAX_SLOT <= u32::MAX);
+// This is only useful if we change the type.
+// const MAX_SLOT: u32 = (u16::MAX as u32).pow(2) - 1;
+// const _: () = assert!(MAX_SLOT <= u32::MAX);
 
 impl Shape {
     pub fn new(size: impl Into<Size>, fill: bool) -> Self {
@@ -208,15 +208,12 @@ impl Shape {
 
 impl std::fmt::Display for Shape {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.rows()
-            .map(|r| {
-                r.iter()
-                    .map(|b| if *b { "■" } else { "□" })
-                    .chain(std::iter::once("\n"))
-                    .map(|x| write!(f, "{}", x))
-                    .collect()
-            })
-            .collect()
+        self.rows().try_for_each(|r| {
+            r.iter()
+                .map(|b| if *b { "■" } else { "□" })
+                .chain(std::iter::once("\n"))
+                .try_for_each(|x| write!(f, "{}", x))
+        })
     }
 }
 

@@ -97,7 +97,7 @@ impl<T> Item<T> {
             match self.rotation {
                 ItemRotation::None => image.paint_at(ui, rect),
                 r @ ItemRotation::R180 => image.rotate(r.angle(), Self::PIVOT).paint_at(ui, rect),
-                r @ _ => image
+                r => image
                     .rotate(r.angle(), Self::PIVOT)
                     .paint_at(ui, Rect::from_center_size(rect.center(), rect.size().yx())),
             };
@@ -107,6 +107,7 @@ impl<T> Item<T> {
     }
 
     /// Show item. `slot` is the slot we occupy in the container.
+    #[allow(clippy::too_many_arguments)]
     pub fn ui(
         &self,
         slot: usize,
@@ -159,8 +160,8 @@ impl<T> Item<T> {
                     .map(|p| p - response.rect.min)
                     .map(|offset| (self.slot(offset / slot_dim), offset))
                     .filter(|(slot, _)| {
-                        self.shape.fill.get(*slot).map(|b| *b).unwrap_or_else(|| {
-                            // FIX This occurs somewhere on drag/mouseover.
+                        self.shape.fill.get(*slot).copied().unwrap_or_else(|| {
+                            // This occurs somewhere on drag/mouseover. Not anymore?
                             tracing::error!(
                                 "point {:?} slot {} out of shape fill {}",
                                 p,
@@ -170,7 +171,7 @@ impl<T> Item<T> {
                             false
                         })
                     })
-                    .map(|(offset_slot, offset)| {
+                    .and_then(|(offset_slot, offset)| {
                         // Dragging a different item? Drag to item.
                         if drag.is_some() {
                             Some(ContentsResponse::NewTarget((id, slot, ui.id())))
@@ -206,7 +207,6 @@ impl<T> Item<T> {
                             }
                         }
                     })
-                    .flatten()
             }
         }
     }

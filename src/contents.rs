@@ -327,7 +327,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn items<'a>(
         &'a self,
         items: &'a [(usize, Entity)],
-    ) -> impl Iterator<Item = ((usize, Entity), (&Name, &Item<T>, &Icon))> + 'a {
+    ) -> impl Iterator<Item = ((usize, Entity), (&'a Name, &'a Item<T>, &'a Icon))> {
         let q_items = self.items.iter_many(items.iter().map(|i| i.1));
         items.iter().copied().zip(q_items)
     }
@@ -337,7 +337,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         let item = self.items.get(id).ok()?.1;
 
         // This is fetching twice...
-        let (container, slot) = self.find_slot(container, &item, &None)?;
+        let (container, slot) = self.find_slot(container, item, &None)?;
         let mut ci = self.contents.get_mut(container).ok()?;
 
         ci.insert(slot, id, item);
@@ -411,12 +411,10 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                     .expect("src container exists"),
                 None,
             )
+        } else if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
+            (src, Some(dest))
         } else {
-            if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
-                (src, Some(dest))
-            } else {
-                return tracing::error!("no contents for source or destination");
-            }
+            return tracing::error!("no contents for source or destination");
         };
 
         // Remove from source container.
@@ -462,7 +460,7 @@ where
 {
     // TODO: more checking and return a Result? same for removal
     pub fn insert(&mut self, slot: usize, id: Entity, item: &Item<T>) {
-        assert!(slot < self.contents.len(), "slot in contents length");
+        assert!(slot < self.contents.slots(), "slot in contents length");
 
         // Multiple items can share the same slot if they fit together.
         let i = self
@@ -498,7 +496,7 @@ pub trait Contents<T: Accepts> {
     }
 
     /// Number of slots this container holds.
-    fn len(&self) -> usize;
+    fn slots(&self) -> usize;
 
     fn insert(&mut self, slot: usize, item: &Item<T>);
 

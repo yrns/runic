@@ -8,7 +8,7 @@ use crate::*;
 #[derive(Default)]
 pub struct RunicPlugin<T>(PhantomData<T>);
 
-impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath> Plugin for RunicPlugin<T> {
+impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed> Plugin for RunicPlugin<T> {
     fn build(&self, app: &mut App) {
         // TODO: separate options per T?
         app.init_resource::<Options>()

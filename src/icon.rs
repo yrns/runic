@@ -1,7 +1,7 @@
-use bevy_asset::{prelude::*, AssetPath};
+use bevy_asset::{AssetPath, prelude::*};
 use bevy_ecs::prelude::*;
+use bevy_image::Image;
 use bevy_reflect::*;
-use bevy_render::texture::Image;
 
 #[derive(Component, Debug, Default, Reflect)]
 #[reflect(Component, Debug)]

@@ -1,4 +1,4 @@
-use bevy_egui::egui::{self, style::WidgetVisuals, Rect, Ui};
+use bevy_egui::egui::{self, style::WidgetVisuals, Rect, StrokeKind, Ui};
 use itertools::Itertools;
 
 use super::*;
@@ -66,7 +66,7 @@ where
         let stroke1 = style.visuals.widgets.noninteractive.bg_stroke;
         let mut stroke2 = stroke1;
         stroke2.color = tint_color_towards(stroke1.color, style.visuals.extreme_bg_color);
-        let stroke2 = egui::epaint::PathStroke::from(stroke2);
+        // let stroke2 = egui::epaint::PathStroke::from(stroke2);
 
         let pixel_size = self.grid_size(size);
         let egui::Vec2 { x: w, y: h } = pixel_size;
@@ -92,11 +92,12 @@ where
 
         lines.push(egui::Shape::Rect(egui::epaint::RectShape::new(
             Rect::from_min_size(egui::Pos2::ZERO, pixel_size),
-            style.visuals.widgets.noninteractive.rounding,
+            style.visuals.widgets.noninteractive.corner_radius,
             // style.visuals.window_rounding,
             Color32::TRANSPARENT, // fill covers the grid
             // style.visuals.window_fill,
             stroke1,
+            StrokeKind::Middle,
         )));
 
         egui::Shape::Vec(lines)
@@ -213,7 +214,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                         Rect::from_min_size(rect.min + self.pos(slot), Self::slot_size());
 
                     // item returns a clone if it's being dragged
-                    ui.allocate_ui_at_rect(item_rect, |ui| {
+                    ui.scope_builder(egui::UiBuilder::new().max_rect(item_rect), |ui| {
                         item.ui(
                             slot,
                             item_id,

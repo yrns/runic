@@ -5,20 +5,23 @@ use bevy::{
     tasks::IoTaskPool,
     window::{PrimaryWindow, RequestRedraw},
     winit::WinitSettings,
+    world_serialization::DynamicWorld,
 };
 use bevy_egui::{
     egui::{self, Direction},
-    EguiContext, EguiPlugin, EguiUserTextures,
+    EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, EguiUserTextures,
 };
 use runic::*;
 use serde::{Deserialize, Serialize};
 
+// NOTE reflect_value is now #[reflect(opaque)]
 // You can get flags to serialize with the reflect serialization if you derive reflect outside the bitflags! macro (and NOT use reflect_value) as described here (https://docs.rs/bitflags/latest/bitflags/#custom-derives). This serializes as a struct tuple containing a u32. If you use reflect_value you're pretty much required to implement Serialize yourself. The serde flag for bitflags enables the fancy serialization with flag names.
 bitflags::bitflags! {
     #[repr(transparent)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Deserialize, Serialize)]
     #[serde(transparent)]
-    #[reflect_value(Hash, PartialEq, Debug, Deserialize, Serialize)]
+    #[reflect(opaque)]
+    #[reflect(Hash, PartialEq, Debug, Deserialize, Serialize)]
     pub struct Flags: u32 {
         const Weapon = 1;
         const Armor = 1 << 1;
@@ -71,23 +74,20 @@ fn main() {
         .register_type::<Ground>()
         .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
         .init_state::<AppState>()
-        .add_plugins(EguiPlugin)
+        .add_plugins(EguiPlugin::default())
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
         .add_systems(
             Update,
-            spawn_items
-                .run_if(in_state(AppState::Loading))
-                .run_if(on_event::<AssetLoadFailedEvent<DynamicScene>>()),
+            spawn_items.run_if(in_state(AppState::Loading)), //.run_if(on_message::<AssetLoadFailedEvent<DynamicWorld>>),
+        )
+        .add_systems(
+            EguiPrimaryContextPass,
+            update.run_if(in_state(AppState::Running)),
         )
         .add_systems(
             Update,
-            (
-                save_items,
-                (item_icon_changed::<Flags>, update)
-                    .chain()
-                    .run_if(in_state(AppState::Running)),
-            ),
+            (save_items, item_icon_changed::<Flags>).run_if(in_state(AppState::Running)),
         )
         // .add_systems(
         //     Last,
@@ -95,24 +95,24 @@ fn main() {
         //         //.run_if(on_event::<AssetEvent<Image>>())
         //         .after(Assets::<Image>::asset_events),
         // )
-        .observe(item_insert)
-        .observe(item_remove)
-        .observe(item_move)
-        .observe(drag_start)
+        .add_observer(item_insert)
+        .add_observer(item_remove)
+        .add_observer(item_move)
+        .add_observer(drag_start)
         // .observe(drag_end)
-        .observe(drag_over)
-        .observe(container_open)
+        .add_observer(drag_over)
+        .add_observer(container_open)
         .run();
 }
 
 fn item_insert(
-    trigger: Trigger<ItemInsert>,
+    event: On<ItemInsert>,
     mut commands: Commands,
     names: Query<Option<&Name>>,
     asset_server: Res<AssetServer>,
-) {
-    let insert = trigger.event();
-    let [target, item] = names.many([trigger.entity(), insert.item]);
+) -> Result {
+    let insert = event.event();
+    let [target, item] = names.get_many([event.event_target(), insert.item])?;
     let target = target.map(|n| n.as_str()).unwrap_or("section");
     info!(
         target,
@@ -121,18 +121,18 @@ fn item_insert(
         "insert"
     );
 
+    // PlaybackSettings::REMOVE? Or is ONCE fine?
     commands
-        .entity(trigger.entity())
-        .insert(AudioBundle {
-            source: asset_server.load("sfx100v2_wood_03.ogg"),
-            settings: PlaybackSettings::REMOVE,
-        })
+        .entity(event.event_target())
+        .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))
         .remove::<AudioSink>();
+
+    Ok(())
 }
 
-fn item_remove(trigger: Trigger<ItemRemove>, names: Query<Option<&Name>>) {
-    let remove = trigger.event();
-    let [target, item] = names.many([trigger.entity(), remove.item]);
+fn item_remove(event: On<ItemRemove>, names: Query<Option<&Name>>) -> Result {
+    let remove = event.event();
+    let [target, item] = names.get_many([event.event_target(), remove.item])?;
     let target = target.map(|n| n.as_str()).unwrap_or("section");
     info!(
         target,
@@ -140,16 +140,17 @@ fn item_remove(trigger: Trigger<ItemRemove>, names: Query<Option<&Name>>) {
         slot = remove.slot,
         "remove"
     );
+    Ok(())
 }
 
 fn item_move(
-    trigger: Trigger<ItemMove>,
+    event: On<ItemMove>,
     mut commands: Commands,
     names: Query<Option<&Name>>,
     asset_server: Res<AssetServer>,
-) {
-    let moved = trigger.event();
-    let [target, item] = names.many([trigger.entity(), moved.item]);
+) -> Result {
+    let moved = event.event();
+    let [target, item] = names.get_many([event.event_target(), moved.item])?;
     let target = target.map(|n| n.as_str()).unwrap_or("section");
     info!(
         target,
@@ -160,36 +161,28 @@ fn item_move(
     );
 
     commands
-        .entity(trigger.entity())
-        .insert(AudioBundle {
-            source: asset_server.load("sfx100v2_misc_09.ogg"),
-            settings: PlaybackSettings::REMOVE,
-        })
+        .entity(event.event_target())
+        .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))
         .remove::<AudioSink>();
+
+    Ok(())
 }
 
-fn drag_start(
-    trigger: Trigger<ItemDragStart>,
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+fn drag_start(event: On<ItemDragStart>, mut commands: Commands, asset_server: Res<AssetServer>) {
     commands
-        .entity(trigger.entity())
-        .insert(AudioBundle {
-            source: asset_server.load("sfx100v2_metal_03.ogg"),
-            settings: PlaybackSettings::REMOVE,
-        })
+        .entity(event.event_target())
+        .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))
         .remove::<AudioSink>();
 }
 
 fn drag_over(
-    trigger: Trigger<ItemDragOver>,
+    event: On<ItemDragOver>,
     mut commands: Commands,
     names: Query<Option<&Name>>,
     asset_server: Res<AssetServer>,
-) {
-    let drag_over = trigger.event();
-    let [target, item] = names.many([trigger.entity(), drag_over.item]);
+) -> Result {
+    let drag_over = event.event();
+    let [target, item] = names.get_many([event.event_target(), drag_over.item])?;
     let target = target.map(|n| n.as_str()).unwrap_or("section");
     info!(
         target,
@@ -199,37 +192,33 @@ fn drag_over(
     );
 
     commands
-        .entity(trigger.entity())
-        .insert(AudioBundle {
-            source: asset_server.load("sfx100v2_misc_11.ogg"),
-            settings: PlaybackSettings::REMOVE,
-        })
+        .entity(event.event_target())
+        .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))
         // This restarts the audio. Maybe we should detach first.
         .remove::<AudioSink>();
+
+    Ok(())
 }
 
 fn container_open(
-    trigger: Trigger<ContainerOpen>,
+    event: On<ContainerOpen>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-    commands.entity(trigger.entity()).insert(Open);
+    commands.entity(event.event_target()).insert(Open);
 
     commands
-        .entity(trigger.entity())
-        .insert(AudioBundle {
-            source: asset_server.load("sfx100v2_door_02.ogg"),
-            settings: PlaybackSettings::REMOVE,
-        })
+        .entity(event.event_target())
+        .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))
         .remove::<AudioSink>();
 }
 
 // This isn't actually reliable.
 #[allow(unused)]
-fn redraw(mut events: EventReader<AssetEvent<Image>>, mut redraw: EventWriter<RequestRedraw>) {
+fn redraw(mut events: MessageReader<AssetEvent<Image>>, mut redraw: MessageWriter<RequestRedraw>) {
     for _e in events.read() {
         // dbg!(e);
-        redraw.send(RequestRedraw);
+        redraw.write(RequestRedraw);
     }
 }
 
@@ -239,20 +228,17 @@ struct SaveItems(SystemId);
 const CONTENTS_FILE_PATH: &str = "contents.scn.ron";
 
 fn load_items(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let id = commands.register_one_shot_system(save_items_scene);
+    let id = commands.register_system(save_items_scene);
     commands.insert_resource(SaveItems(id));
 
     commands.spawn((
         Name::new("contents scene"),
-        DynamicSceneBundle {
-            scene: asset_server.load(CONTENTS_FILE_PATH),
-            ..default()
-        },
+        DynamicWorldRoot(asset_server.load(CONTENTS_FILE_PATH)),
     ));
 }
 
 fn wait_for_items(
-    mut asset_events: EventReader<AssetEvent<DynamicScene>>,
+    mut asset_events: MessageReader<AssetEvent<DynamicWorld>>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     for event in asset_events.read() {
@@ -261,7 +247,7 @@ fn wait_for_items(
                 info!("contents loaded!");
                 next_state.set(AppState::Running);
             }
-            _ => (),
+            _ => warn!(?event),
         }
     }
 }
@@ -290,7 +276,8 @@ fn save_items_scene(world: &mut World) {
 
     let mut query =
         world.query_filtered::<Entity, Or<(With<Item<Flags>>, With<ContentsItems<Flags>>)>>();
-    let scene = DynamicSceneBuilder::from_world(&world)
+    let type_registry = world.resource::<AppTypeRegistry>().read();
+    let scene = DynamicWorldBuilder::from_world(&world, &type_registry)
         // .deny_all_resources()
         .allow_resource::<Ground>()
         .allow_resource::<PaperDoll>()
@@ -328,6 +315,8 @@ fn spawn_items(
     mut storage: ContentsStorage<Flags>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
+    info!("spawning items!");
+
     next_state.set(AppState::Running);
 
     // Spawn a bunch of items on the ground.
@@ -442,20 +431,22 @@ fn item_icon_changed<T: Accepts>(
         // Add the icon to egui textures if it doesn't already exist.
         let h = icon.handle();
         _ = textures
-            .image_id(&h)
-            .unwrap_or_else(|| textures.add_image(h.clone_weak()));
+            .image_id(h)
+            // The icons are stored with the inventory entities. So we only ever need a weak handle.
+            .unwrap_or_else(|| textures.add_image(EguiTextureHandle::Weak(h.id())));
     }
 }
 
 fn update(
-    mut egui_ctx: Query<&mut EguiContext, With<PrimaryWindow>>,
+    mut contexts: EguiContexts,
     mut storage: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
     opened: Query<(Entity, &Name), With<Open>>,
-) {
-    let mut egui_ctx = egui_ctx.single_mut();
-    let ctx = egui_ctx.get_mut();
+) -> Result {
+    dbg!("yep");
+
+    let ctx = contexts.ctx_mut()?;
 
     storage.update(ctx);
 
@@ -497,8 +488,10 @@ fn update(
             });
         if !open {
             storage.commands.entity(c).remove::<Open>();
-            // .trigger(ContainerClose); // 14.2 doesn't have this yet
-            storage.commands.trigger_targets(ContainerClose, c);
+            // .trigger(ContainerClose); // 14.2 doesn't have this yet?
+            storage.commands.trigger(ContainerClose(c));
         }
     }
+
+    Ok(())
 }

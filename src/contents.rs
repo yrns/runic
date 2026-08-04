@@ -1,7 +1,6 @@
 mod builder;
 mod grid;
 
-use bevy_core::Name;
 use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
@@ -29,7 +28,8 @@ pub struct ContentsItems<T> {
 
 /// egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
 #[derive(Copy, Clone, Debug, PartialEq, Reflect, Deserialize, Serialize)]
-#[reflect_value(PartialEq, Debug, Deserialize, Serialize)]
+#[reflect(opaque)]
+#[reflect(PartialEq, Debug, Deserialize, Serialize)]
 pub struct Layout {
     pub direction: egui::Direction,
     pub wrap: bool,
@@ -203,14 +203,12 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // If the pointer is released, resolve drag, if any.
         if ctx.input(|i| i.pointer.any_released()) {
             if let Some(drag) = self.drag.take() {
-                if let Some((id, slot, _)) = drag.target {
-                    self.commands.trigger_targets(
-                        ItemDragEnd {
-                            slot,
-                            item: drag.id,
-                        },
-                        id, // target contents
-                    )
+                if let Some((entity, slot, _)) = drag.target {
+                    self.commands.trigger(ItemDragEnd {
+                        entity,
+                        slot,
+                        item: drag.id,
+                    })
                 }
 
                 self.resolve_drag(drag);
@@ -227,7 +225,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Toggle debug.
         if ctx.input(|i| i.key_pressed(egui::Key::D)) {
             let b = !ctx.debug_on_hover();
-            ctx.style_mut(|s| {
+            ctx.global_style_mut(|s| {
                 s.debug.debug_on_hover = b;
                 s.debug.hover_shows_next = b;
                 // s.debug.show_expand_width = b;
@@ -243,14 +241,12 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             if drag.target != target {
                 drag.target = target;
 
-                if let Some((id, slot, _)) = target {
-                    self.commands.trigger_targets(
-                        ItemDragOver {
-                            slot,
-                            item: drag.id,
-                        },
-                        id,
-                    );
+                if let Some((entity, slot, _)) = target {
+                    self.commands.trigger(ItemDragOver {
+                        entity,
+                        slot,
+                        item: drag.id,
+                    });
                 }
             }
         }
@@ -274,13 +270,12 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                     ..
                 }) = &*self.drag
                 {
-                    self.commands.trigger_targets(
-                        ItemDragStart {
-                            slot: *slot,
-                            item: *item,
-                        },
-                        *id, // source contents
-                    );
+                    self.commands.trigger(ItemDragStart {
+                        // source contents
+                        entity: *id,
+                        slot: *slot,
+                        item: *item,
+                    });
                 }
             }
             Some(ContentsResponse::SendItem(mut item)) => {
@@ -292,7 +287,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             }
             Some(ContentsResponse::Open(item)) => {
                 if self.is_container(item) {
-                    self.commands.trigger_targets(ContainerOpen, item);
+                    self.commands.trigger(ContainerOpen(item));
                 }
             }
             None => {
@@ -431,25 +426,24 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
 
         // Fire events.
         if container_id == target_id {
-            self.commands.trigger_targets(
-                ItemMove {
-                    old_slot: container_slot,
-                    new_slot: slot,
-                    item: id,
-                },
-                container_id,
-            );
+            self.commands.trigger(ItemMove {
+                entity: container_id,
+                old_slot: container_slot,
+                new_slot: slot,
+                item: id,
+            });
         } else {
-            self.commands.trigger_targets(
-                ItemRemove {
-                    slot: container_slot,
-                    item: id,
-                },
-                container_id,
-            );
+            self.commands.trigger(ItemRemove {
+                entity: container_id,
+                slot: container_slot,
+                item: id,
+            });
 
-            self.commands
-                .trigger_targets(ItemInsert { slot, item: id }, target_id);
+            self.commands.trigger(ItemInsert {
+                entity: target_id,
+                slot,
+                item: id,
+            });
         }
     }
 }

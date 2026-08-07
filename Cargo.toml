@@ -29,35 +29,6 @@ tracing = { version = "0.1", default-features = false, features = ["std"] }
 bevy = {
   version = "0.19",
   default-features = false,
-  # Do we need 2d?
-  # features = ["2d", "audio", "ui"]
-  # The examples from bevy_egui use this:
-  features = [
-    "android-game-activity",
-    "audio",
-    "bevy_asset",
-    "bevy_core_pipeline",
-    "bevy_gizmos",
-    "bevy_log",
-    "bevy_pbr",
-    "bevy_sprite",
-    "bevy_sprite_render",
-    "bevy_state",
-    "bevy_text",
-    "bevy_ui_render",
-    "bevy_window",
-    "bevy_winit",
-    "bevy_world_serialization",
-    "gestures",
-    "keyboard",
-    "mesh_picking",
-    "mouse",
-    "png",
-    "std",
-    "tonemapping_luts",
-    "touch",
-    "webgl2",
-    "x11",
-    "zstd_rust"
-  ]
+  # Do we need 2d? Not for ui but maybe for egui?
+  features = ["audio", "ui"]
 }

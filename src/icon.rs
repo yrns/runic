@@ -1,47 +1,12 @@
-use bevy_asset::{AssetPath, prelude::*};
+use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_egui::egui::TextureId;
 use bevy_image::Image;
 use bevy_reflect::*;
 
-#[derive(Component, Debug, Default, Reflect)]
+#[derive(Component, Debug, Reflect)]
 #[reflect(Component, Debug)]
-pub enum Icon {
-    #[default]
-    None,
-    Path(AssetPath<'static>),
-    #[reflect(ignore)]
-    Handle(Handle<Image>),
-}
+pub struct Icon(pub Handle<Image>);
 
-impl Icon {
-    pub fn to_path(&mut self) {
-        if let Icon::Handle(h) = &self {
-            *self = Icon::Path(h.path().expect("icon has a path").clone())
-        }
-    }
-
-    pub fn handle(&self) -> &Handle<Image> {
-        let Icon::Handle(h) = &self else {
-            panic!("no handle");
-        };
-        h
-    }
-}
-
-impl From<Handle<Image>> for Icon {
-    fn from(h: Handle<Image>) -> Self {
-        Icon::Handle(h)
-    }
-}
-
-impl From<&'static str> for Icon {
-    fn from(path: &'static str) -> Self {
-        Icon::Path(AssetPath::parse(path))
-    }
-}
-
-impl From<AssetPath<'static>> for Icon {
-    fn from(path: AssetPath<'static>) -> Self {
-        Icon::Path(path)
-    }
-}
+#[derive(Component, Debug)]
+pub struct IconId(pub TextureId);

@@ -1,13 +1,12 @@
 mod builder;
 mod grid;
 
-use bevy_ecs::{prelude::*, system::SystemParam};
+use bevy_ecs::{entity::MapEntities, prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
     Align, Direction, Id, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
-use bevy_egui::EguiUserTextures;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use serde::{Deserialize, Serialize};
 
@@ -18,12 +17,16 @@ pub use grid::*;
 // TODO: maybe this is doable https://github.com/bevyengine/bevy/blob/latest/examples/reflection/trait_reflection.rs
 pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
 
+#[derive(Debug, Clone, MapEntities, Reflect, Eq, PartialEq)]
+pub struct SlotItem(usize, #[entities] Entity);
+
 // In order to make this generic over a contents parameter (`C`), we'd also have to add the parameter to storage, which would then make the Contents trait self-referential (which makes it not object-safe). So we'd have to add a new Storage trait.
 #[derive(Component, Reflect)]
 #[reflect(Component)]
 pub struct ContentsItems<T> {
     pub contents: GridContents<T>,
-    pub items: Vec<(usize, Entity)>,
+    #[entities]
+    pub items: Vec<SlotItem>,
 }
 
 /// egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
@@ -63,7 +66,7 @@ impl Layout {
 /// List of sections (sub-containers). Optional layout overrides the default in `Options`.
 #[derive(Component, Debug, Reflect)]
 #[reflect(Component, Debug)]
-pub struct Sections(pub Option<Layout>, pub Vec<Entity>);
+pub struct Sections(pub Option<Layout>, #[entities] pub Vec<Entity>);
 
 // #[derive(Component)]
 // pub struct ItemFlags<T: Accepts + 'static>(T);
@@ -181,7 +184,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         // TODO?
         // Option<&'static mut Sections>,
     >,
-    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, &'static Icon)>,
+    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, Option<&'static IconId>)>,
     pub sections: Query<'w, 's, &'static Sections>,
 
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
@@ -194,8 +197,6 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub target: Local<'s, Option<Entity>>,
 
     pub options: Res<'w, Options>,
-
-    pub textures: Res<'w, EguiUserTextures>,
 }
 
 impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
@@ -311,7 +312,8 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         id: Entity,
         ui: &mut Ui,
     ) -> Option<InnerResponse<Option<ContentsResponse<T>>>> {
-        self.get(id).map(|c| c.contents.ui(id, self, &c.items, ui))
+        let c = self.get(id).unwrap();
+        Some(c.contents.ui(id, self, &c.items, ui))
     }
 
     pub fn get(&self, id: Entity) -> Option<&ContentsItems<T>> {
@@ -321,10 +323,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     // TODO: naming
     pub fn items<'a>(
         &'a self,
-        items: &'a [(usize, Entity)],
-    ) -> impl Iterator<Item = ((usize, Entity), (&'a Name, &'a Item<T>, &'a Icon))> {
+        items: &'a [SlotItem],
+    ) -> impl Iterator<Item = (&'a SlotItem, (&'a Name, &'a Item<T>, Option<&'a IconId>))> {
         let q_items = self.items.iter_many(items.iter().map(|i| i.1));
-        items.iter().copied().zip(q_items)
+        // This is absolutely an error if the entities don't exist.
+        itertools::zip_eq(items, q_items)
     }
 
     /// Inserts item with `id` into `container`. Returns final container id and slot.
@@ -346,13 +349,14 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     /// Returns true if the contents of `a` contains `b`. Recursively checks both contained items and sections so `b` can be an item or contents.
     pub fn contains(&self, a: Entity, b: Entity) -> bool {
         // a == b ||
-        self.contents
+        self.contents.get(a).is_ok_and(|c| {
+            c.items
+                .iter()
+                .any(|SlotItem(_, i)| *i == b || self.contains(*i, b))
+        }) || self
+            .sections
             .get(a)
-            .is_ok_and(|c| c.items.iter().any(|(_, i)| *i == b || self.contains(*i, b)))
-            || self
-                .sections
-                .get(a)
-                .is_ok_and(|s| s.1.iter().any(|s| *s == b || self.contains(*s, b)))
+            .is_ok_and(|s| s.1.iter().any(|s| *s == b || self.contains(*s, b)))
     }
 
     // Check sections first or last? Last is less recursion.
@@ -396,7 +400,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             return tracing::info!("cannot move an item inside itself");
         }
 
-        let (_name, mut item, _icon) = self.items.get_mut(id).expect("item exists");
+        let (_name, mut item, _) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
         let (mut src, dest) = if container_id == target_id {
@@ -459,10 +463,10 @@ where
         // Multiple items can share the same slot if they fit together.
         let i = self
             .items
-            .binary_search_by(|(k, _)| k.cmp(&slot))
+            .binary_search_by(|SlotItem(k, _)| k.cmp(&slot))
             // .expect_err("item slot free");
             .unwrap_or_else(|i| i);
-        self.items.insert(i, (slot, id));
+        self.items.insert(i, SlotItem(slot, id));
 
         self.contents.insert(slot, item);
     }
@@ -471,7 +475,7 @@ where
     pub fn remove(&mut self, slot: usize, id: Entity, item: &Item<T>) {
         self.items
             .iter()
-            .position(|slot_item| *slot_item == (slot, id))
+            .position(|slot_item| *slot_item == SlotItem(slot, id))
             //.position(|(_, item)| item == id)
             .map(|i| self.items.remove(i))
             .expect("item exists");
@@ -528,7 +532,7 @@ pub trait Contents<T: Accepts> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[(usize, Entity)],
+        items: &[SlotItem],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 
@@ -537,7 +541,7 @@ pub trait Contents<T: Accepts> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[(usize, Entity)],
+        items: &[SlotItem],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 }

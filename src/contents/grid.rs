@@ -175,7 +175,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[(usize, Entity)],
+        items: &[SlotItem],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>> {
         assert!(items.len() <= self.slots());
@@ -201,7 +201,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .filter_map(|((slot, item_id), (name, item, icon))| {
+                .filter_map(|(&SlotItem(slot, item_id), (name, item, icon))| {
                     // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
                     let item = contents
                         .drag
@@ -215,16 +215,13 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
                     // item returns a clone if it's being dragged
                     ui.scope_builder(egui::UiBuilder::new().max_rect(item_rect), |ui| {
+                        // dbg!(item_id);
                         item.ui(
                             slot,
                             item_id,
                             name,
                             contents.drag.as_ref(),
-                            // TODO A better default texture.
-                            contents
-                                .textures
-                                .image_id(icon.handle())
-                                .unwrap_or_default(),
+                            icon.map(|icon| icon.0).unwrap_or_default(),
                             N as f32,
                             ui,
                         )
@@ -287,7 +284,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[(usize, Entity)],
+        items: &[SlotItem],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
@@ -309,7 +306,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
         let header_frame = |ui: &mut Ui, add_contents| {
             ui.with_layout(contents.options.layout.to_egui_layout(), |ui| {
-                // Sections.
+                // Sections. TODO: The entity mapping issue indicates there's a bad case here that needs to be caught? Like if the `id` isn't a container at all or doesn't exist?
                 let section_ir = contents.sections.get(id).ok().and_then(|s| {
                     ui.with_layout(
                         s.0.unwrap_or(contents.options.section_layout)
@@ -347,7 +344,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                                     let drag_id = contents.drag.as_ref().map(|d| d.id);
                                     items
                                         .iter()
-                                        .map(|(_, id)| *id)
+                                        .map(|SlotItem(_, id)| *id)
                                         // Don't add contents if the container is being dragged.
                                         .filter(|id| drag_id != Some(*id))
                                         .filter_map(|id| contents.show_contents(id, ui))

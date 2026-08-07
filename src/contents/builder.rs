@@ -1,3 +1,6 @@
+use bevy_asset::Handle;
+use bevy_image::Image;
+
 use super::*;
 
 pub struct ContentsBuilder<C, T> {
@@ -117,8 +120,8 @@ impl<C, T> ContentsBuilder<C, T> {
         self
     }
 
-    pub fn with_icon(mut self, icon: impl Into<Icon>) -> Self {
-        self.icon = Some(icon.into());
+    pub fn with_icon(mut self, icon: Handle<Image>) -> Self {
+        self.icon = Some(Icon(icon));
         self
     }
 }

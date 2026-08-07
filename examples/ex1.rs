@@ -1,9 +1,11 @@
 use bevy::{
     asset::AssetLoadFailedEvent,
-    ecs::system::SystemId,
+    ecs::{
+        entity::MapEntities, reflect::ReflectMapEntities, resource::IsResource, system::SystemId,
+    },
     prelude::*,
     tasks::IoTaskPool,
-    window::{PrimaryWindow, RequestRedraw},
+    window::RequestRedraw,
     winit::WinitSettings,
     world_serialization::DynamicWorld,
 };
@@ -45,14 +47,16 @@ impl std::fmt::Display for Flags {
     }
 }
 
-// These need to be reflectable to be written to the contents scene, as well as the type registered. An alternative would be to show windows for all root level contents that aren't items.
-#[derive(Resource, Reflect)]
-#[reflect(Resource)]
-struct PaperDoll(Entity);
+// FIX? The migration guide explicitly mentions that it is no longer necessary to add derive MapEntities for a resource (<https://bevy.org/learn/migration-guides/0-18-to-0-19/#miscellaneous>)...
 
-#[derive(Resource, Reflect)]
-#[reflect(Resource)]
-struct Ground(Entity);
+// These need to be reflectable to be written to the contents scene, as well as the type registered. An alternative would be to show windows for all root level contents that aren't items. Or add a separate marker component(s).
+#[derive(Debug, Resource, MapEntities, Reflect)]
+#[reflect(Debug, Resource, MapEntities)]
+struct PaperDoll(#[entities] Entity);
+
+#[derive(Debug, Resource, MapEntities, Reflect)]
+#[reflect(Debug, Resource, MapEntities)]
+struct Ground(#[entities] Entity);
 
 // Remembers which containers are opened.
 #[derive(Component, Reflect)]
@@ -80,16 +84,17 @@ fn main() {
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
         .add_systems(
             Update,
-            spawn_items.run_if(in_state(AppState::Loading)), //.run_if(on_message::<AssetLoadFailedEvent<DynamicWorld>>),
+            spawn_items
+                .run_if(in_state(AppState::Loading))
+                .run_if(on_message::<AssetLoadFailedEvent<DynamicWorld>>),
         )
         .add_systems(
             EguiPrimaryContextPass,
-            update.run_if(in_state(AppState::Running)),
+            (item_icon_changed::<Flags>, update)
+                .chain()
+                .run_if(in_state(AppState::Running)),
         )
-        .add_systems(
-            Update,
-            (save_items, item_icon_changed::<Flags>).run_if(in_state(AppState::Running)),
-        )
+        .add_systems(Update, save_items.run_if(in_state(AppState::Running)))
         // .add_systems(
         //     Last,
         //     redraw
@@ -271,14 +276,6 @@ fn save_items(
 }
 
 fn save_items_scene(world: &mut World) {
-    // Turn all icons to paths.
-    let mut query = world.query::<&mut Icon>();
-    for mut icon in query.iter_mut(world) {
-        // TODO This makes the icons flicker.
-        icon.to_path()
-        // icon.bypass_change_detection().to_path()
-    }
-
     let mut query =
         world.query_filtered::<Entity, Or<(With<Item<Flags>>, With<ContentsItems<Flags>>)>>();
     let type_registry = world.resource::<AppTypeRegistry>().read();
@@ -286,8 +283,7 @@ fn save_items_scene(world: &mut World) {
         // .deny_all_resources()
         .allow_resource::<Ground>()
         .allow_resource::<PaperDoll>()
-        // Bevy does not serialize handles.
-        // .deny::<Handle<Image>>()
+        .deny_component::<PlaybackSettings>()
         .extract_resources()
         .extract_entities(query.iter(&world))
         .build();
@@ -416,29 +412,20 @@ fn spawn_items(
 }
 
 fn item_icon_changed<T: Accepts>(
-    mut items: Query<&mut Icon, Changed<Icon>>,
+    mut commands: Commands,
+    mut icons: Query<(Entity, &Icon), Changed<Icon>>,
     mut textures: ResMut<EguiUserTextures>,
-    asset_server: Res<AssetServer>,
+    names: Query<&Name>,
 ) {
-    for mut icon in &mut items {
-        // if !matches!(icon.as_ref(), Icon::Path(_)) {
-        //     continue;
-        // }
-        match std::mem::take(icon.as_mut()) {
-            Icon::Path(p) => {
-                let h = asset_server.load(p);
-                *icon = Icon::Handle(h);
-            }
-            Icon::Handle(h) => *icon = Icon::Handle(h),
-            Icon::None => continue,
-        };
-
-        // Add the icon to egui textures if it doesn't already exist.
-        let h = icon.handle();
-        _ = textures
-            .image_id(h)
-            // The icons are stored with the inventory entities. So we only ever need a weak handle.
-            .unwrap_or_else(|| textures.add_image(EguiTextureHandle::Weak(h.id())));
+    for (item, icon) in &mut icons {
+        info!(
+            "icon changed: {:?} item: {item} name: {}",
+            icon.0.path(),
+            names.get(item).unwrap()
+        );
+        commands.entity(item).insert(IconId(
+            textures.add_image(EguiTextureHandle::Weak(icon.0.id())),
+        ));
     }
 }
 
@@ -447,10 +434,8 @@ fn update(
     mut storage: ContentsStorage<Flags>,
     paper_doll: Res<PaperDoll>,
     ground: Res<Ground>,
-    opened: Query<(Entity, &Name), With<Open>>,
+    opened: Query<(Entity, &Name), (With<Open>, Without<IsResource>)>,
 ) -> Result {
-    dbg!("yep");
-
     let ctx = contexts.ctx_mut()?;
 
     storage.update(ctx);
@@ -481,7 +466,7 @@ fn update(
     // TODO Should containers opened in a window auto-raise, when dragged to? They can end up behind the fixed contents (ground, etc.).
 
     // Show all open containers.
-    for (c, name) in &opened {
+    for (c, name, ..) in &opened {
         let mut open = true;
         egui::Window::new(name.as_str())
             .resizable(false)

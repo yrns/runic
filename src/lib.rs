@@ -8,7 +8,7 @@ mod shape;
 
 pub use contents::*;
 pub use events::*;
-pub use icon::Icon;
+pub use icon::*;
 pub use item::*;
 pub use plugin::RunicPlugin;
 pub use shape::*;

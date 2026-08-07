@@ -75,6 +75,7 @@ fn main() {
         .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
         .init_state::<AppState>()
         .add_plugins(EguiPlugin::default())
+        .add_systems(Startup, startup)
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
         .add_systems(
@@ -103,6 +104,10 @@ fn main() {
         .add_observer(drag_over)
         .add_observer(container_open)
         .run();
+}
+
+fn startup(mut commands: Commands) {
+    commands.spawn(Camera2d);
 }
 
 fn item_insert(

@@ -176,6 +176,7 @@ impl<T: Accepts + Clone> ContentsStorage<'_, '_, T> {
                 // The item might fit in a sub-container, but we don't have access to place it there. It would otherwise be viable. Fix?
                 assert_eq!(id, _id, "item fits in current container");
 
+                self.commands.entity(id).insert(Slot(slot));
                 contents_items.insert(slot, id, &item_clone);
             }
 

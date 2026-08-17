@@ -4,8 +4,9 @@ use itertools::Itertools;
 use super::*;
 
 /// Contains items in a 2d grid.
-#[derive(Clone, Debug, Reflect)]
-pub struct GridContents<T, const N: usize = 64> {
+#[derive(Component, Clone, Reflect, FromTemplate)]
+#[reflect(Component)]
+pub struct GridContents<const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     /// If true, show inline contents for the contained item.
@@ -13,27 +14,19 @@ pub struct GridContents<T, const N: usize = 64> {
     pub header: Option<String>, // Use Name?
     /// The shape describes the dimensions of the container and which slots are filled.
     pub shape: Shape,
-    /// Flags determine what kinds of items will be accepted (see `Accepts`).
-    pub flags: T,
+    // /// Flags determine what kinds of items will be accepted (see `Accepts`).
+    // NOTE: We can't simply make flags a component since the container's flags may be different from the item's. Unless we use relationships and make sections child-containers. Or rather all contents are children of items.
+    // pub flags: T,
 }
 
-impl<T, const N: usize> GridContents<T, N>
-where
-    T: Accepts,
-{
+impl<const N: usize> GridContents<N> {
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
             expands: false,
             inline: false,
             header: None,
             shape: Shape::new(size.into(), false),
-            flags: T::default(),
         }
-    }
-
-    pub fn with_flags(mut self, flags: impl Into<T>) -> Self {
-        self.flags = flags.into();
-        self
     }
 
     pub fn with_expands(mut self, expands: bool) -> Self {
@@ -104,7 +97,7 @@ where
     }
 }
 
-impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
+impl<const N: usize> Contents for GridContents<N> {
     fn slots(&self) -> usize {
         if self.expands {
             1
@@ -113,11 +106,11 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         }
     }
 
-    fn insert(&mut self, slot: usize, item: &Item<T>) {
+    fn insert(&mut self, slot: usize, item: &Item) {
         self.shape.paint(&item.shape, slot);
     }
 
-    fn remove(&mut self, slot: usize, item: &Item<T>) {
+    fn remove(&mut self, slot: usize, item: &Item) {
         self.shape.unpaint(&item.shape, slot);
     }
 
@@ -126,7 +119,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         if self.expands {
             egui::Vec2::ZERO
         } else {
-            xy(slot, self.shape.size.x as usize) * N as f32
+            xy(slot, self.shape.width() as usize) * N as f32
         }
     }
 
@@ -139,11 +132,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         }
     }
 
-    fn accepts(&self, item: &Item<T>) -> bool {
-        self.flags.accepts(&item.flags)
-    }
-
-    fn fits(&self, id: Entity, item: &Item<T>, slot: usize, source: &DragSource) -> bool {
+    fn fits(&self, id: Entity, item: &Item, slot: usize, source: &DragSource) -> bool {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
@@ -155,41 +144,32 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         shape.fits(&item.shape, slot)
     }
 
-    fn find_slot(
-        &self,
-        id: Entity,
-        item: &Item<T>,
-        source: &DragSource,
-    ) -> Option<(Entity, usize)> {
-        if !self.accepts(item) {
-            return None;
-        }
-
+    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, usize)> {
         // TODO test multiple rotations (if non-square) and return it?
         (0..self.slots())
             .find(|slot| self.fits(id, item, *slot, source))
             .map(|slot| (id, slot))
     }
 
-    fn body(
+    fn body<T: Accepts>(
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[SlotItem],
+        items: &[Entity],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>> {
         assert!(items.len() <= self.slots());
 
         // For expanding contents we need to see the size of the first item before looping.
-        let mut items = contents.items(items).peekable();
+        let mut items = contents.items.iter_many(items).peekable();
 
         let grid_size = if self.expands {
             items
                 .peek()
-                .map(|(_, (_, item, _))| item.shape.size)
+                .map(|(.., item, _, _)| item.shape.size())
                 .unwrap_or(Size::ONE)
         } else {
-            self.shape.size
+            self.shape.size()
         };
 
         // Allocate the full grid size. Note ui.min_rect() may differ from from the allocated rect
@@ -201,7 +181,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .filter_map(|(&SlotItem(slot, item_id), (name, item, icon))| {
+                .filter_map(|(item_id, &Slot(slot), name, item, flags, icon)| {
                     // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
                     let item = contents
                         .drag
@@ -219,6 +199,7 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                         item.ui(
                             slot,
                             item_id,
+                            flags,
                             name,
                             contents.drag.as_ref(),
                             icon.map(|icon| icon.0).unwrap_or_default(),
@@ -280,11 +261,12 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
         InnerResponse::new(new_drag, response)
     }
 
-    fn ui(
+    fn ui<T: Accepts>(
         &self,
         id: Entity,
+        flags: &Flags<T>,
         contents: &ContentsStorage<T>,
-        items: &[SlotItem],
+        items: &[Entity],
         ui: &mut Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>> {
         // This no longer works because `drag_item` is a frame behind `dragged_id`. In other words, the
@@ -306,62 +288,38 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
         let header_frame = |ui: &mut Ui, add_contents| {
             ui.with_layout(contents.options.layout.to_egui_layout(), |ui| {
-                // Sections. TODO: The entity mapping issue indicates there's a bad case here that needs to be caught? Like if the `id` isn't a container at all or doesn't exist?
-                let section_ir = contents.sections.get(id).ok().and_then(|s| {
-                    ui.with_layout(
-                        s.0.unwrap_or(contents.options.section_layout)
-                            .to_egui_layout(),
-                        |ui| {
-                            // TODO faster to fetch many first?
-                            s.1.iter()
-                                .filter_map(|id| contents.show_contents(*id, ui))
-                                .filter_map(|ir| ir.inner)
-                                .at_most_one()
-                                .unwrap_or_else(|mut e| {
-                                    tracing::error!("at most one item response");
-                                    e.next()
-                                })
-                        },
-                    )
-                    .inner
-                });
-
                 // TODO? The header should always be above the contents that it describes (i.e. use Ui::vertical here)?
                 if let Some(header) = self.header.as_ref() {
                     _ = ui.label(header)
                 }
 
-                let ir = ui
-                    .with_layout(contents.options.inline_layout.to_egui_layout(), |ui| {
-                        // Go back to with_bg/min_frame since egui::Frame takes up all available space.
-                        let ir: Option<ContentsResponse<T>> =
-                            crate::min_frame::min_frame(ui, add_contents).inner;
+                ui.with_layout(contents.options.inline_layout.to_egui_layout(), |ui| {
+                    // Go back to with_bg/min_frame since egui::Frame takes up all available space.
+                    let ir: Option<ContentsResponse<T>> =
+                        crate::min_frame::min_frame(ui, add_contents).inner;
 
-                        ir.or(
-                            // Show inline contents.
-                            self.inline
-                                .then(|| {
-                                    let drag_id = contents.drag.as_ref().map(|d| d.id);
-                                    items
-                                        .iter()
-                                        .map(|SlotItem(_, id)| *id)
-                                        // Don't add contents if the container is being dragged.
-                                        .filter(|id| drag_id != Some(*id))
-                                        .filter_map(|id| contents.show_contents(id, ui))
-                                        .filter_map(|ir| ir.inner)
-                                        .at_most_one()
-                                        .unwrap_or_else(|mut e| {
-                                            tracing::error!("at most one item response");
-                                            e.next()
-                                        })
-                                })
-                                .flatten(),
-                        )
-                    })
-                    .inner;
-
-                section_ir.or(ir)
+                    ir.or(
+                        // Show inline contents.
+                        self.inline
+                            .then(|| {
+                                let drag_id = contents.drag.as_ref().map(|d| d.id);
+                                items
+                                    .iter()
+                                    // Don't add contents if the container is being dragged.
+                                    .filter(|id| drag_id != Some(**id))
+                                    .filter_map(|id| contents.show_contents(*id, ui))
+                                    .filter_map(|ir| ir.inner)
+                                    .at_most_one()
+                                    .unwrap_or_else(|mut e| {
+                                        tracing::error!("at most one item response");
+                                        e.next()
+                                    })
+                            })
+                            .flatten(),
+                    )
+                })
             })
+            .inner
         };
 
         header_frame(ui, |style: &mut WidgetVisuals, ui: &mut Ui| {
@@ -376,8 +334,9 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
                 (Some(drag), Some(ContentsResponse::NewTarget((id, slot, _)))) => {
                     if contents.is_container(id) {
                         // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
-                        let item = contents.items.get(id).expect("item exists").1;
-                        let target = contents.find_slot(id, &drag.item, &drag.source);
+                        let (.., item, flags, _) = contents.items.get(id).expect("item exists");
+                        let target =
+                            contents.find_section_slot(id, &drag.item, flags, &drag.source);
 
                         // The item shadow is the target item for drag-to-item, not the dragged item.
                         let color = self.shadow_color(true, target.is_some(), ui);
@@ -395,11 +354,8 @@ impl<T: Accepts, const N: usize> Contents<T> for GridContents<T, N> {
 
                 // Dragging over an empty slot.
                 (Some(drag), None) => {
-                    // tarkov also checks if containers are full, even if not
-                    // hovering -- maybe track min size free? TODO just do
-                    // accepts, and only check fits for hover
-
-                    let accepts = self.accepts(&drag.item);
+                    // tarkov also checks if containers are full, even if not hovering -- maybe track min size free? TODO just do accepts, and only check fits for hover
+                    let accepts = flags.accepts(&drag.flags);
 
                     // Highlight the contents border if we can accept the dragged item.
                     if accepts {

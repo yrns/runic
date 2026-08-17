@@ -4,7 +4,7 @@ use bevy_egui::egui::TextureId;
 use bevy_image::Image;
 use bevy_reflect::*;
 
-#[derive(Component, Debug, Reflect)]
+#[derive(Component, Clone, Debug, Reflect, FromTemplate)]
 #[reflect(Component, Debug)]
 pub struct Icon(pub Handle<Image>);
 

@@ -1,38 +1,55 @@
-mod builder;
+// mod builder;
 mod grid;
 
-use bevy_ecs::{entity::MapEntities, prelude::*, system::SystemParam};
+use bevy_ecs::{prelude::*, system::SystemParam, template::*};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
     Align, Direction, Id, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
+use bevy_scene::*;
 use serde::{Deserialize, Serialize};
 
 use crate::*;
-pub use builder::*;
+// pub use builder::*;
 pub use grid::*;
 
-// TODO: maybe this is doable https://github.com/bevyengine/bevy/blob/latest/examples/reflection/trait_reflection.rs
-pub type BoxedContents<T> = Box<dyn Contents<T> + Send + Sync + 'static>;
-
-#[derive(Debug, Clone, MapEntities, Reflect, Eq, PartialEq)]
-pub struct SlotItem(usize, #[entities] Entity);
-
-// In order to make this generic over a contents parameter (`C`), we'd also have to add the parameter to storage, which would then make the Contents trait self-referential (which makes it not object-safe). So we'd have to add a new Storage trait.
-#[derive(Component, Reflect)]
+/// The slot this item occupies in its parent container.
+// This really shouldn't derive `Default`, but it has to for BSN?
+#[derive(Component, Clone, Default, Reflect)]
 #[reflect(Component)]
-pub struct ContentsItems<T> {
-    pub contents: GridContents<T>,
-    #[entities]
-    pub items: Vec<SlotItem>,
-}
+pub struct Slot(pub usize);
 
-/// egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
-#[derive(Copy, Clone, Debug, PartialEq, Reflect, Deserialize, Serialize)]
+// NOTE: I feel like Bevy should handle this case for some reason (a newtype around an existing template).
+#[derive(Component, Clone, Reflect, FromTemplate)]
+#[reflect(Component)]
+pub struct ContainedItems(pub Vec<Entity>);
+
+// impl FromTemplate for ContainedItems {
+//     type Template = ContainedItemsTemplate;
+// }
+
+// #[derive(Default)]
+// pub struct ContainedItemsTemplate(pub VecTemplate<EntityTemplate>);
+
+// impl Template for ContainedItemsTemplate {
+//     type Output = ContainedItems;
+
+//     fn build_template(&self, context: &mut TemplateContext) -> Result<Self::Output> {
+//         Ok(ContainedItems(self.0.build_template(context)?))
+//     }
+
+//     fn clone_template(&self) -> Self {
+//         Self(self.0.clone_template())
+//     }
+// }
+
+// TODO: It is now.
+/// Optional layout overrides the default in `Options`. egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
+#[derive(Component, Copy, Clone, Debug, PartialEq, Reflect, Deserialize, Serialize)]
 #[reflect(opaque)]
-#[reflect(PartialEq, Debug, Deserialize, Serialize)]
+#[reflect(Component, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Layout {
     pub direction: egui::Direction,
     pub wrap: bool,
@@ -63,16 +80,18 @@ impl Layout {
     }
 }
 
-/// List of sections (sub-containers). Optional layout overrides the default in `Options`.
-#[derive(Component, Debug, Reflect)]
-#[reflect(Component, Debug)]
-pub struct Sections(pub Option<Layout>, #[entities] pub Vec<Entity>);
+/// List of sections for this item (subcontainers).
+// TODO: Should GridContents be renamed Section?
+// TODO: Children?
+#[derive(Component, Clone, Default, Debug, Reflect)]
+#[reflect(Component)]
+pub struct Sections(pub Vec<Entity>);
 
-// #[derive(Component)]
-// pub struct ItemFlags<T: Accepts + 'static>(T);
-
-// #[derive(Component)]
-// pub struct ContainerFlags<T: Accepts + 'static>(T);
+impl From<Vec<Entity>> for Sections {
+    fn from(value: Vec<Entity>) -> Self {
+        Self(value)
+    }
+}
 
 /// Response (inner) returned from `Contents::ui` and `Item::ui`. Sets new drag or current drag target.
 #[derive(Debug)]
@@ -84,6 +103,7 @@ pub enum ContentsResponse<T> {
 }
 
 /// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
+// TODO: Use Slot.
 pub type DragSource = Option<(Entity, usize, Shape)>;
 
 /// An item being dragged.
@@ -92,7 +112,9 @@ pub struct DragItem<T> {
     /// Dragged item id.
     pub id: Entity,
     /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
-    pub item: Item<T>,
+    pub item: Item,
+    /// Flags.
+    pub flags: Flags<T>,
     /// Source location.
     pub source: DragSource,
     /// Target container id and slot, and the egui Id of the widget who set the target.
@@ -110,10 +132,11 @@ pub struct DragItem<T> {
 pub const OUTER_DISTANCE: f32 = 6.0;
 
 impl<T> DragItem<T> {
-    pub fn new(id: Entity, item: Item<T>) -> Self {
+    pub fn new(id: Entity, item: Item, flags: Flags<T>) -> Self {
         Self {
             id,
             item,
+            flags,
             source: None,
             target: None,
             offset: Vec2::ZERO,
@@ -136,15 +159,15 @@ impl<T> DragItem<T> {
     }
 }
 
-/// Accepts must be cloned because items must be cloned.
+/// `Accepts` must be `Clone` because items are cloned.
 // TODO Indicate textually why something does't accept another?
-pub trait Accepts: Clone + Default + std::fmt::Display + Send + Sync + 'static {
+pub trait Accepts: Copy + Clone + Default + std::fmt::Display + Send + Sync + 'static {
     fn accepts(&self, other: &Self) -> bool;
 }
 
 impl<T> Accepts for T
 where
-    T: bitflags::Flags + Copy + Default + std::fmt::Display + Send + Sync + 'static,
+    T: bitflags::Flags + Copy + Clone + Default + std::fmt::Display + Send + Sync + 'static,
 {
     fn accepts(&self, other: &Self) -> bool {
         self.contains(*other)
@@ -173,6 +196,17 @@ impl Default for Options {
     }
 }
 
+/// Bit flags used to determine compatibility between containers and items.
+#[derive(Component, Copy, Clone, Debug, Default, Reflect)]
+#[reflect(Component)]
+pub struct Flags<T>(pub T);
+
+impl<T: Accepts> Flags<T> {
+    pub fn accepts(&self, flags: &Flags<T>) -> bool {
+        self.0.accepts(&flags.0)
+    }
+}
+
 /// Contents storage.
 #[derive(SystemParam)]
 pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
@@ -180,12 +214,28 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub contents: Query<
         'w,
         's,
-        &'static mut ContentsItems<T>,
+        (
+            &'static mut GridContents,
+            &'static Flags<T>,
+            &'static mut ContainedItems,
+        ),
         // TODO?
         // Option<&'static mut Sections>,
     >,
-    pub items: Query<'w, 's, (&'static Name, &'static mut Item<T>, Option<&'static IconId>)>,
-    pub sections: Query<'w, 's, &'static Sections>,
+    pub items: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static Slot,
+            &'static Name,
+            &'static mut Item,
+            &'static Flags<T>,
+            Option<&'static IconId>,
+        ),
+    >,
+    // FIX: This should be an option part of the item and not grid contents.
+    pub sections: Query<'w, 's, (Option<&'static Layout>, &'static Sections)>,
 
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
     // pub item_flags: Query<'w, 's, &'static ItemFlags<T>>,
@@ -281,7 +331,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             }
             Some(ContentsResponse::SendItem(mut item)) => {
                 item.target = self.target.and_then(|t| {
-                    self.find_slot(t, &item.item, &item.source)
+                    self.find_section_slot(t, &item.item, &item.flags, &item.source)
                         .map(|(id, slot)| (id, slot, ui.id()))
                 });
                 self.resolve_drag(item);
@@ -307,78 +357,91 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         Some(self.drag.as_ref()?.target?.2)
     }
 
+    /// Show sections.
+    // Items no longer have contents, just sections.
     pub fn show_contents(
         &self,
         id: Entity,
         ui: &mut Ui,
     ) -> Option<InnerResponse<Option<ContentsResponse<T>>>> {
-        let c = self.get(id).unwrap();
-        Some(c.contents.ui(id, self, &c.items, ui))
+        use itertools::Itertools;
+
+        // Sections. TODO: The entity mapping issue indicates there's a bad case here that needs to be caught? Like if the `id` isn't a container at all or doesn't exist?
+
+        let (layout, sections) = self.sections.get(id).ok()?;
+        let layout = layout
+            .unwrap_or(&self.options.section_layout)
+            .to_egui_layout();
+
+        Some(ui.with_layout(layout, |ui| {
+            // TODO faster to fetch many first?
+            sections
+                .0
+                .iter()
+                .filter_map(|&id| {
+                    self.contents
+                        .get(id)
+                        .ok()
+                        .and_then(|(contents, flags, items)| {
+                            contents.ui(id, flags, self, &items.0, ui).inner
+                        })
+                })
+                .at_most_one()
+                .unwrap_or_else(|mut e| {
+                    tracing::error!("at most one item response");
+                    e.next()
+                })
+        }))
     }
 
-    pub fn get(&self, id: Entity) -> Option<&ContentsItems<T>> {
-        self.contents.get(id).ok()
-    }
-
-    // TODO: naming
-    pub fn items<'a>(
-        &'a self,
-        items: &'a [SlotItem],
-    ) -> impl Iterator<Item = (&'a SlotItem, (&'a Name, &'a Item<T>, Option<&'a IconId>))> {
-        let q_items = self.items.iter_many(items.iter().map(|i| i.1));
-        // This is absolutely an error if the entities don't exist.
-        itertools::zip_eq(items, q_items)
-    }
-
-    /// Inserts item with `id` into `container`. Returns final container id and slot.
+    /// Inserts item with `id` into `container`. Returns final container id and slot. This for an untargeted insert (no target slot). It will find the first available section and slot.
+    // Since we're not using relationships, there's no way to easily guarantee that this item isn't in another container already... FIX when/if we tie items to UI components (Bevy)
+    // TODO: more checking and return a Result? same for removal
+    // NOTE: Multiple items can share the same slot if they fit together.
     pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, usize)> {
-        let item = self.items.get(id).ok()?.1;
+        let (_, _slot, _, item, flags, _) = self.items.get(id).ok()?;
 
-        // This is fetching twice...
-        let (container, slot) = self.find_slot(container, item, &None)?;
-        let mut ci = self.contents.get_mut(container).ok()?;
+        // Find (sub-)container and free slot. This is fetching twice...
+        let (container, slot) = self.find_section_slot(container, &item, flags, &None)?;
+        let (mut contents, _flags, mut items) = self.contents.get_mut(container).ok()?;
 
-        ci.insert(slot, id, item);
+        assert!(slot < contents.slots(), "slot in contents length");
+        items.0.push(id);
+        contents.insert(slot, item);
+
+        // Assign slot.
+        self.commands.entity(id).insert(Slot(slot));
+
         Some((container, slot))
     }
 
+    // Containers and items are now always separate entities (each with separate flags). And the contents entities are contained in the section entity of the item. This means every item that's a container is always two entities...
+    // TODO: Remove?
     pub fn is_container(&self, id: Entity) -> bool {
-        self.contents.contains(id)
+        self.sections.contains(id)
     }
 
-    /// Returns true if the contents of `a` contains `b`. Recursively checks both contained items and sections so `b` can be an item or contents.
+    /// Returns true if the sections of `a` contains `b`.
     pub fn contains(&self, a: Entity, b: Entity) -> bool {
-        // a == b ||
-        self.contents.get(a).is_ok_and(|c| {
-            c.items
-                .iter()
-                .any(|SlotItem(_, i)| *i == b || self.contains(*i, b))
-        }) || self
-            .sections
+        self.sections
             .get(a)
-            .is_ok_and(|s| s.1.iter().any(|s| *s == b || self.contains(*s, b)))
+            .is_ok_and(|(_, s)| s.0.iter().any(|s| *s == b || self.contains(*s, b)))
     }
 
-    // Check sections first or last? Last is less recursion.
-    pub fn find_slot(
+    /// Search all sections of container `id` for an available slot.
+    pub fn find_section_slot(
         &self,
         id: Entity,
-        item: &Item<T>,
+        item: &Item,
+        flags: &Flags<T>,
         source: &DragSource,
     ) -> Option<(Entity, usize)> {
-        let find_slot = |id| {
-            self.contents
-                .get(id)
-                .ok()
-                .and_then(|ci| ci.contents.find_slot(id, item, source))
-        };
-
-        find_slot(id).or_else(|| {
-            self.sections
-                .get(id)
-                .ok()
-                .and_then(|s| s.1.iter().find_map(|id| find_slot(*id)))
-        })
+        // Pass in sections since we're probably already fetching it?
+        // Consider layout in the order?
+        self.contents
+            .iter_many(&self.sections.get(id).ok()?.1 .0)
+            .filter(|(_, f, _)| f.accepts(&flags))
+            .find_map(|(c, ..)| c.find_slot(id, item, source))
     }
 
     pub fn resolve_drag(&mut self, drag: DragItem<T>) {
@@ -400,10 +463,10 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             return tracing::info!("cannot move an item inside itself");
         }
 
-        let (_name, mut item, _) = self.items.get_mut(id).expect("item exists");
+        let (.., mut item, _flags, _) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
-        let (mut src, dest) = if container_id == target_id {
+        let ((mut contents, _flags, mut items), dest) = if container_id == target_id {
             (
                 self.contents
                     .get_mut(container_id)
@@ -417,7 +480,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         };
 
         // Remove from source container.
-        src.remove(container_slot, id, item.as_ref());
+        {
+            let index = items.0.iter().position(|a| *a == id).unwrap();
+            items.0.swap_remove(index);
+            contents.remove(container_slot, &item);
+        }
 
         // Copy rotation and shape from the dragged item. Do this before inserting so the shape is painted correctly.
         if item.rotation != rotation {
@@ -425,8 +492,13 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             item.rotation = rotation;
         }
 
-        // Insert into destination container (or source if same). TODO: put slot_item back on error?
-        dest.unwrap_or(src).insert(slot, id, item.as_ref());
+        // Insert into destination container (or source if same). TODO: put slot_item back on error? There is no error?
+        self.commands.entity(id).insert(Slot(slot));
+        {
+            let (mut contents, _flags, mut items) = dest.unwrap_or((contents, _flags, items));
+            items.0.push(id);
+            contents.insert(slot, &item);
+        }
 
         // Fire events.
         if container_id == target_id {
@@ -452,53 +524,14 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     }
 }
 
-impl<T> ContentsItems<T>
-where
-    T: Accepts,
-{
-    // TODO: more checking and return a Result? same for removal
-    pub fn insert(&mut self, slot: usize, id: Entity, item: &Item<T>) {
-        assert!(slot < self.contents.slots(), "slot in contents length");
-
-        // Multiple items can share the same slot if they fit together.
-        let i = self
-            .items
-            .binary_search_by(|SlotItem(k, _)| k.cmp(&slot))
-            // .expect_err("item slot free");
-            .unwrap_or_else(|i| i);
-        self.items.insert(i, SlotItem(slot, id));
-
-        self.contents.insert(slot, item);
-    }
-
-    // return something must_use? no dangling items...
-    pub fn remove(&mut self, slot: usize, id: Entity, item: &Item<T>) {
-        self.items
-            .iter()
-            .position(|slot_item| *slot_item == SlotItem(slot, id))
-            //.position(|(_, item)| item == id)
-            .map(|i| self.items.remove(i))
-            .expect("item exists");
-
-        self.contents.remove(slot, item);
-    }
-}
-
 /// A widget to display the contents of a container.
-pub trait Contents<T: Accepts> {
-    fn boxed(self) -> Box<dyn Contents<T> + Send + Sync>
-    where
-        Self: Sized + Send + Sync + 'static,
-    {
-        Box::new(self)
-    }
-
+pub trait Contents {
     /// Number of slots this container holds.
     fn slots(&self) -> usize;
 
-    fn insert(&mut self, slot: usize, item: &Item<T>);
+    fn insert(&mut self, slot: usize, item: &Item);
 
-    fn remove(&mut self, slot: usize, item: &Item<T>);
+    fn remove(&mut self, slot: usize, item: &Item);
 
     /// Returns a position for a given slot relative to the contents' origin.
     fn pos(&self, slot: usize) -> Vec2;
@@ -507,14 +540,13 @@ pub trait Contents<T: Accepts> {
     /// invalid results if the offset is outside the container.
     fn slot(&self, offset: Vec2) -> usize;
 
-    fn accepts(&self, item: &Item<T>) -> bool;
+    // fn accepts(&self, item: &Item) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, id: Entity, item: &Item<T>, slot: usize, source: &DragSource) -> bool;
+    fn fits(&self, id: Entity, item: &Item, slot: usize, source: &DragSource) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot(&self, id: Entity, item: &Item<T>, source: &DragSource)
-        -> Option<(Entity, usize)>;
+    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, usize)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {
@@ -528,20 +560,21 @@ pub trait Contents<T: Accepts> {
     }
 
     /// Draw contents.
-    fn body(
+    fn body<T: Accepts>(
         &self,
         id: Entity,
         contents: &ContentsStorage<T>,
-        items: &[SlotItem],
+        items: &[Entity],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 
     /// Draw container.
-    fn ui(
+    fn ui<T: Accepts>(
         &self,
         id: Entity,
+        flags: &Flags<T>,
         contents: &ContentsStorage<T>,
-        items: &[SlotItem],
+        items: &[Entity],
         ui: &mut egui::Ui,
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 }

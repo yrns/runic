@@ -1,14 +1,14 @@
 use bevy::{
     asset::AssetLoadFailedEvent,
-    ecs::{
-        entity::MapEntities, reflect::ReflectMapEntities, resource::IsResource, system::SystemId,
-    },
+    ecs::{resource::IsResource, system::SystemId},
     prelude::*,
     tasks::IoTaskPool,
     window::RequestRedraw,
     winit::WinitSettings,
     world_serialization::DynamicWorld,
 };
+#[allow(unused)]
+use bevy_ecs::template::*;
 use bevy_egui::{
     egui::{self, Direction},
     EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, EguiUserTextures,
@@ -24,23 +24,23 @@ bitflags::bitflags! {
     #[serde(transparent)]
     #[reflect(opaque)]
     #[reflect(Hash, PartialEq, Debug, Deserialize, Serialize)]
-    pub struct Flags: u32 {
-        const Weapon = 1;
-        const Armor = 1 << 1;
-        const Potion = 1 << 2;
-        const TradeGood = 1 << 3;
-        const Container = 1 << 4;
+    pub struct ExFlags: u32 {
+        const WEAPON = 1;
+        const ARMOR = 1 << 1;
+        const POTION = 1 << 2;
+        const TRADE_GOOD = 1 << 3;
+        const CONTAINER = 1 << 4;
     }
 }
 
 // By default, containers can contain any item. The derived default (0) does not work well, see https://docs.rs/bitflags/latest/bitflags/index.html#zero-bit-flags. This is why items require flags.
-impl Default for Flags {
+impl Default for ExFlags {
     fn default() -> Self {
         Self::all()
     }
 }
 
-impl std::fmt::Display for Flags {
+impl std::fmt::Display for ExFlags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names = self.iter_names().map(|(n, _)| n);
         f.write_str(&itertools::join(names, "|"))
@@ -49,17 +49,8 @@ impl std::fmt::Display for Flags {
 
 // FIX? The migration guide explicitly mentions that it is no longer necessary to add derive MapEntities for a resource (<https://bevy.org/learn/migration-guides/0-18-to-0-19/#miscellaneous>)...
 
-// These need to be reflectable to be written to the contents scene, as well as the type registered. An alternative would be to show windows for all root level contents that aren't items. Or add a separate marker component(s).
-#[derive(Debug, Resource, MapEntities, Reflect)]
-#[reflect(Debug, Resource, MapEntities)]
-struct PaperDoll(#[entities] Entity);
-
-#[derive(Debug, Resource, MapEntities, Reflect)]
-#[reflect(Debug, Resource, MapEntities)]
-struct Ground(#[entities] Entity);
-
-// Remembers which containers are opened.
-#[derive(Component, Reflect)]
+// Remembers which containers are opened. TODO: move to lib?
+#[derive(Component, Clone, Default, Reflect)]
 #[reflect(Component)]
 #[component(storage = "SparseSet")]
 struct Open;
@@ -74,14 +65,14 @@ enum AppState {
 fn main() {
     App::new()
         .insert_resource(WinitSettings::default())
-        .register_type::<PaperDoll>()
-        .register_type::<Ground>()
-        .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
+        .add_plugins((DefaultPlugins, RunicPlugin::<ExFlags>::default()))
         .init_state::<AppState>()
         .add_plugins(EguiPlugin::default())
         .add_systems(Startup, startup)
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
+        // TEMP
+        .add_systems(Update, paint_ground)
         .add_systems(
             Update,
             spawn_items
@@ -90,7 +81,7 @@ fn main() {
         )
         .add_systems(
             EguiPrimaryContextPass,
-            (item_icon_changed::<Flags>, update)
+            (item_icon_changed::<ExFlags>, update)
                 .chain()
                 .run_if(in_state(AppState::Running)),
         )
@@ -276,13 +267,10 @@ fn save_items(
 }
 
 fn save_items_scene(world: &mut World) {
-    let mut query =
-        world.query_filtered::<Entity, Or<(With<Item<Flags>>, With<ContentsItems<Flags>>)>>();
+    let mut query = world.query_filtered::<Entity, Or<(With<Item>, With<GridContents>)>>();
     let type_registry = world.resource::<AppTypeRegistry>().read();
     let scene = DynamicWorldBuilder::from_world(&world, &type_registry)
         // .deny_all_resources()
-        .allow_resource::<Ground>()
-        .allow_resource::<PaperDoll>()
         .deny_component::<PlaybackSettings>()
         .extract_resources()
         .extract_entities(query.iter(&world))
@@ -310,107 +298,186 @@ fn save_items_scene(world: &mut World) {
         .detach();
 }
 
+// We can't use macros inside bsn! and this function is impossible to use.
+#[allow(unused)]
+fn sections<L: SceneList + Clone>(scene_list: L) -> impl Scene {
+    template(move |ctx| {
+        let scene_list = scene_list.clone();
+        Ok(Sections(ctx.entity.world_scope(move |world| {
+            world.spawn_scene_list(scene_list)
+        })?))
+    })
+}
+
+fn items() -> impl SceneList {
+    bsn_list! [
+        #Boomerang
+        // This really shouldn't be Default.
+        Slot(0)
+        Icon("boomerang.png")
+        Item {
+            rotation: ItemRotation::None,
+            shape: { [[1, 1], [1, 1]] },
+        }
+        Flags<ExFlags>(ExFlags::WEAPON),
+
+        #Pouch
+        Slot(2)
+        Icon("pouch.png")
+        Item {
+            shape: { Shape::new((2, 2), true) }
+        }
+        Flags<ExFlags>(ExFlags::CONTAINER)
+        Layout { direction: Direction::LeftToRight }
+        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+            GridContents {
+                header: { "Any:".to_owned() },
+                shape: {(3, 2)},
+            }
+            Flags<ExFlags>({ ExFlags::all() })
+            ContainedItems,
+            GridContents {
+                header: { "P1:".to_owned() },
+                shape: {(1, 1)},
+            }
+            Flags<ExFlags>({ ExFlags::POTION })
+            ContainedItems,
+            GridContents {
+                header: { "P2:".to_owned() },
+                shape: {(1, 1)},
+            }
+            Flags<ExFlags>({ ExFlags::POTION })
+            ContainedItems
+        ]).unwrap())))),
+
+        #ShortSword
+        Name("Short-sword")
+        Slot(4)
+        Icon("short-sword.png")
+        Item {
+            rotation: ItemRotation::R90,
+            shape: { Shape::new((1, 3), true) }
+        }
+        Flags<ExFlags>(ExFlags::WEAPON),
+
+        // Potion 1 & 2 are almost the same?
+        #Potion1
+        Name("Potion 1")
+        Slot(5)
+        Icon("potion.png")
+        Item
+        Flags<ExFlags>(ExFlags::POTION),
+
+        #Potion2
+        Name("Potion 2")
+        Slot(6)
+        Icon("potion.png")
+        Item
+        Flags<ExFlags>(ExFlags::POTION),
+    ]
+}
+
+// TEMP Handle fill for containers with newly spawned items. The builder used to do this. This could also be an observer.
+// We could also assign the slot here if we wanted.
+fn paint_ground(
+    mut contents: Query<(&mut GridContents, &ContainedItems), Added<ContainedItems>>,
+    items: Query<(&Item, &Slot)>,
+) {
+    for (mut gc, ci) in &mut contents {
+        for (item, slot) in items.iter_many(&ci.0) {
+            gc.insert(slot.0, item);
+        }
+    }
+}
+
 fn spawn_items(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut storage: ContentsStorage<Flags>,
+    _asset_server: Res<AssetServer>,
+    mut _storage: ContentsStorage<ExFlags>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     info!("spawning items!");
 
     next_state.set(AppState::Running);
 
-    // Spawn a bunch of items on the ground.
-    let ground = storage.spawn(
-        GridContents::<_>::new((10, 10))
-            .builder()
-            .with_name("Ground".into())
-            .with_items([
-                ContentsBuilder::item(
-                    Item::new(Flags::Weapon).with_shape(Shape::from_ones(2, [1, 1, 1, 0])),
-                )
-                .with_icon(asset_server.load("boomerang.png"))
-                .with_name("Boomerang".into()),
-                ContentsBuilder::item(Item::new(Flags::Container).with_shape((2, 2)))
-                    .with_icon(asset_server.load("pouch.png"))
-                    .with_name("Pouch".into())
-                    .with_contents(
-                        GridContents::<_>::new((3, 2)).with_header("Any:"), // .with_flags(Flags::Container),
-                    )
-                    // This only works for sections, not the main container. So in this case, the main container will still be below the sections.
-                    .with_section_layout(Layout::new(Direction::LeftToRight, false))
-                    .with_sections([
-                        GridContents::new((1, 1))
-                            .with_header("P1:")
-                            .with_flags(Flags::Potion),
-                        GridContents::new((1, 1))
-                            .with_header("P2:")
-                            .with_flags(Flags::Potion),
-                    ]),
-                ContentsBuilder::item(
-                    Item::new(Flags::Weapon)
-                        .with_shape((3, 1))
-                        .with_rotation(ItemRotation::R90),
-                )
-                .with_icon(asset_server.load("short-sword.png"))
-                .with_name(Name::from("Short sword")),
-                ContentsBuilder::item(Item::new(Flags::Potion).with_shape((1, 1)))
-                    .with_icon(asset_server.load("potion.png"))
-                    .with_name(Name::from("Potion 1")),
-                ContentsBuilder::item(Item::new(Flags::Potion).with_shape((1, 1)))
-                    .with_icon(asset_server.load("potion.png"))
-                    .with_name(Name::from("Potion 2")),
-                // ContentsBuilder::item(
-                //     Item::new(Flags::TradeGood)
-                //         .with_icon(textures.add_image(asset_server.load("artifact.png")))
-                //         .with_shape((1, 1)),
-                // )
-                // .with_name(Name::from("Artifact")),
-            ]),
-    );
+    // bsn becomes easier if we use relationships? We still don't have a root entity for all items, though.
+    // TODO fill?
+    let scene_list = bsn_list![
+        #Ground
+        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+            GridContents {
+                shape: { (10, 10) },
+                header: { "Ground 10x10".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::all() })
+            template(|ctx| Ok(ContainedItems(ctx.entity.world_scope(|world| world.spawn_scene_list(items()))?)))
+        ]).unwrap()))))
+        Open,
 
-    // Setup paper doll sections.
-    let sub_sections = [
-        GridContents::new((1, 2)).with_header("A1"),
-        GridContents::new((1, 2)).with_header("A2"),
-        // the last section only accepts weapons
-        GridContents::new((1, 2))
-            .with_header("W1")
-            .with_flags(Flags::Weapon),
+        // There is no longer a "main" contents which always appears at the bottom of the other sections. Which means now there's no way to have alternating layouts, and we don't want to do recursive sections just for layout purposes. The layout stuff we'll have to redo later anyway, once we switch to Bevy's native UI.
+        #PaperDoll
+        Layout { direction: Direction::TopDown }
+        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+            GridContents {
+                shape: { (1, 2) },
+                header: { "A1".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::all() })
+            ContainedItems,
+
+            GridContents {
+                shape: { (1, 2) },
+                header: { "A2".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::all() })
+            ContainedItems,
+
+            GridContents {
+                shape: { (1, 2) },
+                header: { "W1".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::WEAPON })
+            ContainedItems,
+
+            GridContents {
+                shape: { (2, 2) },
+                header: { "Only potions! 2x2:".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::POTION })
+            ContainedItems,
+
+            GridContents {
+                shape: { (3, 2) },
+                header: { "Weapon (3x2 MAX):".to_owned() },
+                expands: true,
+            }
+            Flags<ExFlags>({ ExFlags::WEAPON })
+            ContainedItems,
+
+            GridContents {
+                shape: { (2, 2) },
+                header: { "Holds a container:".to_owned() },
+                expands: true,
+                inline: true,
+            }
+            Flags<ExFlags>({ ExFlags::CONTAINER })
+            ContainedItems,
+
+            GridContents {
+                shape: { (4, 4) },
+                header: { "Bag of any! 4x4:".to_owned() },
+            }
+            Flags<ExFlags>({ ExFlags::all() })
+            ContainedItems,
+
+        ]).unwrap()))))
+        Open
     ];
 
-    let sections = [
-        GridContents::<_>::new((2, 2))
-            .with_header("Only potions! 2x2:")
-            .with_flags(Flags::Potion)
-            .builder(),
-        GridContents::<_>::new((3, 2))
-            .with_expands(true)
-            .with_header("Weapon (3x2 MAX):")
-            .with_flags(Flags::Weapon)
-            .builder(),
-        GridContents::<_>::new((2, 2))
-            .with_header("Holds a container:")
-            .with_expands(true)
-            .with_inline(true)
-            .with_flags(Flags::Container)
-            .builder()
-            .with_sections(sub_sections),
-    ];
-
-    let paper_doll = storage.spawn(
-        GridContents::<_>::new((4, 4))
-            .with_header("Bag of any! 4x4:")
-            .builder()
-            .with_name("Paper doll".into())
-            .with_section_layout(Layout::new(Direction::TopDown, false))
-            .with_sections(sections),
-    );
-
-    commands.insert_resource(PaperDoll(paper_doll));
-    commands.insert_resource(Ground(ground));
+    commands.spawn_scene_list(scene_list);
 }
 
+// TODO lib
 fn item_icon_changed<T: Accepts>(
     mut commands: Commands,
     mut icons: Query<(Entity, &Icon), Changed<Icon>>,
@@ -431,37 +498,38 @@ fn item_icon_changed<T: Accepts>(
 
 fn update(
     mut contexts: EguiContexts,
-    mut storage: ContentsStorage<Flags>,
-    paper_doll: Res<PaperDoll>,
-    ground: Res<Ground>,
+    mut storage: ContentsStorage<ExFlags>,
     opened: Query<(Entity, &Name), (With<Open>, Without<IsResource>)>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
     storage.update(ctx);
 
+    // TODO component
     // Control-clicking items in the inventory will send them to ground.
-    *storage.target = Some(ground.0);
+    //*storage.target = Some(ground.0);
 
-    egui::Window::new("Paper doll:")
-        .resizable(false)
-        .movable(true)
-        .max_width(512.0)
-        .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
-        .show(ctx, |ui| {
-            storage.show(paper_doll.0, ui);
-        });
+    // TODO: Titles stored in ECS?
+
+    // egui::Window::new("Paper doll:")
+    //     .resizable(false)
+    //     .movable(true)
+    //     .max_width(512.0)
+    //     .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
+    //     .show(ctx, |ui| {
+    //         storage.show(paper_doll.0, ui);
+    //     });
 
     // Control-clicking items on the ground will send them to the inventory.
-    *storage.target = Some(paper_doll.0);
+    //*storage.target = Some(paper_doll.0);
 
-    egui::Window::new("Ground 10x10:")
-        .resizable(false)
-        .movable(true)
-        .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
-        .show(ctx, |ui| {
-            storage.show(ground.0, ui);
-        });
+    // egui::Window::new("Ground 10x10:")
+    //     .resizable(false)
+    //     .movable(true)
+    //     .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
+    //     .show(ctx, |ui| {
+    //         storage.show(ground.0, ui);
+    //     });
 
     // TODO Should containers opened in a window auto-raise, when dragged to? They can end up behind the fixed contents (ground, etc.).
 

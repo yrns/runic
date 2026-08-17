@@ -8,23 +8,21 @@ use bevy_reflect::prelude::*;
 use crate::*;
 
 /// An item.
-#[derive(Component, Clone, Debug, Reflect)]
+#[derive(Component, Clone, Debug, Reflect, FromTemplate)]
 #[reflect(Component)]
-pub struct Item<T> {
+pub struct Item {
     pub rotation: ItemRotation,
     /// The shape represents this items dimensions (and filled "slots" in case it is not rectangular).
     pub shape: Shape,
-    pub flags: T,
 }
 
-impl<T> Item<T> {
+impl Item {
     // Flags are required since the empty (default) flags allow the item to fit any container
     // regardless of the container's flags.
-    pub fn new(flags: T) -> Self {
+    pub fn new() -> Self {
         Self {
             rotation: Default::default(),
             shape: Shape::new([1, 1], true),
-            flags,
         }
     }
 
@@ -32,11 +30,6 @@ impl<T> Item<T> {
     pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
         self.shape = shape.into();
         self.rotation = ItemRotation::None;
-        self
-    }
-
-    pub fn with_flags(mut self, flags: impl Into<T>) -> Self {
-        self.flags = flags.into();
         self
     }
 
@@ -49,7 +42,7 @@ impl<T> Item<T> {
 
     /// Size in pixels.
     pub fn size(&self, slot_dim: f32) -> Vec2 {
-        (self.shape.size.as_vec2() * slot_dim).as_ref().into()
+        (self.shape.size().as_vec2() * slot_dim).as_ref().into()
     }
 
     /// The width of the shape (in slots).
@@ -108,19 +101,17 @@ impl<T> Item<T> {
 
     /// Show item. `slot` is the slot we occupy in the container.
     #[allow(clippy::too_many_arguments)]
-    pub fn ui(
+    pub fn ui<T: Copy>(
         &self,
         slot: usize,
         id: Entity,
+        flags: &Flags<T>,
         name: &str,
         drag: Option<&DragItem<T>>,
         icon: TextureId,
         slot_dim: f32,
         ui: &mut Ui,
-    ) -> Option<ContentsResponse<T>>
-    where
-        T: Clone + std::fmt::Display,
-    {
+    ) -> Option<ContentsResponse<T>> {
         let eid = Id::new(id);
         let p = ui.ctx().pointer_latest_pos();
 
@@ -187,7 +178,12 @@ impl<T> Item<T> {
                             } else if response.clicked()
                                 && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
                             {
-                                Some(ContentsResponse::SendItem(DragItem::new(id, self.clone())))
+                                let flags = flags.clone();
+                                Some(ContentsResponse::SendItem(DragItem::new(
+                                    id,
+                                    self.clone(),
+                                    flags,
+                                )))
                             } else if response.drag_started() {
                                 // Contents::body sets the source.
                                 Some(ContentsResponse::NewDrag(DragItem {
@@ -200,7 +196,7 @@ impl<T> Item<T> {
                                     origin: response.rect.min,
                                     offset_slot,
 
-                                    ..DragItem::new(id, self.clone())
+                                    ..DragItem::new(id, self.clone(), *flags)
                                 }))
                             } else {
                                 None
@@ -211,19 +207,18 @@ impl<T> Item<T> {
         }
     }
 
-    fn hover_text(&self, name: &str, style: &Style) -> LayoutJob
-    where
-        T: std::fmt::Display,
-    {
+    fn hover_text(&self, name: &str, style: &Style) -> LayoutJob {
         let mut job = LayoutJob::default();
         RichText::new(name)
             .color(style.visuals.text_color())
             .append_to(&mut job, style, FontSelection::Default, Align::Center);
 
-        RichText::new(format!("\n{}", self.flags))
-            .small()
-            .color(style.visuals.text_color())
-            .append_to(&mut job, style, FontSelection::Default, Align::Center);
+        // FIX post-egui
+        // RichText::new(format!("\n{}", self.flags))
+        //     .small()
+        //     .color(style.visuals.text_color())
+        //     .append_to(&mut job, style, FontSelection::Default, Align::Center);
+
         job
     }
 

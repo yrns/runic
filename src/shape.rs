@@ -8,6 +8,7 @@
 //     fill: bits![1],
 // };
 
+// use bevy_ecs::template::*;
 use bevy_egui::egui;
 use bevy_math::UVec2;
 use bevy_reflect::prelude::*;
@@ -20,8 +21,93 @@ pub fn to_size(v: egui::Vec2) -> Size {
 
 #[derive(Clone, Debug, PartialEq, Eq, Reflect)]
 pub struct Shape {
-    pub size: Size,
-    pub fill: Vec<bool>,
+    pub(crate) size: Size,
+    pub(crate) fill: Vec<bool>, // bit-vec is in the lockfile already.
+}
+
+/*
+#[derive(Debug)]
+pub struct ShapeTemplate {
+    pub(crate) size: Size,
+    pub(crate) fill: Vec<bool>,
+}
+
+impl Default for ShapeTemplate {
+    fn default() -> Self {
+        let Shape { size, fill } = Shape::from([[1]]);
+        Self { size, fill }
+    }
+}
+
+impl Template for ShapeTemplate {
+    type Output = Shape;
+
+    fn build_template(
+        &self,
+        _context: &mut TemplateContext,
+    ) -> bevy_ecs::error::Result<Self::Output> {
+        Ok(Shape {
+            size: self.size.clone(),
+            fill: self.fill.clone(),
+        })
+    }
+
+    fn clone_template(&self) -> Self {
+        ShapeTemplate {
+            size: self.size.clone(),
+            fill: self.fill.clone(),
+        }
+    }
+}
+
+impl<const X: usize, const Y: usize> From<[[u8; X]; Y]> for ShapeTemplate {
+    fn from(value: [[u8; X]; Y]) -> Self {
+        let Shape { size, fill } = value.into();
+        Self { size, fill }
+    }
+}
+
+impl From<(u32, u32)> for ShapeTemplate {
+    fn from(value: (u32, u32)) -> Self {
+        let Shape { size, fill } = value.into();
+        Self { size, fill }
+    }
+}
+
+impl FromTemplate for Shape {
+    type Template = ShapeTemplate;
+}
+ */
+
+// NOTE: Default only works because the fields are private.
+impl Default for Shape {
+    fn default() -> Self {
+        Self::from([[1]])
+    }
+}
+
+// impl From<(u32, u32)> for Shape {
+//     fn from((x, y): (u32, u32)) -> Self {
+//         Self {
+//             size: UVec2 { x, y },
+//             // Filled would be for items, empty for containers? Containers are never being populated via From? Maybe this is reversed?
+//             fill: vec![false; (x * y) as usize],
+//         }
+//     }
+// }
+
+impl<const X: usize, const Y: usize> From<[[u8; X]; Y]> for Shape {
+    fn from(fill: [[u8; X]; Y]) -> Self {
+        const {
+            assert!(X > 0);
+            assert!(Y > 0);
+        }
+
+        Self {
+            size: Size::new(u32::try_from(X).unwrap(), u32::try_from(Y).unwrap()),
+            fill: fill.iter().flatten().map(|f| *f > 0).collect(),
+        }
+    }
 }
 
 // This is only useful if we change the type.
@@ -71,6 +157,10 @@ impl Shape {
         self.size.y as usize
     }
 
+    pub fn size(&self) -> Size {
+        self.size
+    }
+
     pub fn area(&self) -> usize {
         self.size.element_product() as usize
     }
@@ -83,6 +173,7 @@ impl Shape {
         pt.x <= self.size.x && pt.y <= self.size.y
     }
 
+    // TODO: std::range::*?
     fn overlay_range(&self, other: &Shape, slot: usize) -> Option<std::ops::RangeInclusive<usize>> {
         let p1 = self.pos(slot);
         let p2 = p1 + other.size;
@@ -219,13 +310,22 @@ impl std::fmt::Display for Shape {
 
 impl From<Size> for Shape {
     fn from(size: Size) -> Self {
-        Shape::new(size, true)
+        Shape::new(size, false)
     }
 }
 
-impl From<(usize, usize)> for Shape {
-    fn from((w, h): (usize, usize)) -> Self {
-        Shape::new(Size::new(w as u32, h as u32), true)
+impl From<(u32, u32)> for Shape {
+    fn from((x, y): (u32, u32)) -> Self {
+        Shape::new(Size::new(x, y), false)
+    }
+}
+
+impl std::ops::Not for Shape {
+    type Output = Self;
+
+    fn not(mut self) -> Self::Output {
+        self.fill.iter_mut().for_each(|slot| *slot = !*slot);
+        self
     }
 }
 

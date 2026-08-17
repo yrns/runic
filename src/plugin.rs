@@ -12,9 +12,11 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed> Plugin f
     fn build(&self, app: &mut App) {
         // TODO: separate options per T?
         app.init_resource::<Options>()
-            .register_type::<ContentsItems<T>>()
+            .register_type::<Flags<T>>()
+            .register_type::<GridContents>()
+            .register_type::<ContainedItems>()
             .register_type::<Sections>()
-            .register_type::<Item<T>>()
+            .register_type::<Item>()
             .register_type::<Icon>();
     }
 }

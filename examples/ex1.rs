@@ -317,7 +317,7 @@ fn items() -> impl SceneList {
         Icon("boomerang.png")
         Item {
             rotation: ItemRotation::None,
-            shape: { [[1, 1], [1, 1]] },
+            shape: { [[1, 1], [1, 0]] },
         }
         Flags<ExFlags>(ExFlags::WEAPON),
 

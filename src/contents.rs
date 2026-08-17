@@ -1,14 +1,13 @@
 // mod builder;
 mod grid;
 
-use bevy_ecs::{prelude::*, system::SystemParam, template::*};
+use bevy_ecs::{prelude::*, system::SystemParam};
 use bevy_egui::egui::{
     self,
     ecolor::{tint_color_towards, Color32},
     Align, Direction, Id, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
-use bevy_scene::*;
 use serde::{Deserialize, Serialize};
 
 use crate::*;
@@ -98,6 +97,7 @@ impl From<Vec<Entity>> for Sections {
 pub enum ContentsResponse<T> {
     NewTarget((Entity, usize, Id)),
     NewDrag(DragItem<T>),
+    // Ctrl-click sends then item to container's default target.
     SendItem(DragItem<T>),
     Open(Entity),
 }
@@ -215,6 +215,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         'w,
         's,
         (
+            Entity,
             &'static mut GridContents,
             &'static Flags<T>,
             &'static mut ContainedItems,
@@ -382,7 +383,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                     self.contents
                         .get(id)
                         .ok()
-                        .and_then(|(contents, flags, items)| {
+                        .and_then(|(_, contents, flags, items)| {
                             contents.ui(id, flags, self, &items.0, ui).inner
                         })
                 })
@@ -403,7 +404,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
 
         // Find (sub-)container and free slot. This is fetching twice...
         let (container, slot) = self.find_section_slot(container, &item, flags, &None)?;
-        let (mut contents, _flags, mut items) = self.contents.get_mut(container).ok()?;
+        let (_, mut contents, _flags, mut items) = self.contents.get_mut(container).ok()?;
 
         assert!(slot < contents.slots(), "slot in contents length");
         items.0.push(id);
@@ -440,8 +441,8 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Consider layout in the order?
         self.contents
             .iter_many(&self.sections.get(id).ok()?.1 .0)
-            .filter(|(_, f, _)| f.accepts(&flags))
-            .find_map(|(c, ..)| c.find_slot(id, item, source))
+            .filter(|(_, _, f, _)| f.accepts(&flags))
+            .find_map(|(id, contents, ..)| contents.find_slot(id, item, source))
     }
 
     pub fn resolve_drag(&mut self, drag: DragItem<T>) {
@@ -466,7 +467,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         let (.., mut item, _flags, _) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
-        let ((mut contents, _flags, mut items), dest) = if container_id == target_id {
+        let ((_, mut contents, _flags, mut items), dest) = if container_id == target_id {
             (
                 self.contents
                     .get_mut(container_id)
@@ -476,7 +477,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         } else if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
             (src, Some(dest))
         } else {
-            return tracing::error!("no contents for source or destination");
+            return tracing::error!(
+                "no contents for source ({}) or destination ({})",
+                container_id,
+                target_id,
+            );
         };
 
         // Remove from source container.
@@ -495,7 +500,8 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Insert into destination container (or source if same). TODO: put slot_item back on error? There is no error?
         self.commands.entity(id).insert(Slot(slot));
         {
-            let (mut contents, _flags, mut items) = dest.unwrap_or((contents, _flags, items));
+            let (_, mut contents, _flags, mut items) =
+                dest.unwrap_or((id, contents, _flags, items));
             items.0.push(id);
             contents.insert(slot, &item);
         }

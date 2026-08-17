@@ -344,8 +344,9 @@ impl<const N: usize> Contents for GridContents<N> {
                             shape_mesh(&item.shape, min_rect, self.pos(slot), color, N as f32);
                         ui.painter().set(shadow, mesh);
 
-                        target
-                            .map(|(item, slot)| ContentsResponse::NewTarget((item, slot, ui.id())))
+                        target.map(|(section, slot)| {
+                            ContentsResponse::NewTarget((section, slot, ui.id()))
+                        })
                     } else {
                         // Don't set target to non-contents.
                         None

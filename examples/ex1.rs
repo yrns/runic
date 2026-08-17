@@ -330,18 +330,23 @@ fn items() -> impl SceneList {
         Flags<ExFlags>(ExFlags::CONTAINER)
         Layout { direction: Direction::LeftToRight }
         template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+            #PouchAny
             GridContents {
                 header: { "Any:".to_owned() },
                 shape: {(3, 2)},
             }
             Flags<ExFlags>({ ExFlags::all() })
             ContainedItems,
+
+            #PouchP1,
             GridContents {
                 header: { "P1:".to_owned() },
                 shape: {(1, 1)},
             }
             Flags<ExFlags>({ ExFlags::POTION })
             ContainedItems,
+
+            #PouchP2,
             GridContents {
                 header: { "P2:".to_owned() },
                 shape: {(1, 1)},

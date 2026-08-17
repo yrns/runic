@@ -165,6 +165,9 @@ impl Item {
                     .and_then(|(offset_slot, offset)| {
                         // Dragging a different item? Drag to item.
                         if drag.is_some() {
+                            // Why is this being spammed? Why is this not calculated in a mouse move event?
+
+                            // This slot is the slot the target item is in in its container, which gets rewritten outside in contents.
                             Some(ContentsResponse::NewTarget((id, slot, ui.id())))
                         } else {
                             ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);

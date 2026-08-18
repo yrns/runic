@@ -55,19 +55,6 @@ impl Layout {
     }
 }
 
-/// List of sections for this item (subcontainers).
-// TODO: Should GridContents be renamed Section?
-// TODO: Children?
-#[derive(Component, Clone, Default, Debug, Reflect)]
-#[reflect(Component)]
-pub struct Sections(pub Vec<Entity>);
-
-impl From<Vec<Entity>> for Sections {
-    fn from(value: Vec<Entity>) -> Self {
-        Self(value)
-    }
-}
-
 /// Response (inner) returned from `Contents::ui` and `Item::ui`. Sets new drag or current drag target.
 #[derive(Debug)]
 pub enum ContentsResponse<T> {
@@ -212,7 +199,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
         ),
     >,
     // FIX: This should be an option part of the item and not grid contents.
-    pub sections: Query<'w, 's, (Option<&'static Layout>, &'static Sections)>,
+    pub sections: Query<'w, 's, (Option<&'static Layout>, &'static Children)>,
 
     // pub container_flags: Query<'w, 's, &'static ContainerFlags<T>>,
     // pub item_flags: Query<'w, 's, &'static ItemFlags<T>>,
@@ -353,9 +340,8 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         Some(ui.with_layout(layout, |ui| {
             // TODO faster to fetch many first?
             sections
-                .0
                 .iter()
-                .filter_map(|&id| {
+                .filter_map(|id| {
                     self.contents
                         .get(id)
                         .ok()
@@ -407,7 +393,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn contains(&self, a: Entity, b: Entity) -> bool {
         self.sections
             .get(a)
-            .is_ok_and(|(_, s)| s.0.iter().any(|s| *s == b || self.contains(*s, b)))
+            .is_ok_and(|(_, s)| s.iter().any(|s| s == b || self.contains(s, b)))
     }
 
     /// Search all sections of container `id` for an available slot.
@@ -421,7 +407,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Pass in sections since we're probably already fetching it?
         // Consider layout in the order?
         self.contents
-            .iter_many(&self.sections.get(id).ok()?.1 .0)
+            .iter_many(self.sections.get(id).ok()?.1.iter())
             .filter(|(_, _, f, _)| f.accepts(&flags))
             .find_map(|(id, contents, ..)| contents.find_slot(id, item, source))
     }

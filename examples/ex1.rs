@@ -298,17 +298,6 @@ fn save_items_scene(world: &mut World) {
         .detach();
 }
 
-// We can't use macros inside bsn! and this function is impossible to use.
-#[allow(unused)]
-fn sections<L: SceneList + Clone>(scene_list: L) -> impl Scene {
-    template(move |ctx| {
-        let scene_list = scene_list.clone();
-        Ok(Sections(ctx.entity.world_scope(move |world| {
-            world.spawn_scene_list(scene_list)
-        })?))
-    })
-}
-
 fn items() -> impl SceneList {
     bsn_list! [
         #Boomerang
@@ -329,7 +318,7 @@ fn items() -> impl SceneList {
         }
         Flags<ExFlags>(ExFlags::CONTAINER)
         Layout { direction: Direction::LeftToRight }
-        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+        Children [
             #PouchAny
             GridContents {
                 header: { "Any:".to_owned() },
@@ -350,7 +339,7 @@ fn items() -> impl SceneList {
                 shape: {(1, 1)},
             }
             Flags<ExFlags>({ ExFlags::POTION })
-        ]).unwrap())))),
+        ],
 
         #ShortSword
         Name("Short-sword")
@@ -406,20 +395,20 @@ fn spawn_items(
     // TODO fill?
     let scene_list = bsn_list![
         #Ground
-        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+        Children [
             GridContents {
                 shape: { (10, 10) },
                 header: { "Ground 10x10".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::all() })
             Children [{ items() }]
-        ]).unwrap()))))
+        ]
         Open,
 
         // There is no longer a "main" contents which always appears at the bottom of the other sections. Which means now there's no way to have alternating layouts, and we don't want to do recursive sections just for layout purposes. The layout stuff we'll have to redo later anyway, once we switch to Bevy's native UI.
         #PaperDoll
         Layout { direction: Direction::TopDown }
-        template(|ctx| Ok(Sections(ctx.entity.world_scope(|world| world.spawn_scene_list(bsn_list![
+        Children [
             GridContents {
                 shape: { (1, 2) },
                 header: { "A1".to_owned() },
@@ -465,7 +454,7 @@ fn spawn_items(
             }
             Flags<ExFlags>({ ExFlags::all() }),
 
-        ]).unwrap()))))
+        ]
         Open
     ];
 

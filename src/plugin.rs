@@ -14,7 +14,6 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed> Plugin f
         app.init_resource::<Options>()
             .register_type::<Flags<T>>()
             .register_type::<GridContents>()
-            .register_type::<Sections>()
             .register_type::<Item>()
             .register_type::<Icon>();
     }

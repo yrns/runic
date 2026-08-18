@@ -20,30 +20,6 @@ pub use grid::*;
 #[reflect(Component)]
 pub struct Slot(pub usize);
 
-// NOTE: I feel like Bevy should handle this case for some reason (a newtype around an existing template).
-#[derive(Component, Clone, Reflect, FromTemplate)]
-#[reflect(Component)]
-pub struct ContainedItems(pub Vec<Entity>);
-
-// impl FromTemplate for ContainedItems {
-//     type Template = ContainedItemsTemplate;
-// }
-
-// #[derive(Default)]
-// pub struct ContainedItemsTemplate(pub VecTemplate<EntityTemplate>);
-
-// impl Template for ContainedItemsTemplate {
-//     type Output = ContainedItems;
-
-//     fn build_template(&self, context: &mut TemplateContext) -> Result<Self::Output> {
-//         Ok(ContainedItems(self.0.build_template(context)?))
-//     }
-
-//     fn clone_template(&self) -> Self {
-//         Self(self.0.clone_template())
-//     }
-// }
-
 // TODO: It is now.
 /// Optional layout overrides the default in `Options`. egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
 #[derive(Component, Copy, Clone, Debug, PartialEq, Reflect, Deserialize, Serialize)]
@@ -218,7 +194,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
             Entity,
             &'static mut GridContents,
             &'static Flags<T>,
-            &'static mut ContainedItems,
+            Option<&'static Children>,
         ),
         // TODO?
         // Option<&'static mut Sections>,
@@ -384,7 +360,12 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                         .get(id)
                         .ok()
                         .and_then(|(_, contents, flags, items)| {
-                            contents.ui(id, flags, self, &items.0, ui).inner
+                            if let Some(items) = items {
+                                contents.ui(id, flags, self, items, ui)
+                            } else {
+                                contents.ui(id, flags, self, &[], ui)
+                            }
+                            .inner
                         })
                 })
                 .at_most_one()
@@ -404,10 +385,10 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
 
         // Find (sub-)container and free slot. This is fetching twice...
         let (container, slot) = self.find_section_slot(container, &item, flags, &None)?;
-        let (_, mut contents, _flags, mut items) = self.contents.get_mut(container).ok()?;
+        let (_, mut contents, _flags, _items) = self.contents.get_mut(container).ok()?;
 
         assert!(slot < contents.slots(), "slot in contents length");
-        items.0.push(id);
+        self.commands.entity(container).add_child(id);
         contents.insert(slot, item);
 
         // Assign slot.
@@ -467,7 +448,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         let (.., mut item, _flags, _) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
-        let ((_, mut contents, _flags, mut items), dest) = if container_id == target_id {
+        let ((_, mut contents, _flags, _items), dest) = if container_id == target_id {
             (
                 self.contents
                     .get_mut(container_id)
@@ -486,8 +467,9 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
 
         // Remove from source container.
         {
-            let index = items.0.iter().position(|a| *a == id).unwrap();
-            items.0.swap_remove(index);
+            // Hierarchy makes this automatic.
+            // let index = items.0.iter().position(|a| *a == id).unwrap();
+            // items.0.swap_remove(index);
             contents.remove(container_slot, &item);
         }
 
@@ -500,9 +482,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         // Insert into destination container (or source if same). TODO: put slot_item back on error? There is no error?
         self.commands.entity(id).insert(Slot(slot));
         {
-            let (_, mut contents, _flags, mut items) =
-                dest.unwrap_or((id, contents, _flags, items));
-            items.0.push(id);
+            let mut contents = match dest {
+                Some((_, c, ..)) => c,
+                None => contents,
+            };
+            self.commands.entity(target_id).add_child(id);
             contents.insert(slot, &item);
         }
 

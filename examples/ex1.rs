@@ -335,16 +335,14 @@ fn items() -> impl SceneList {
                 header: { "Any:".to_owned() },
                 shape: {(3, 2)},
             }
-            Flags<ExFlags>({ ExFlags::all() })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::all() }),
 
             #PouchP1,
             GridContents {
                 header: { "P1:".to_owned() },
                 shape: {(1, 1)},
             }
-            Flags<ExFlags>({ ExFlags::POTION })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::POTION }),
 
             #PouchP2,
             GridContents {
@@ -352,7 +350,6 @@ fn items() -> impl SceneList {
                 shape: {(1, 1)},
             }
             Flags<ExFlags>({ ExFlags::POTION })
-            ContainedItems
         ]).unwrap())))),
 
         #ShortSword
@@ -385,11 +382,11 @@ fn items() -> impl SceneList {
 // TEMP Handle fill for containers with newly spawned items. The builder used to do this. This could also be an observer.
 // We could also assign the slot here if we wanted.
 fn paint_ground(
-    mut contents: Query<(&mut GridContents, &ContainedItems), Added<ContainedItems>>,
+    mut contents: Query<(&mut GridContents, &Children), Changed<Children>>,
     items: Query<(&Item, &Slot)>,
 ) {
     for (mut gc, ci) in &mut contents {
-        for (item, slot) in items.iter_many(&ci.0) {
+        for (item, slot) in items.iter_many(&*ci) {
             gc.insert(slot.0, item);
         }
     }
@@ -415,7 +412,7 @@ fn spawn_items(
                 header: { "Ground 10x10".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::all() })
-            template(|ctx| Ok(ContainedItems(ctx.entity.world_scope(|world| world.spawn_scene_list(items()))?)))
+            Children [{ items() }]
         ]).unwrap()))))
         Open,
 
@@ -427,37 +424,32 @@ fn spawn_items(
                 shape: { (1, 2) },
                 header: { "A1".to_owned() },
             }
-            Flags<ExFlags>({ ExFlags::all() })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::all() }),
 
             GridContents {
                 shape: { (1, 2) },
                 header: { "A2".to_owned() },
             }
-            Flags<ExFlags>({ ExFlags::all() })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::all() }),
 
             GridContents {
                 shape: { (1, 2) },
                 header: { "W1".to_owned() },
             }
-            Flags<ExFlags>({ ExFlags::WEAPON })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::WEAPON }),
 
             GridContents {
                 shape: { (2, 2) },
                 header: { "Only potions! 2x2:".to_owned() },
             }
-            Flags<ExFlags>({ ExFlags::POTION })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::POTION }),
 
             GridContents {
                 shape: { (3, 2) },
                 header: { "Weapon (3x2 MAX):".to_owned() },
                 expands: true,
             }
-            Flags<ExFlags>({ ExFlags::WEAPON })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::WEAPON }),
 
             GridContents {
                 shape: { (2, 2) },
@@ -465,15 +457,13 @@ fn spawn_items(
                 expands: true,
                 inline: true,
             }
-            Flags<ExFlags>({ ExFlags::CONTAINER })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::CONTAINER }),
 
             GridContents {
                 shape: { (4, 4) },
                 header: { "Bag of any! 4x4:".to_owned() },
             }
-            Flags<ExFlags>({ ExFlags::all() })
-            ContainedItems,
+            Flags<ExFlags>({ ExFlags::all() }),
 
         ]).unwrap()))))
         Open

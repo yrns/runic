@@ -106,33 +106,37 @@ impl<const N: usize> Contents for GridContents<N> {
         }
     }
 
-    fn insert(&mut self, slot: usize, item: &Item) {
-        self.shape.paint(&item.shape, slot);
+    fn insert(&mut self, Slot(slot): Slot, item: &Item) {
+        let index = self.shape.index(slot);
+        assert!(index < self.slots(), "slot in contents length");
+        self.shape.paint(&item.shape, index);
     }
 
-    fn remove(&mut self, slot: usize, item: &Item) {
-        self.shape.unpaint(&item.shape, slot);
+    fn remove(&mut self, Slot(slot): Slot, item: &Item) {
+        let index = self.shape.index(slot);
+        assert!(index < self.slots(), "slot in contents length");
+        self.shape.unpaint(&item.shape, index);
     }
 
-    fn pos(&self, slot: usize) -> egui::Vec2 {
+    fn pos(&self, Slot(UVec2 { x, y }): Slot) -> egui::Vec2 {
         // Expanding only ever has one slot.
         if self.expands {
             egui::Vec2::ZERO
         } else {
-            xy(slot, self.shape.width() as usize) * N as f32
+            egui::Vec2::new(x as f32, y as f32) * N as f32
         }
     }
 
-    fn slot(&self, p: egui::Vec2) -> usize {
-        // Expanding only ever has one slot.
+    fn index(&self, p: egui::Vec2) -> usize {
+        // Expanding only ever has one.
         if self.expands {
             0
         } else {
-            self.shape.slot(to_size(p / N as f32))
+            self.shape.index(to_size(p / N as f32))
         }
     }
 
-    fn fits(&self, id: Entity, item: &Item, slot: usize, source: &DragSource) -> bool {
+    fn fits(&self, id: Entity, item: &Item, index: usize, source: &DragSource) -> bool {
         // Check if the shape fits here. When moving within
         // one container, use the cached shape with the
         // dragged item (and original rotation) unpainted.
@@ -141,14 +145,19 @@ impl<const N: usize> Contents for GridContents<N> {
             _ => &self.shape,
         };
 
-        shape.fits(&item.shape, slot)
+        shape.fits(&item.shape, index)
     }
 
-    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, usize)> {
+    // If the item is more than one slot we can skip some indices...
+    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, Slot)> {
         // TODO test multiple rotations (if non-square) and return it?
         (0..self.slots())
             .find(|slot| self.fits(id, item, *slot, source))
-            .map(|slot| (id, slot))
+            .map(|slot| {
+                let slot = slot as u32;
+                let w = self.shape.size.x;
+                (id, (Slot(UVec2::new(slot % w, slot / w))))
+            })
     }
 
     fn body<T: Accepts>(
@@ -181,7 +190,7 @@ impl<const N: usize> Contents for GridContents<N> {
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .filter_map(|(item_id, &Slot(slot), name, item, flags, icon)| {
+                .filter_map(|(item_id, &slot, name, item, flags, icon)| {
                     // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
                     let item = contents
                         .drag
@@ -214,7 +223,7 @@ impl<const N: usize> Contents for GridContents<N> {
                             ContentsResponse::NewDrag(ref mut drag)
                             | ContentsResponse::SendItem(ref mut drag) => {
                                 let mut cshape = self.shape.clone();
-                                cshape.unpaint(&drag.item.shape, slot);
+                                cshape.unpaint(&drag.item.shape, cshape.index(slot.0));
                                 drag.source = Some((id, slot, cshape));
                             }
                             _ => (),
@@ -369,7 +378,7 @@ impl<const N: usize> Contents for GridContents<N> {
                     // This is ugly w/ the default theme.
                     // *style = ui.style().interact_selectable(&response, accepts);
 
-                    let slot = ui
+                    let index = ui
                         .ctx()
                         .pointer_latest_pos()
                         .filter(|_| response.contains_pointer())
@@ -377,19 +386,25 @@ impl<const N: usize> Contents for GridContents<N> {
                         // Shape::slot needs to return an option
                         // FIX expanding does not work well w/ the offset
                         .map(|p| {
-                            self.slot(p - min_rect.min - drag.offset + Self::slot_size() * 0.5)
+                            self.index(p - min_rect.min - drag.offset + Self::slot_size() * 0.5)
                         });
 
-                    let fits = slot
-                        .map(|slot| self.fits(id, &drag.item, slot, &drag.source))
+                    let fits = index
+                        .map(|i| self.fits(id, &drag.item, i, &drag.source))
                         .unwrap_or_default();
 
                     // Paint the dragged item's shadow, showing which slots will be filled.
-                    if let Some(slot) = slot {
+                    if let Some(index) = index {
                         let color = self.shadow_color(accepts, fits, ui);
                         let shape = &drag.item.shape;
-                        let mesh = shape_mesh(shape, min_rect, self.pos(slot), color, N as f32);
+                        let slot = Slot(self.shape.slot(index));
+                        let offset = self.pos(slot);
+                        let mesh = shape_mesh(shape, min_rect, offset, color, N as f32);
                         ui.painter().set(shadow, mesh);
+
+                        (accepts && fits).then(|| ContentsResponse::NewTarget((id, slot, ui.id())))
+                    } else {
+                        None
                     }
 
                     // This no longer works since we resolve before we even get here.
@@ -401,9 +416,6 @@ impl<const N: usize> Contents for GridContents<N> {
                     //         drag.item.flags
                     //     );
                     // }
-
-                    slot.filter(|_| accepts && fits)
-                        .map(|slot| ContentsResponse::NewTarget((id, slot, ui.id())))
                 }
 
                 (_, inner) => inner,

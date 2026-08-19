@@ -50,9 +50,9 @@ impl Item {
         self.shape.width()
     }
 
-    /// Return slot for offset in pixels.
-    pub fn slot(&self, offset: Vec2) -> usize {
-        self.shape.slot(to_size(offset))
+    /// Return index for offset in pixels.
+    pub fn index(&self, offset: Vec2) -> usize {
+        self.shape.index(to_size(offset))
     }
 
     const PIVOT: Vec2 = Vec2::splat(0.5);
@@ -103,7 +103,7 @@ impl Item {
     #[allow(clippy::too_many_arguments)]
     pub fn ui<T: Copy>(
         &self,
-        slot: usize,
+        slot: Slot,
         id: Entity,
         flags: &Flags<T>,
         name: &str,
@@ -149,14 +149,14 @@ impl Item {
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|_| response.contains_pointer())
                     .map(|p| p - response.rect.min)
-                    .map(|offset| (self.slot(offset / slot_dim), offset))
-                    .filter(|(slot, _)| {
-                        self.shape.fill.get(*slot).copied().unwrap_or_else(|| {
+                    .map(|offset| (self.index(offset / slot_dim), offset))
+                    .filter(|(index, _)| {
+                        self.shape.fill.get(*index).copied().unwrap_or_else(|| {
                             // This occurs somewhere on drag/mouseover. Not anymore?
                             tracing::error!(
-                                "point {:?} slot {} out of shape fill {}",
+                                "point {:?} index {} out of shape fill {}",
                                 p,
-                                slot,
+                                index,
                                 self.shape
                             );
                             false

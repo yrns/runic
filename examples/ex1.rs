@@ -118,7 +118,7 @@ fn item_insert(
     info!(
         target,
         item = item.unwrap().as_str(),
-        slot = insert.slot,
+        slot = ?insert.slot,
         "insert"
     );
 
@@ -138,7 +138,7 @@ fn item_remove(event: On<ItemRemove>, names: Query<Option<&Name>>) -> Result {
     info!(
         target,
         item = item.unwrap().as_str(),
-        slot = remove.slot,
+        slot = ?remove.slot,
         "remove"
     );
     Ok(())
@@ -156,7 +156,7 @@ fn item_move(
     info!(
         target,
         item = item.unwrap().as_str(),
-        "move slot {} -> {}",
+        "move slot {:?} -> {:?}",
         moved.old_slot,
         moved.new_slot
     );
@@ -188,7 +188,7 @@ fn drag_over(
     info!(
         target,
         item = item.unwrap().as_str(),
-        slot = drag_over.slot,
+        slot = ?drag_over.slot,
         "drag over"
     );
 
@@ -302,7 +302,7 @@ fn items() -> impl SceneList {
     bsn_list! [
         #Boomerang
         // This really shouldn't be Default.
-        Slot(0)
+        Slot({(0, 0)})
         Icon("boomerang.png")
         Item {
             rotation: ItemRotation::None,
@@ -311,7 +311,7 @@ fn items() -> impl SceneList {
         Flags<ExFlags>(ExFlags::WEAPON),
 
         #Pouch
-        Slot(2)
+        Slot({(2, 0)})
         Icon("pouch.png")
         Item {
             shape: { Shape::new((2, 2), true) }
@@ -343,7 +343,7 @@ fn items() -> impl SceneList {
 
         #ShortSword
         Name("Short-sword")
-        Slot(4)
+        Slot({(4, 0)})
         Icon("short-sword.png")
         Item {
             rotation: ItemRotation::R90,
@@ -354,14 +354,14 @@ fn items() -> impl SceneList {
         // Potion 1 & 2 are almost the same?
         #Potion1
         Name("Potion 1")
-        Slot(5)
+        Slot({(5, 0)})
         Icon("potion.png")
         Item
         Flags<ExFlags>(ExFlags::POTION),
 
         #Potion2
         Name("Potion 2")
-        Slot(6)
+        Slot({(6, 0)})
         Icon("potion.png")
         Item
         Flags<ExFlags>(ExFlags::POTION),
@@ -376,7 +376,7 @@ fn paint_ground(
 ) {
     for (mut gc, ci) in &mut contents {
         for (item, slot) in items.iter_many(&*ci) {
-            gc.insert(slot.0, item);
+            gc.insert(*slot, item);
         }
     }
 }

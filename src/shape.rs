@@ -174,14 +174,18 @@ impl Shape {
     }
 
     // TODO: std::range::*?
-    fn overlay_range(&self, other: &Shape, slot: usize) -> Option<std::ops::RangeInclusive<usize>> {
-        let p1 = self.pos(slot);
+    fn overlay_range(
+        &self,
+        other: &Shape,
+        index: usize,
+    ) -> Option<std::ops::RangeInclusive<usize>> {
+        let p1 = self.slot(index);
         let p2 = p1 + other.size;
-        (self.contains(p1) && self.contains(p2)).then(|| slot..=self.slot(p2 - UVec2::ONE))
+        (self.contains(p1) && self.contains(p2)).then(|| index..=self.index(p2 - UVec2::ONE))
     }
 
-    pub fn overlay_mut(&mut self, other: &Shape, slot: usize, f: impl Fn(&mut bool, &bool)) {
-        if let Some(r) = self.overlay_range(other, slot) {
+    pub fn overlay_mut(&mut self, other: &Shape, index: usize, f: impl Fn(&mut bool, &bool)) {
+        if let Some(r) = self.overlay_range(other, index) {
             let w = self.width();
             let w2 = other.width();
             self.fill[r]
@@ -194,26 +198,26 @@ impl Shape {
         }
     }
 
-    pub fn paint(&mut self, other: &Shape, slot: usize) {
+    pub fn paint(&mut self, other: &Shape, index: usize) {
         // print!("{}+\n{}=\n", &self, other);
-        assert!(slot <= self.fill.len(), "paint slot {slot} in range");
-        self.overlay_mut(other, slot, |a, b| *a = *a || *b);
+        assert!(index <= self.fill.len(), "paint slot {index} in range");
+        self.overlay_mut(other, index, |a, b| *a = *a || *b);
         // println!("{}", &self);
     }
 
-    pub fn unpaint(&mut self, other: &Shape, slot: usize) {
+    pub fn unpaint(&mut self, other: &Shape, index: usize) {
         // print!("{}-\n{}=\n", &self, other);
-        assert!(slot <= self.fill.len(), "unpaint slot {slot} in range");
-        self.overlay_mut(other, slot, |a, b| *a = *a && !*b);
+        assert!(index <= self.fill.len(), "unpaint slot {index} in range");
+        self.overlay_mut(other, index, |a, b| *a = *a && !*b);
         // println!("{}", &self);
     }
 
-    pub fn fits(&self, other: &Shape, slot: usize) -> bool {
+    pub fn fits(&self, other: &Shape, index: usize) -> bool {
         if !other.size.cmple(self.size).all() {
             return false;
         }
 
-        if let Some(r) = self.overlay_range(other, slot) {
+        if let Some(r) = self.overlay_range(other, index) {
             let w = other.width();
             self.fill[r]
                 .chunks(self.width())
@@ -227,14 +231,17 @@ impl Shape {
         }
     }
 
-    /// Return slot for position.
-    pub fn slot(&self, UVec2 { x, y }: UVec2) -> usize {
-        x as usize + y as usize * self.width()
+    /// Return index for `slot` coords/position.
+    pub fn index(&self, slot: UVec2) -> usize {
+        (slot.x + slot.y * self.size.x) as usize
     }
 
-    /// Return position for slot.
-    pub fn pos(&self, slot: usize) -> UVec2 {
-        UVec2::new((slot % self.width()) as u32, (slot / self.width()) as u32)
+    /// Return slot for `index`.
+    pub fn slot(&self, index: usize) -> UVec2 {
+        assert!(index < self.fill.len());
+        let index = index as u32;
+        let w = self.size.x;
+        UVec2::new(index % w, index / w)
     }
 
     /// Returns an iterator over filled slots.
@@ -259,7 +266,7 @@ impl Shape {
         let slice = &mut dest.fill;
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(UVec2::new(x, y))];
+                let b = self.fill[self.index(UVec2::new(x, y))];
                 // dest.slot(h - y - 1, x)
                 let slot = h - y - 1 + x * h;
                 slice[slot as usize] = b;
@@ -273,7 +280,7 @@ impl Shape {
         let mut dest = Shape::new((w, h), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(UVec2::new(x, y))];
+                let b = self.fill[self.index(UVec2::new(x, y))];
                 // dest.slot(w - x - 1, h - y - 1)
                 let slot = w - x - 1 + (h - y - 1) * w;
                 dest.fill[slot as usize] = b;
@@ -287,7 +294,7 @@ impl Shape {
         let mut dest = Shape::new((h, w), false);
         for y in 0..h {
             for x in 0..w {
-                let b = self.fill[self.slot(UVec2::new(x, y))];
+                let b = self.fill[self.index(UVec2::new(x, y))];
                 // dest.slot(y, w - x - 1)
                 let slot = y + (w - x - 1) * h;
                 dest.fill[slot as usize] = b;
@@ -349,10 +356,10 @@ mod tests {
     fn fits() {
         let a = Shape::from_ones(4, [1, 1, 0, 0, 1, 1, 0, 0]);
         let b = Shape::from_ones(2, [1, 1, 1, 1]);
-        assert!(a.fits(&b, a.slot(UVec2::new(0, 0))) == false);
-        assert!(a.fits(&b, a.slot(UVec2::new(1, 0))) == false);
-        assert!(a.fits(&b, a.slot(UVec2::new(2, 0))) == true);
-        assert!(a.fits(&b, a.slot(UVec2::new(3, 0))) == false); // outside
+        assert!(a.fits(&b, a.index(UVec2::new(0, 0))) == false);
+        assert!(a.fits(&b, a.index(UVec2::new(1, 0))) == false);
+        assert!(a.fits(&b, a.index(UVec2::new(2, 0))) == true);
+        assert!(a.fits(&b, a.index(UVec2::new(3, 0))) == false); // outside
     }
 
     #[test]

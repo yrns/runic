@@ -1,3 +1,4 @@
+use crate::Slot;
 use bevy_ecs::prelude::{Entity, EntityEvent};
 
 // TODO: consider adding root container and section information
@@ -6,7 +7,7 @@ use bevy_ecs::prelude::{Entity, EntityEvent};
 #[derive(EntityEvent, Debug)]
 pub struct ItemInsert {
     pub entity: Entity,
-    pub slot: usize,
+    pub slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }
@@ -15,7 +16,7 @@ pub struct ItemInsert {
 #[derive(EntityEvent, Debug)]
 pub struct ItemRemove {
     pub entity: Entity,
-    pub slot: usize,
+    pub slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }
@@ -24,8 +25,8 @@ pub struct ItemRemove {
 #[derive(EntityEvent, Debug)]
 pub struct ItemMove {
     pub entity: Entity,
-    pub old_slot: usize,
-    pub new_slot: usize,
+    pub old_slot: Slot,
+    pub new_slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }
@@ -34,7 +35,7 @@ pub struct ItemMove {
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragStart {
     pub entity: Entity,
-    pub slot: usize,
+    pub slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }
@@ -44,7 +45,7 @@ pub struct ItemDragStart {
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragEnd {
     pub entity: Entity,
-    pub slot: usize,
+    pub slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }
@@ -55,7 +56,7 @@ pub struct ItemDragOver {
     /// If we are dragging over an item that's a container, and it accepts the dragged item, then the target and slot will be accurate even if the contents are not visible. If the container does not accept the dragged item the target and slot will be of the occupied item.
     pub entity: Entity,
     // TODO: this is confusing; distinguish "drag to item"?
-    pub slot: usize,
+    pub slot: Slot,
     pub item: Entity,
     // pub container: Entity,
 }

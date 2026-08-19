@@ -7,6 +7,7 @@ use bevy_egui::egui::{
     ecolor::{tint_color_towards, Color32},
     Align, Direction, Id, InnerResponse, Pos2, Rect, Response, Ui, Vec2,
 };
+use bevy_math::UVec2;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use serde::{Deserialize, Serialize};
 
@@ -16,9 +17,25 @@ pub use grid::*;
 
 /// The slot this item occupies in its parent container.
 // This really shouldn't derive `Default`, but it has to for BSN?
-#[derive(Component, Clone, Default, Reflect)]
+#[derive(Component, Copy, Clone, PartialEq, Eq, Reflect, FromTemplate)]
 #[reflect(Component)]
-pub struct Slot(pub usize);
+pub struct Slot(pub UVec2);
+
+impl std::fmt::Debug for Slot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Slot")
+            .field(&self.0.x)
+            .field(&self.0.y)
+            .finish()
+    }
+}
+
+impl Slot {
+    /// Returns a shape index for this slot based on a shape's width.
+    pub fn index(&self, width: usize) -> usize {
+        self.0.x as usize + self.0.y as usize * width
+    }
+}
 
 // TODO: It is now.
 /// Optional layout overrides the default in `Options`. egui::Layout is not serializable (egui::Direction is). Furthermore, some of the alignment values just don't work well (e.g. centering). So we just make our own struct with only direction and wrapping.
@@ -58,7 +75,7 @@ impl Layout {
 /// Response (inner) returned from `Contents::ui` and `Item::ui`. Sets new drag or current drag target.
 #[derive(Debug)]
 pub enum ContentsResponse<T> {
-    NewTarget((Entity, usize, Id)),
+    NewTarget((Entity, Slot, Id)),
     NewDrag(DragItem<T>),
     // Ctrl-click sends then item to container's default target.
     SendItem(DragItem<T>),
@@ -66,8 +83,7 @@ pub enum ContentsResponse<T> {
 }
 
 /// Source container id, slot, and shape with the dragged item unpainted, used for fit-checking if dragged within the source container.
-// TODO: Use Slot.
-pub type DragSource = Option<(Entity, usize, Shape)>;
+pub type DragSource = Option<(Entity, Slot, Shape)>;
 
 /// An item being dragged.
 #[derive(Debug)]
@@ -81,7 +97,7 @@ pub struct DragItem<T> {
     /// Source location.
     pub source: DragSource,
     /// Target container id and slot, and the egui Id of the widget who set the target.
-    pub target: Option<(Entity, usize, Id)>,
+    pub target: Option<(Entity, Slot, Id)>,
     /// Relative offset inside the item where the drag started.
     pub offset: Vec2,
     /// Relative offset outside the item, close to the inner offset.
@@ -250,7 +266,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         }
     }
 
-    pub fn set_drag_target(&mut self, target: Option<(Entity, usize, Id)>) {
+    pub fn set_drag_target(&mut self, target: Option<(Entity, Slot, Id)>) {
         if let Some(drag) = self.drag.as_mut() {
             // set_if_neq?
             if drag.target != target {
@@ -366,19 +382,18 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     // Since we're not using relationships, there's no way to easily guarantee that this item isn't in another container already... FIX when/if we tie items to UI components (Bevy)
     // TODO: more checking and return a Result? same for removal
     // NOTE: Multiple items can share the same slot if they fit together.
-    pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, usize)> {
+    pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, Slot)> {
         let (_, _slot, _, item, flags, _) = self.items.get(id).ok()?;
 
         // Find (sub-)container and free slot. This is fetching twice...
         let (container, slot) = self.find_section_slot(container, &item, flags, &None)?;
         let (_, mut contents, _flags, _items) = self.contents.get_mut(container).ok()?;
 
-        assert!(slot < contents.slots(), "slot in contents length");
         self.commands.entity(container).add_child(id);
         contents.insert(slot, item);
 
         // Assign slot.
-        self.commands.entity(id).insert(Slot(slot));
+        self.commands.entity(id).insert(slot);
 
         Some((container, slot))
     }
@@ -403,7 +418,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         item: &Item,
         flags: &Flags<T>,
         source: &DragSource,
-    ) -> Option<(Entity, usize)> {
+    ) -> Option<(Entity, Slot)> {
         // Pass in sections since we're probably already fetching it?
         // Consider layout in the order?
         self.contents
@@ -466,7 +481,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         }
 
         // Insert into destination container (or source if same). TODO: put slot_item back on error? There is no error?
-        self.commands.entity(id).insert(Slot(slot));
+        self.commands.entity(id).insert(slot);
         {
             let mut contents = match dest {
                 Some((_, c, ..)) => c,
@@ -505,24 +520,24 @@ pub trait Contents {
     /// Number of slots this container holds.
     fn slots(&self) -> usize;
 
-    fn insert(&mut self, slot: usize, item: &Item);
+    fn insert(&mut self, slot: Slot, item: &Item);
 
-    fn remove(&mut self, slot: usize, item: &Item);
+    fn remove(&mut self, slot: Slot, item: &Item);
 
     /// Returns a position for a given slot relative to the contents' origin.
-    fn pos(&self, slot: usize) -> Vec2;
+    fn pos(&self, slot: Slot) -> Vec2;
 
-    /// Returns a container slot for a given offset. May return
+    /// Returns a container index for a given offset. May return
     /// invalid results if the offset is outside the container.
-    fn slot(&self, offset: Vec2) -> usize;
+    fn index(&self, offset: Vec2) -> usize;
 
     // fn accepts(&self, item: &Item) -> bool;
 
     /// Returns true if the dragged item will fit at the specified slot.
-    fn fits(&self, id: Entity, item: &Item, slot: usize, source: &DragSource) -> bool;
+    fn fits(&self, id: Entity, item: &Item, index: usize, source: &DragSource) -> bool;
 
     /// Finds the first available slot for the dragged item.
-    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, usize)>;
+    fn find_slot(&self, id: Entity, item: &Item, source: &DragSource) -> Option<(Entity, Slot)>;
 
     fn shadow_color(&self, accepts: bool, fits: bool, ui: &egui::Ui) -> egui::Color32 {
         let color = if !accepts {
@@ -555,8 +570,8 @@ pub trait Contents {
     ) -> InnerResponse<Option<ContentsResponse<T>>>;
 }
 
-pub fn xy(slot: usize, width: usize) -> Vec2 {
-    Vec2::new((slot % width) as f32, (slot / width) as f32)
+pub fn xy(index: usize, width: usize) -> Vec2 {
+    Vec2::new((index % width) as f32, (index / width) as f32)
 }
 
 // pub fn paint_shape(
@@ -599,7 +614,7 @@ pub fn shape_mesh(
     let offset = grid_rect.min + offset;
     shape
         .slots()
-        .map(|slot| offset + xy(slot, shape.width()) * scale)
+        .map(|index| offset + xy(index, shape.width()) * scale)
         // TODO use clip rect instead of remaking vertices every frame
         .filter(|p| grid_rect.contains(*p + egui::vec2(1., 1.)))
         .map(|p| Rect::from_min_size(p, Vec2::splat(scale)))

@@ -416,30 +416,35 @@ fn spawn_items(
         #PaperDoll
         Layout { direction: Direction::TopDown }
         Children [
+            #A1
             GridContents {
                 shape: { (1, 2) },
                 header: { "A1".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::all() }),
 
+            #A2
             GridContents {
                 shape: { (1, 2) },
                 header: { "A2".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::all() }),
 
+            #W1
             GridContents {
                 shape: { (1, 2) },
                 header: { "W1".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::WEAPON }),
 
+            #PX
             GridContents {
                 shape: { (2, 2) },
                 header: { "Only potions! 2x2:".to_owned() },
             }
             Flags<ExFlags>({ ExFlags::POTION }),
 
+            #Weapon
             GridContents {
                 shape: { (3, 2) },
                 header: { "Weapon (3x2 MAX):".to_owned() },
@@ -447,6 +452,7 @@ fn spawn_items(
             }
             Flags<ExFlags>({ ExFlags::WEAPON }),
 
+            #Belt
             GridContents {
                 shape: { (2, 2) },
                 header: { "Holds a container:".to_owned() },
@@ -455,6 +461,7 @@ fn spawn_items(
             }
             Flags<ExFlags>({ ExFlags::CONTAINER }),
 
+            #Bag
             GridContents {
                 shape: { (4, 4) },
                 header: { "Bag of any! 4x4:".to_owned() },

@@ -1,8 +1,9 @@
 use bevy_ecs::prelude::*;
 use bevy_egui::egui::{
-    self, emath::Rot2, text::LayoutJob, Align, CursorIcon, FontSelection, Id, InnerResponse,
-    Modifiers, Pos2, Rect, Rgba, RichText, Sense, Style, TextureId, Ui, Vec2,
+    self, text::LayoutJob, Align, CursorIcon, FontSelection, Id, InnerResponse, Modifiers, Pos2,
+    Rect, Rgba, RichText, Sense, Style, TextureId, Ui, Vec2,
 };
+use bevy_math::Rot2;
 use bevy_reflect::prelude::*;
 
 use crate::*;
@@ -309,8 +310,21 @@ impl ItemRotation {
         }
     }
 
-    pub fn rot2(&self) -> Rot2 {
-        Rot2::from_angle(self.angle())
+    /// Returns a `Rot2` for the current rotation.
+    /// ```
+    /// # use runic::ItemRotation;
+    /// # use bevy_math::Rot2;
+    /// assert_eq!(ItemRotation::R90.rot2().as_degrees(), -90.0);
+    /// assert_eq!(ItemRotation::R180.rot2().as_degrees(), 180.0);
+    /// assert_eq!(ItemRotation::R270.rot2().as_degrees(), 90.0);
+    /// ```
+    pub const fn rot2(&self) -> Rot2 {
+        match self {
+            Self::None => Rot2::IDENTITY,
+            Self::R90 => Rot2::FRAC_PI_2.inverse(),
+            Self::R180 => Rot2::PI,
+            Self::R270 => Rot2::FRAC_PI_2,
+        }
     }
 
     pub fn uvs(&self) -> &[Pos2; 4] {

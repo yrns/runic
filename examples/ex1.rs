@@ -257,12 +257,19 @@ fn save_items(
     mut commands: Commands,
     save_items_system: Res<SaveItems>,
     input: Res<ButtonInput<KeyCode>>,
+    opened: Query<Entity, With<Open>>,
 ) {
     let ctrl = input.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
 
     if ctrl && input.just_pressed(KeyCode::KeyS) {
         info!("saving contents...");
         commands.run_system(save_items_system.0);
+    }
+
+    if input.just_pressed(KeyCode::Escape) {
+        for open in &opened {
+            commands.entity(open).remove::<Open>();
+        }
     }
 }
 

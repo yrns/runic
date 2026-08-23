@@ -9,6 +9,8 @@ use bevy_egui::egui::{
 };
 use bevy_math::UVec2;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
+#[allow(unused)]
+use bevy_ui::{widget::*, *};
 use serde::{Deserialize, Serialize};
 
 use crate::*;
@@ -34,6 +36,54 @@ impl Slot {
     /// Returns a shape index for this slot based on a shape's width.
     pub fn index(&self, width: usize) -> usize {
         self.0.x as usize + self.0.y as usize * width
+    }
+}
+
+/// NOTE: This paints the contents' shape when items are initially spawned inside it. This requires a slot.
+// TODO: Possibly we could insert slot via `find_slot`? Or issue a warning here?
+pub fn add_item(
+    items: Query<(&Item, &ItemRotation, &Slot, &ChildOf), Added<ChildOf>>,
+    mut contents: Query<&mut GridContents>,
+) {
+    for (item, rotation, slot, parent) in &items {
+        if let Ok(mut contents) = contents.get_mut(parent.0) {
+            contents.insert(*slot, &item.clone().with_rotation(*rotation));
+        }
+    }
+}
+
+// fn on_discard_item(
+//     event: On<Discard, ChildOf>,
+//     items: Query<(&Name, &Item, &ItemRotation, &Slot, &ChildOf)>,
+//     mut contents: Query<(&Name, &mut GridContents)>,
+// ) {
+//     if let Ok((name, item, rotation, slot, parent)) = items.get(event.entity) {
+//         dbg!("discard", event.entity, slot);
+//     }
+// }
+
+pub fn update_contents(
+    mut commands: Commands,
+    mut contents: Query<(Entity, &GridContents, Option<&mut Node>), Changed<GridContents>>,
+) {
+    for (id, contents, node) in &mut contents {
+        match node {
+            Some(_node) => {}
+            _ => {
+                let UVec2 { x, y } = contents.shape.size;
+                _ = commands.entity(id).insert(Node {
+                    display: Display::Grid,
+                    border: px(2.).all(),
+                    width: px(x * 48),
+                    height: px(y * 48),
+                    grid_template_columns: RepeatedGridTrack::flex(x as u16, 1.0),
+                    grid_template_rows: RepeatedGridTrack::flex(y as u16, 1.0),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..Default::default()
+                })
+            }
+        }
     }
 }
 
@@ -92,6 +142,8 @@ pub struct DragItem<T> {
     pub id: Entity,
     /// A clone of the original item (such that it can be rotated while dragging without affecting the original).
     pub item: Item,
+    /// Rotation.
+    pub rotation: ItemRotation,
     /// Flags.
     pub flags: Flags<T>,
     /// Source location.
@@ -111,10 +163,11 @@ pub struct DragItem<T> {
 pub const OUTER_DISTANCE: f32 = 6.0;
 
 impl<T> DragItem<T> {
-    pub fn new(id: Entity, item: Item, flags: Flags<T>) -> Self {
+    pub fn new(id: Entity, item: Item, rotation: ItemRotation, flags: Flags<T>) -> Self {
         Self {
             id,
             item,
+            rotation,
             flags,
             source: None,
             target: None,
@@ -126,7 +179,7 @@ impl<T> DragItem<T> {
     }
 
     fn rotate90(&mut self) {
-        self.item.rotation = self.item.rotation.increment();
+        self.rotation = self.rotation.increment();
         self.item.shape = self.item.shape.rotate90();
 
         // This is close but not quite right. This also leaves the slot incorrect...
@@ -210,6 +263,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
             &'static Slot,
             &'static Name,
             &'static mut Item,
+            &'static mut ItemRotation,
             &'static Flags<T>,
             Option<&'static IconId>,
         ),
@@ -430,9 +484,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn resolve_drag(&mut self, drag: DragItem<T>) {
         let DragItem {
             id,
-            item: Item {
-                shape, rotation, ..
-            },
+            rotation: drag_rotation,
             source: Some((container_id, container_slot, _)),
             target: Some((target_id, slot, ..)),
             ..
@@ -446,7 +498,8 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             return tracing::info!("cannot move an item inside itself");
         }
 
-        let (.., mut item, _flags, _) = self.items.get_mut(id).expect("item exists");
+        // Does item still need mut anywhere else?
+        let (.., item, mut rotation, _flags, _) = self.items.get_mut(id).expect("item exists");
 
         // We can't fetch the source and destination container mutably if they're the same.
         let ((_, mut contents, _flags, _items), dest) = if container_id == target_id {
@@ -471,14 +524,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             // Hierarchy makes this automatic.
             // let index = items.0.iter().position(|a| *a == id).unwrap();
             // items.0.swap_remove(index);
-            contents.remove(container_slot, &item);
+            contents.remove(container_slot, &item.clone().with_rotation(*rotation));
         }
 
-        // Copy rotation and shape from the dragged item. Do this before inserting so the shape is painted correctly.
-        if item.rotation != rotation {
-            item.shape = shape;
-            item.rotation = rotation;
-        }
+        // Copy rotation from the dragged item.
+        rotation.set_if_neq(drag_rotation);
 
         // Insert into destination container (or source if same). TODO: put slot_item back on error? There is no error?
         self.commands.entity(id).insert(slot);
@@ -488,7 +538,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 None => contents,
             };
             self.commands.entity(target_id).add_child(id);
-            contents.insert(slot, &item);
+            contents.insert(slot, &item.clone().with_rotation(drag_rotation));
         }
 
         // Fire events.

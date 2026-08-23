@@ -5,16 +5,68 @@ use bevy_egui::egui::{
 };
 use bevy_math::Rot2;
 use bevy_reflect::prelude::*;
+use bevy_ui::{widget::*, *};
 
 use crate::*;
 
 /// An item.
 #[derive(Component, Clone, Debug, Reflect, FromTemplate)]
 #[reflect(Component)]
+#[require(ItemRotation)]
 pub struct Item {
-    pub rotation: ItemRotation,
     /// The shape represents this items dimensions (and filled "slots" in case it is not rectangular).
     pub shape: Shape,
+}
+
+/// Update shape and transform when the item is rotated.
+pub fn update_rotation(
+    mut commands: Commands,
+    mut items: Query<(Entity, &mut Item, &ItemRotation), Changed<ItemRotation>>,
+) {
+    for (id, _item, rotation) in &mut items {
+        // transform.rotation = rotation.rot2();
+        commands
+            .entity(id)
+            .insert(UiTransform::from_rotation(rotation.rot2()));
+        // We no longer mutate the item shape.
+        // item.rotate(*rotation);
+    }
+}
+
+pub fn update_items(
+    mut commands: Commands,
+    icons: Query<(Entity, &Icon), Changed<Icon>>,
+    mut items: Query<(Entity, &Slot, &Item, Option<&mut Node>), Or<(Changed<Slot>, Changed<Item>)>>,
+) {
+    for (id, icon) in &icons {
+        commands.entity(id).insert(ImageNode::new(icon.0.clone()));
+    }
+
+    for (id, slot, item, node) in &mut items {
+        match node {
+            Some(_node) => {
+                // transform.rotation = todo!();
+            }
+            _ => {
+                _ = commands.entity(id).insert((Node {
+                    // width: px(48),
+                    // height: px(48),
+                    border: px(4.).all(),
+                    grid_row: GridPlacement::start_span(
+                        (slot.0.y + 1) as i16,
+                        item.shape.size.y as u16,
+                    ),
+                    grid_column: GridPlacement::start_span(
+                        (slot.0.x + 1) as i16,
+                        item.shape.size.x as u16,
+                    ),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    ..Default::default()
+                },));
+            }
+        }
+    }
 }
 
 impl Item {
@@ -22,24 +74,23 @@ impl Item {
     // regardless of the container's flags.
     pub fn new() -> Self {
         Self {
-            rotation: Default::default(),
             shape: Shape::new([1, 1], true),
         }
     }
 
-    /// Set the item shape and unset its rotation.
-    pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
-        self.shape = shape.into();
-        self.rotation = ItemRotation::None;
-        self
-    }
+    // /// Set the item shape and unset its rotation.
+    // pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
+    //     self.shape = shape.into();
+    //     self.rotation = ItemRotation::None;
+    //     self
+    // }
 
-    /// Set the item's rotation and apply it to its shape.
-    pub fn with_rotation(mut self, r: ItemRotation) -> Self {
-        self.rotation = r;
-        self.rotate();
-        self
-    }
+    // /// Set the item's rotation and apply it to its shape.
+    // pub fn with_rotation(mut self, r: ItemRotation) -> Self {
+    //     self.rotation = r;
+    //     self.rotate();
+    //     self
+    // }
 
     /// Size in pixels.
     pub fn size(&self, slot_dim: f32) -> Vec2 {
@@ -64,6 +115,8 @@ impl Item {
         _id: Entity,
         drag_scale: f32,
         icon: TextureId,
+        // The item's shape is already rotated. This is for the icon.
+        rotation: ItemRotation,
         slot_dim: f32,
         ui: &mut Ui,
     ) -> InnerResponse<Vec2> {
@@ -88,7 +141,7 @@ impl Item {
             );
 
             // For non-square shapes, we need to un-rotate the paint_at rect. This seems like a bug in egui...
-            match self.rotation {
+            match rotation {
                 ItemRotation::None => image.paint_at(ui, rect),
                 r @ ItemRotation::R180 => image.rotate(r.angle(), Self::PIVOT).paint_at(ui, rect),
                 r => image
@@ -110,6 +163,7 @@ impl Item {
         name: &str,
         drag: Option<&DragItem<T>>,
         icon: TextureId,
+        rotation: ItemRotation,
         slot_dim: f32,
         ui: &mut Ui,
     ) -> Option<ContentsResponse<T>> {
@@ -138,14 +192,19 @@ impl Item {
                         .interactable(false)
                         // TODO Restrict to ContainerSpace?
                         //.constrain(true) // this is wrong
-                        .show(ui.ctx(), |ui| self.body(id, drag_scale, icon, slot_dim, ui));
+                        .show(ui.ctx(), |ui| {
+                            // We already have the drag rotation?
+                            self.body(id, drag_scale, icon, drag.rotation, slot_dim, ui)
+                        });
                 }
 
                 None
             }
             // This item is not being dragged (but maybe something else is).
             _ => {
-                let response = self.body(id, drag_scale, icon, slot_dim, ui).response;
+                let response = self
+                    .body(id, drag_scale, icon, rotation, slot_dim, ui)
+                    .response;
 
                 // Figure out what slot we're in, see if it's filled, don't sense drag if not.
                 p.filter(|_| response.contains_pointer())
@@ -182,11 +241,11 @@ impl Item {
                             } else if response.clicked()
                                 && ui.input(|i| i.modifiers.contains(Modifiers::CTRL))
                             {
-                                let flags = flags.clone();
                                 Some(ContentsResponse::SendItem(DragItem::new(
                                     id,
                                     self.clone(),
-                                    flags,
+                                    rotation,
+                                    flags.clone(),
                                 )))
                             } else if response.drag_started() {
                                 // Contents::body sets the source.
@@ -200,7 +259,7 @@ impl Item {
                                     origin: response.rect.min,
                                     offset_slot,
 
-                                    ..DragItem::new(id, self.clone(), *flags)
+                                    ..DragItem::new(id, self.clone(), rotation, *flags)
                                 }))
                             } else {
                                 None
@@ -226,14 +285,15 @@ impl Item {
         job
     }
 
-    // Apply rotation to shape.
-    fn rotate(&mut self) {
-        match self.rotation {
+    // Apply rotation to shape. This should really only be used for temporary items. The actual item entities are stored unrotated and the rotation is applied when we need to check to see if it'll fit somewhere, or other operations where the rotation is pertinent.
+    pub fn with_rotation(mut self, rotation: ItemRotation) -> Self {
+        match rotation {
             ItemRotation::None => (),
             ItemRotation::R90 => self.shape = self.shape.rotate90(),
             ItemRotation::R180 => self.shape = self.shape.rotate180(),
             ItemRotation::R270 => self.shape = self.shape.rotate270(),
-        };
+        }
+        self
     }
 }
 
@@ -254,7 +314,10 @@ fn outer_offset(Vec2 { x, y }: Vec2, size: Vec2, d: f32) -> Vec2 {
     .unwrap()
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Reflect)]
+// TODO: rename?
+/// Clockwise rotation.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub enum ItemRotation {
     #[default]
     None,

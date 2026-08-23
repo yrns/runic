@@ -15,6 +15,15 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed> Plugin f
             .register_type::<Flags<T>>()
             .register_type::<GridContents>()
             .register_type::<Item>()
-            .register_type::<Icon>();
+            .register_type::<Icon>()
+            .add_systems(
+                Update,
+                (
+                    contents::add_item,
+                    contents::update_contents,
+                    item::update_rotation,
+                    item::update_items,
+                ),
+            );
     }
 }

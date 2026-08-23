@@ -71,8 +71,6 @@ fn main() {
         .add_systems(Startup, startup)
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
-        // TEMP
-        .add_systems(Update, paint_ground)
         .add_systems(
             Update,
             spawn_items
@@ -312,7 +310,6 @@ fn items() -> impl SceneList {
         Slot({(0, 0)})
         Icon("boomerang.png")
         Item {
-            rotation: ItemRotation::None,
             shape: { [[1, 1], [1, 0]] },
         }
         Flags<ExFlags>(ExFlags::WEAPON),
@@ -353,9 +350,9 @@ fn items() -> impl SceneList {
         Slot({(4, 0)})
         Icon("short-sword.png")
         Item {
-            rotation: ItemRotation::R90,
-            shape: { Shape::new((1, 3), true) }
+            shape: { Shape::new((3, 1), true) }
         }
+        ItemRotation::R90
         Flags<ExFlags>(ExFlags::WEAPON),
 
         // Potion 1 & 2 are almost the same?
@@ -375,19 +372,6 @@ fn items() -> impl SceneList {
     ]
 }
 
-// TEMP Handle fill for containers with newly spawned items. The builder used to do this. This could also be an observer.
-// We could also assign the slot here if we wanted.
-fn paint_ground(
-    mut contents: Query<(&mut GridContents, &Children), Changed<Children>>,
-    items: Query<(&Item, &Slot)>,
-) {
-    for (mut gc, ci) in &mut contents {
-        for (item, slot) in items.iter_many(&*ci) {
-            gc.insert(*slot, item);
-        }
-    }
-}
-
 fn spawn_items(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
@@ -398,11 +382,11 @@ fn spawn_items(
 
     next_state.set(AppState::Running);
 
-    // bsn becomes easier if we use relationships? We still don't have a root entity for all items, though.
-    // TODO fill?
     let scene_list = bsn_list![
         #Ground
+        Node
         Children [
+            #Ground0
             GridContents {
                 shape: { (10, 10) },
                 header: { "Ground 10x10".to_owned() },
@@ -414,6 +398,7 @@ fn spawn_items(
 
         // There is no longer a "main" contents which always appears at the bottom of the other sections. Which means now there's no way to have alternating layouts, and we don't want to do recursive sections just for layout purposes. The layout stuff we'll have to redo later anyway, once we switch to Bevy's native UI.
         #PaperDoll
+        Node
         Layout { direction: Direction::TopDown }
         Children [
             #A1

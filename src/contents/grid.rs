@@ -175,7 +175,7 @@ impl<const N: usize> Contents for GridContents<N> {
         let grid_size = if self.expands {
             items
                 .peek()
-                .map(|(.., item, _, _)| item.shape.size())
+                .map(|(.., item, _, _, _)| item.shape.size())
                 .unwrap_or(Size::ONE)
         } else {
             self.shape.size()
@@ -190,13 +190,12 @@ impl<const N: usize> Contents for GridContents<N> {
             let grid_shape = ui.painter().add(egui::Shape::Noop);
 
             let new_drag = items
-                .filter_map(|(item_id, &slot, name, item, flags, icon)| {
-                    // If this item is being dragged, we want to use the dragged rotation. Everything else should be the same.
-                    let item = contents
-                        .drag
-                        .as_ref()
-                        .filter(|d| d.id == item_id)
-                        .map_or(item, |d| &d.item);
+                .filter_map(|(item_id, &slot, name, item, rotation, flags, icon)| {
+                    // If this item is being dragged, we want to use the dragged item and rotation. We apply the item's rotation now. The dragged item's shape is already applied.
+                    let (item, rotation) = match contents.drag.as_ref() {
+                        Some(drag) if drag.id == item_id => (&drag.item, drag.rotation),
+                        _ => (&item.clone().with_rotation(*rotation), *rotation),
+                    };
 
                     // Only allocate the slot otherwise we'll blow out the contents if it doesn't fit.
                     let item_rect =
@@ -204,7 +203,6 @@ impl<const N: usize> Contents for GridContents<N> {
 
                     // item returns a clone if it's being dragged
                     ui.scope_builder(egui::UiBuilder::new().max_rect(item_rect), |ui| {
-                        // dbg!(item_id);
                         item.ui(
                             slot,
                             item_id,
@@ -212,6 +210,7 @@ impl<const N: usize> Contents for GridContents<N> {
                             name,
                             contents.drag.as_ref(),
                             icon.map(|icon| icon.0).unwrap_or_default(),
+                            rotation,
                             N as f32,
                             ui,
                         )
@@ -343,7 +342,7 @@ impl<const N: usize> Contents for GridContents<N> {
                 (Some(drag), Some(ContentsResponse::NewTarget((id, slot, _)))) => {
                     if contents.is_container(id) {
                         // Rather than cloning the item every frame on hover, we just refetch it. This probably could be eliminated by clarifying some lifetimes and just passing an item ref back.
-                        let (.., item, flags, _) = contents.items.get(id).expect("item exists");
+                        let (.., item, _, flags, _) = contents.items.get(id).expect("item exists");
                         let target =
                             contents.find_section_slot(id, &drag.item, flags, &drag.source);
 

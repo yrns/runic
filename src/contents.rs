@@ -432,26 +432,6 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         }))
     }
 
-    /// Inserts item with `id` into `container`. Returns final container id and slot. This for an untargeted insert (no target slot). It will find the first available section and slot.
-    // Since we're not using relationships, there's no way to easily guarantee that this item isn't in another container already... FIX when/if we tie items to UI components (Bevy)
-    // TODO: more checking and return a Result? same for removal
-    // NOTE: Multiple items can share the same slot if they fit together.
-    pub fn insert(&mut self, container: Entity, id: Entity) -> Option<(Entity, Slot)> {
-        let (_, _slot, _, item, flags, _) = self.items.get(id).ok()?;
-
-        // Find (sub-)container and free slot. This is fetching twice...
-        let (container, slot) = self.find_section_slot(container, &item, flags, &None)?;
-        let (_, mut contents, _flags, _items) = self.contents.get_mut(container).ok()?;
-
-        self.commands.entity(container).add_child(id);
-        contents.insert(slot, item);
-
-        // Assign slot.
-        self.commands.entity(id).insert(slot);
-
-        Some((container, slot))
-    }
-
     // Containers and items are now always separate entities (each with separate flags). And the contents entities are contained in the section entity of the item. This means every item that's a container is always two entities...
     // TODO: Remove?
     pub fn is_container(&self, id: Entity) -> bool {

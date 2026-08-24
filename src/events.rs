@@ -61,6 +61,12 @@ pub struct ItemDragOver {
     // pub container: Entity,
 }
 
+/// Dragged item was rotated.
+#[derive(EntityEvent, Debug)]
+pub struct ItemDragRotate {
+    pub entity: Entity,
+}
+
 #[derive(EntityEvent, Debug)]
 pub struct ContainerOpen(pub Entity);
 

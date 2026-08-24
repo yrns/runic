@@ -304,6 +304,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             // Rotate the dragged item.
             if ctx.input(|i| i.key_pressed(egui::Key::R)) {
                 drag.rotate90();
+                self.commands.trigger(ItemDragRotate { entity: drag.id });
             }
         }
 

@@ -373,20 +373,20 @@ impl ItemRotation {
         }
     }
 
-    /// Returns a `Rot2` for the current rotation.
+    /// Returns a `Rot2` for the current rotation. `ItemRotation` is clockwise relative to the screen and user (+Y is down), so the rotation this returns is inverted.
     /// ```
     /// # use runic::ItemRotation;
     /// # use bevy_math::Rot2;
-    /// assert_eq!(ItemRotation::R90.rot2().as_degrees(), -90.0);
+    /// assert_eq!(ItemRotation::R90.rot2().as_degrees(), 90.0);
     /// assert_eq!(ItemRotation::R180.rot2().as_degrees(), 180.0);
-    /// assert_eq!(ItemRotation::R270.rot2().as_degrees(), 90.0);
+    /// assert_eq!(ItemRotation::R270.rot2().as_degrees(), -90.0);
     /// ```
     pub const fn rot2(&self) -> Rot2 {
         match self {
             Self::None => Rot2::IDENTITY,
-            Self::R90 => Rot2::FRAC_PI_2.inverse(),
+            Self::R90 => Rot2::FRAC_PI_2,
             Self::R180 => Rot2::PI,
-            Self::R270 => Rot2::FRAC_PI_2,
+            Self::R270 => Rot2::FRAC_PI_2.inverse(),
         }
     }
 

@@ -19,11 +19,14 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed> Plugin f
             .add_systems(
                 Update,
                 (
-                    contents::add_item,
+                    contents::insert_item,
                     contents::update_contents,
-                    item::update_rotation,
-                    item::update_items,
+                    // item::update_rotation,
+                    item::insert_nodes,
                 ),
-            );
+            )
+            .add_observer(item::on_item_insert)
+            .add_observer(item::on_item_move)
+            .add_observer(item::on_item_rotate);
     }
 }

@@ -14,9 +14,6 @@ pub struct GridContents<const N: usize = 48> {
     pub header: Option<String>, // Use Name?
     /// The shape describes the dimensions of the container and which slots are filled.
     pub shape: Shape,
-    // /// Flags determine what kinds of items will be accepted (see `Accepts`).
-    // NOTE: We can't simply make flags a component since the container's flags may be different from the item's. Unless we use relationships and make sections child-containers. Or rather all contents are children of items.
-    // pub flags: T,
 }
 
 impl<const N: usize> GridContents<N> {

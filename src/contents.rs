@@ -41,7 +41,7 @@ impl Slot {
 
 /// NOTE: This paints the contents' shape when items are initially spawned inside it. This requires a slot.
 // TODO: Possibly we could insert slot via `find_slot`? Or issue a warning here?
-pub fn add_item(
+pub fn insert_item(
     items: Query<(&Item, &ItemRotation, &Slot, &ChildOf), Added<ChildOf>>,
     mut contents: Query<&mut GridContents>,
 ) {
@@ -71,17 +71,20 @@ pub fn update_contents(
             Some(_node) => {}
             _ => {
                 let UVec2 { x, y } = contents.shape.size;
-                _ = commands.entity(id).insert(Node {
+                _ = commands.entity(id).insert((Node {
                     display: Display::Grid,
-                    border: px(2.).all(),
+                    // TEMP styling
+                    border: px(1.).all(),
+                    margin: px(2.).all(),
+                    padding: px(2.).all(),
                     width: px(x * 48),
                     height: px(y * 48),
-                    grid_template_columns: RepeatedGridTrack::flex(x as u16, 1.0),
-                    grid_template_rows: RepeatedGridTrack::flex(y as u16, 1.0),
+                    grid_template_columns: RepeatedGridTrack::px(x as u16, 48.0),
+                    grid_template_rows: RepeatedGridTrack::px(y as u16, 48.0),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
                     ..Default::default()
-                })
+                },));
             }
         }
     }

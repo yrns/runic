@@ -19,51 +19,140 @@ pub struct Item {
 }
 
 /// Update shape and transform when the item is rotated.
-pub fn update_rotation(
+pub fn insert_rotation(
     mut commands: Commands,
     mut items: Query<(Entity, &mut Item, &ItemRotation), Changed<ItemRotation>>,
 ) {
     for (id, _item, rotation) in &mut items {
         // transform.rotation = rotation.rot2();
-        commands
-            .entity(id)
-            .insert(UiTransform::from_rotation(rotation.rot2()));
+        // commands
+        //     .entity(id)
+        //     .insert(UiTransform::from_rotation(rotation.rot2()));
         // We no longer mutate the item shape.
         // item.rotate(*rotation);
     }
 }
 
-pub fn update_items(
+// The slot can change (move inside a container).
+// The slot and parent can change.
+// The rotation can change.
+// Or all three!
+// So we can't easily use component changes, and rather use item events.
+
+pub fn update_node(
+    Slot(slot): Slot,
+    item: &Item,
+    rotation: ItemRotation,
+    node: &mut Node,
+    transform: &mut UiTransform,
+) {
+    use bevy_math::Vec2Swizzles;
+
+    let size = item.shape.size;
+    // let size = match rotation {
+    //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
+    //     _ => size,
+    // };
+    node.grid_row = GridPlacement::start_span((slot.y + 1) as i16, size.y as u16);
+    node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
+    // Grid tracks are fixed.
+
+    let size = size.as_vec2() * 48.0;
+
+    // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
+    node.width = px(size.x);
+    node.height = px(size.y);
+    // node.max_width = px(size.x as f32 * 48.0);
+    // node.max_height = px(size.y as f32 * 48.0);
+    // node.min_width = node.max_width;
+    // node.min_height = node.max_height;
+
+    // Bevy rotates from the center. We're not just rotating it, we're trying to maintain the item's upper left corner in the current slot. So non-square items will need to be offset.
+    transform.rotation = rotation.rot2();
+    transform.translation = match rotation {
+        ItemRotation::R90 | ItemRotation::R270 => {
+            let offset = (size.yx() - size) * 0.5;
+            Val2::px(offset.x, offset.y)
+        }
+        // Center pivot is fine. Clear translation.
+        _ => Val2::default(),
+    };
+}
+
+// TODO: SystemParam?
+pub fn on_item_insert(
+    event: On<ItemInsert>,
+    mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
+) -> Result {
+    let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
+    update_node(*slot, item, *rotation, &mut *node, &mut *transform);
+    Ok(())
+}
+
+pub fn on_item_move(
+    event: On<ItemMove>,
+    mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
+) -> Result {
+    let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
+    update_node(*slot, item, *rotation, &mut *node, &mut *transform);
+    Ok(())
+}
+
+// If it's being dragged, it's not on the grid...
+pub fn on_item_rotate(_event: On<ItemDragRotate>) {}
+
+pub fn insert_nodes(
     mut commands: Commands,
     icons: Query<(Entity, &Icon), Changed<Icon>>,
-    mut items: Query<(Entity, &Slot, &Item, Option<&mut Node>), Or<(Changed<Slot>, Changed<Item>)>>,
+    mut items: Query<
+        (
+            Entity,
+            &Slot,
+            &Item,
+            &ItemRotation,
+            &Icon,
+            Option<&mut Node>,
+        ),
+        Or<(Changed<Slot>, Changed<Item>)>,
+    >,
 ) {
-    for (id, icon) in &icons {
-        commands.entity(id).insert(ImageNode::new(icon.0.clone()));
-    }
+    // for (id, icon) in &icons {
+    //     commands.entity(id).insert(ImageNode::new(icon.0.clone()));
+    // }
 
-    for (id, slot, item, node) in &mut items {
+    for (id, slot, item, rotation, icon, node) in &mut items {
         match node {
             Some(_node) => {
                 // transform.rotation = todo!();
             }
             _ => {
-                _ = commands.entity(id).insert((Node {
-                    // width: px(48),
-                    // height: px(48),
-                    border: px(4.).all(),
-                    grid_row: GridPlacement::start_span(
-                        (slot.0.y + 1) as i16,
-                        item.shape.size.y as u16,
-                    ),
-                    grid_column: GridPlacement::start_span(
-                        (slot.0.x + 1) as i16,
-                        item.shape.size.x as u16,
-                    ),
+                let mut node = Node {
+                    // TEMP styling?
+                    // We don't want to border around the items because of irregular shapes. But it's useful for debugging.
+                    border: px(1.).all(),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
+                    // overflow: Overflow::clip(),
                     ..Default::default()
-                },));
+                };
+                let mut transform = UiTransform::IDENTITY;
+                update_node(*slot, item, *rotation, &mut node, &mut transform);
+                commands.entity(id).insert((
+                    node,
+                    transform,
+                    ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
+                ));
+                // .with_children(|p| {
+                //     p.spawn((
+                //         Node {
+                //             width: Val::Percent(100.0),
+                //             height: Val::Percent(100.0),
+                //             ..Default::default()
+                //         },
+                //         // ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Stretch),
+                //         // UiTransform::from_rotation(rotation.rot2()),
+                //     ));
+                // });
             }
         }
     }

@@ -1,5 +1,6 @@
 use bevy::{
     asset::AssetLoadFailedEvent,
+    color::palettes::basic::*,
     ecs::{resource::IsResource, system::SystemId},
     prelude::*,
     tasks::IoTaskPool,
@@ -83,7 +84,10 @@ fn main() {
                 .chain()
                 .run_if(in_state(AppState::Running)),
         )
-        .add_systems(Update, save_items.run_if(in_state(AppState::Running)))
+        .add_systems(
+            Update,
+            (styling, save_items).run_if(in_state(AppState::Running)),
+        )
         // .add_systems(
         //     Last,
         //     redraw
@@ -102,6 +106,31 @@ fn main() {
 
 fn startup(mut commands: Commands) {
     commands.spawn(Camera2d);
+}
+
+// We have to modify the node to change the border width?
+fn styling(
+    mut commands: Commands,
+    contents: Query<Entity, Added<GridContents>>,
+    opened: Query<Entity, With<Open>>,
+    items: Query<Entity, Added<Item>>,
+    parents: Query<&ChildOf>,
+) {
+    // FIX we have decouple the item contents from the item, because the item will be parented to the contents and we want the the inner contents to be unparented (in a window or otherwise) unless it's inline
+    for contents in &contents {
+        if let Some(_) = parents
+            .iter_ancestors(contents)
+            .find(|a| opened.contains(*a))
+        {
+            commands
+                .entity(contents)
+                .insert((BorderColor::from(FUCHSIA),));
+        }
+    }
+
+    for item in &items {
+        commands.entity(item).insert((BorderColor::from(WHITE),));
+    }
 }
 
 fn item_insert(
@@ -454,7 +483,7 @@ fn spawn_items(
             Flags<ExFlags>({ ExFlags::all() }),
 
         ]
-        Open
+        // Open
     ];
 
     commands.spawn_scene_list(scene_list);

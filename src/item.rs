@@ -171,8 +171,8 @@ fn pointer_slot(
 pub fn on_item_drag_enter<T: Accepts>(
     mut event: On<Pointer<DragEnter>>,
     mut commands: Commands,
-    items: Query<(NameOrEntity, &Flags<T>)>,
-    sections: Query<(NameOrEntity, &Flags<T>)>,
+    items: Query<(NameOrEntity, &Flags<T>), With<Item>>,
+    sections: Query<(NameOrEntity, &Flags<T>), With<GridContents>>,
 ) {
     if let Ok((item, item_flags)) = items.get(event.dragged) {
         if let Ok((target, ..)) = items.get(event.event_target()) {
@@ -184,12 +184,13 @@ pub fn on_item_drag_enter<T: Accepts>(
             if section_flags.accepts(item_flags) {
                 commands.entity(target.entity).insert(DragSlot(None));
                 event.propagate(false);
+                info!("drag enter: {item} -> {target}");
             }
         }
     }
 }
 
-// We need to determine the slot when dragging over contents.
+/// Sets the `DragSlot` for the currently hovered section.
 pub fn on_item_drag_over<T>(
     event: On<Pointer<DragOver>>,
     items: Query<(NameOrEntity, &Item)>,
@@ -219,6 +220,7 @@ pub fn on_item_drag_over<T>(
     }
 }
 
+/// If dropped on an item, we attempt to find a section and slot for the item. If dropped on a suitable section slot we move it there.
 pub fn on_item_drag_drop<T: Accepts>(
     mut event: On<Pointer<DragDrop>>,
     mut items: Items<T>,

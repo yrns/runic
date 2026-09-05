@@ -2,10 +2,9 @@ mod grid;
 
 use bevy_ecs::{name::NameOrEntityItem, prelude::*, query::Spawned, system::SystemParam};
 use bevy_math::UVec2;
-use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
-use bevy_ui::{widget::*, *};
+use bevy_reflect::Reflect;
+use bevy_ui::*;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tracing::*;
 
 use crate::*;
@@ -139,10 +138,21 @@ pub struct DragShape(pub Shape);
 #[component(storage = "SparseSet")]
 pub struct DragRotation(pub ItemRotation);
 
-/// Current target slot in section contents when an item is being dragged.
-#[derive(Component, Debug, PartialEq, Eq)]
+/// Current target slot in section contents when an item is being dragged over it. If the item does not fit this will be `None`.
+// TODO: Maybe this should be an enum and include "not accepts"?
+#[derive(Component, Copy, Clone, Debug, PartialEq, Eq)]
 #[component(storage = "SparseSet")]
-pub struct DragSlot(pub Slot);
+pub struct DragSlot(pub Option<Slot>);
+
+impl std::fmt::Display for DragSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let DragSlot(Some(Slot(slot))) = self {
+            write!(f, "{slot}")
+        } else {
+            f.write_str("✘")
+        }
+    }
+}
 
 pub type Items<'w, 's, T> = Query<
     'w,

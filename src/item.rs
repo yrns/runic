@@ -100,7 +100,6 @@ pub fn update_node(
     };
 }
 
-// TODO: SystemParam?
 pub fn on_item_insert(
     event: On<ItemInsert>,
     mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
@@ -172,27 +171,18 @@ fn pointer_slot(
 pub fn on_item_drag_enter<T: Accepts>(
     mut event: On<Pointer<DragEnter>>,
     mut commands: Commands,
-    items: Query<(NameOrEntity, &Item, &Flags<T>)>,
-    sections: Query<(
-        NameOrEntity,
-        &GridContents,
-        &Flags<T>,
-        &UiGlobalTransform,
-        &ComputedNode,
-    )>,
+    items: Query<(NameOrEntity, &Flags<T>)>,
+    sections: Query<(NameOrEntity, &Flags<T>)>,
 ) {
-    if let Ok((item, _item, item_flags)) = items.get(event.dragged) {
-        if let Ok((target, _, _)) = items.get(event.event_target()) {
+    if let Ok((item, item_flags)) = items.get(event.dragged) {
+        if let Ok((target, ..)) = items.get(event.event_target()) {
             info!("drag enter item: {item} -> {target}");
+            // TODO hit check
             // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section.
             event.propagate(false);
-        } else if let Ok((target, section, section_flags, transform, node)) =
-            sections.get(event.event_target())
-        {
+        } else if let Ok((target, section_flags)) = sections.get(event.event_target()) {
             if section_flags.accepts(item_flags) {
-                let slot = pointer_slot(event.pointer_location.position, section, transform, node);
-                info!("drag enter: {item} -> {target}");
-                commands.entity(target.entity).insert(DragSlot(Slot(slot)));
+                commands.entity(target.entity).insert(DragSlot(None));
                 event.propagate(false);
             }
         }
@@ -202,6 +192,7 @@ pub fn on_item_drag_enter<T: Accepts>(
 // We need to determine the slot when dragging over contents.
 pub fn on_item_drag_over<T>(
     event: On<Pointer<DragOver>>,
+    items: Query<(NameOrEntity, &Item)>,
     mut sections: Query<(
         NameOrEntity,
         &GridContents,
@@ -210,12 +201,20 @@ pub fn on_item_drag_over<T>(
         &mut DragSlot,
     )>,
 ) {
-    if let Ok((id, section, transform, node, mut drag_slot)) =
-        sections.get_mut(event.event_target())
-    {
-        let slot = pointer_slot(event.pointer_location.position, section, transform, node);
-        if drag_slot.replace_if_neq(DragSlot(Slot(slot))).is_some() {
-            info!("drag over: {id} slot: {slot}");
+    if let Ok((item, Item { shape })) = items.get(event.dragged) {
+        if let Ok((id, section, transform, node, mut drag_slot)) =
+            sections.get_mut(event.event_target())
+        {
+            let slot = pointer_slot(event.pointer_location.position, section, transform, node);
+            let slot = DragSlot(
+                section
+                    .shape
+                    .fits(shape, section.shape.index(slot))
+                    .then(|| Slot(slot)),
+            );
+            if drag_slot.replace_if_neq(slot).is_some() {
+                info!("drag over: {item} -> {id} slot: {slot}");
+            }
         }
     }
 }
@@ -231,12 +230,14 @@ pub fn on_item_drag_drop<T: Accepts>(
         items.get_mut(event.dropped)
     {
         // We need to check if this is an item we're dropping onto or contents.
-        if let Some(target) = drag_slot
-            .get(event.event_target())
-            .ok()
-            .map(|(target, DragSlot(slot))| (target, *slot))
-            .or_else(|| contents.find_section_slot(event.event_target(), item, flags))
+        if let Some(target) = if let Ok((id, DragSlot(slot))) = drag_slot.get(event.event_target())
         {
+            // If the slot is None the item won't fit.
+            slot.map(|slot| (id, slot))
+        } else {
+            // Item. Find a target.
+            contents.find_section_slot(event.event_target(), item, flags)
+        } {
             contents.resolve_drag(
                 target,
                 id,

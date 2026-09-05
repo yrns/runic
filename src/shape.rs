@@ -9,15 +9,10 @@
 // };
 
 // use bevy_ecs::template::*;
-use bevy_egui::egui;
 use bevy_math::UVec2;
-use bevy_reflect::prelude::*;
+use bevy_reflect::Reflect;
 
 pub use bevy_math::UVec2 as Size;
-
-pub fn to_size(v: egui::Vec2) -> Size {
-    Size::new(v.x as u32, v.y as u32)
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Reflect)]
 pub struct Shape {

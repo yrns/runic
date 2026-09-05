@@ -8,12 +8,6 @@ use bevy::{
     winit::WinitSettings,
     world_serialization::DynamicWorld,
 };
-#[allow(unused)]
-use bevy_ecs::template::*;
-use bevy_egui::{
-    egui::{self, Direction},
-    EguiContexts, EguiPlugin, EguiPrimaryContextPass, EguiTextureHandle, EguiUserTextures,
-};
 use runic::*;
 use serde::{Deserialize, Serialize};
 
@@ -68,21 +62,15 @@ fn main() {
         .insert_resource(WinitSettings::default())
         .add_plugins((DefaultPlugins, RunicPlugin::<ExFlags>::default()))
         .init_state::<AppState>()
-        .add_plugins(EguiPlugin::default())
+        // .add_plugins(EguiPlugin::default())
         .add_systems(Startup, startup)
         .add_systems(OnEnter(AppState::Loading), load_items)
         .add_systems(Update, wait_for_items.run_if(in_state(AppState::Loading)))
         .add_systems(
             Update,
-            spawn_items
+            spawn_contents
                 .run_if(in_state(AppState::Loading))
                 .run_if(on_message::<AssetLoadFailedEvent<DynamicWorld>>),
-        )
-        .add_systems(
-            EguiPrimaryContextPass,
-            (item_icon_changed::<ExFlags>, update)
-                .chain()
-                .run_if(in_state(AppState::Running)),
         )
         .add_systems(
             Update,
@@ -350,7 +338,7 @@ fn items() -> impl SceneList {
             shape: { Shape::new((2, 2), true) }
         }
         Flags<ExFlags>(ExFlags::CONTAINER)
-        Layout { direction: Direction::LeftToRight }
+        // Layout { direction: Direction::LeftToRight }
         Children [
             #PouchAny
             GridContents {
@@ -401,7 +389,7 @@ fn items() -> impl SceneList {
     ]
 }
 
-fn spawn_items(
+fn spawn_contents(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
     mut _storage: ContentsStorage<ExFlags>,
@@ -409,159 +397,115 @@ fn spawn_items(
 ) {
     info!("spawning items!");
 
-    next_state.set(AppState::Running);
-
-    let scene_list = bsn_list![
-        #Ground
-        Node
+    let scene = bsn![
+        #Inventory
+        Node {
+            flex_direction: FlexDirection::Row,
+            width: percent(100.0),
+            // height: percent(100.0),
+            border: px(4.),
+            // align_items: AlignItems::Center,
+        }
+        BorderColor::all(WHITE)
         Children [
-            #Ground0
-            GridContents {
-                shape: { (10, 10) },
-                header: { "Ground 10x10".to_owned() },
+            #PaperDoll
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: percent(50.0),
+                border: px(4.),
             }
-            Flags<ExFlags>({ ExFlags::all() })
-            Children [{ items() }]
+            Pickable::IGNORE
+            BorderColor::all(GREEN)
+            Open
+            Children [
+                (
+                    #PaperDollText
+                    Text::new("Paper Doll")
+                    Pickable::IGNORE
+                ),
+
+                #A1
+                GridContents {
+                    shape: { (1, 2) },
+                    header: { "A1".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::all() }),
+
+                #A2
+                GridContents {
+                    shape: { (1, 2) },
+                    header: { "A2".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::all() }),
+
+                #W1
+                GridContents {
+                    shape: { (1, 2) },
+                    header: { "W1".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::WEAPON }),
+
+                #PX
+                GridContents {
+                    shape: { (2, 2) },
+                    header: { "Only potions! 2x2:".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::POTION }),
+
+                #Weapon
+                GridContents {
+                    shape: { (3, 2) },
+                    header: { "Weapon (3x2 MAX):".to_owned() },
+                    expands: true,
+                }
+                Flags<ExFlags>({ ExFlags::WEAPON }),
+
+                #Belt
+                GridContents {
+                    shape: { (2, 2) },
+                    header: { "Holds a container:".to_owned() },
+                    expands: true,
+                    inline: true,
+                }
+                Flags<ExFlags>({ ExFlags::CONTAINER }),
+
+                #Bag
+                GridContents {
+                    shape: { (4, 4) },
+                    header: { "Bag of any! 4x4:".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::all() }),
+            ],
+
+            #Ground
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: percent(50.0),
+                border: px(4.),
+            }
+            BorderColor::all(BLUE)
+            Pickable::IGNORE
+            Open
+            Children [
+                (
+                    #GroundText
+                    Text::new("Ground")
+                    Pickable::IGNORE
+                ),
+
+                #Ground0
+                GridContents {
+                    shape: { (10, 10) },
+                    header: { "Ground 10x10".to_owned() },
+                }
+                Flags<ExFlags>({ ExFlags::all() })
+                Children [{ items() }]
+            ]
         ]
-        Open,
-
-        // There is no longer a "main" contents which always appears at the bottom of the other sections. Which means now there's no way to have alternating layouts, and we don't want to do recursive sections just for layout purposes. The layout stuff we'll have to redo later anyway, once we switch to Bevy's native UI.
-        #PaperDoll
-        Node
-        Layout { direction: Direction::TopDown }
-        Children [
-            #A1
-            GridContents {
-                shape: { (1, 2) },
-                header: { "A1".to_owned() },
-            }
-            Flags<ExFlags>({ ExFlags::all() }),
-
-            #A2
-            GridContents {
-                shape: { (1, 2) },
-                header: { "A2".to_owned() },
-            }
-            Flags<ExFlags>({ ExFlags::all() }),
-
-            #W1
-            GridContents {
-                shape: { (1, 2) },
-                header: { "W1".to_owned() },
-            }
-            Flags<ExFlags>({ ExFlags::WEAPON }),
-
-            #PX
-            GridContents {
-                shape: { (2, 2) },
-                header: { "Only potions! 2x2:".to_owned() },
-            }
-            Flags<ExFlags>({ ExFlags::POTION }),
-
-            #Weapon
-            GridContents {
-                shape: { (3, 2) },
-                header: { "Weapon (3x2 MAX):".to_owned() },
-                expands: true,
-            }
-            Flags<ExFlags>({ ExFlags::WEAPON }),
-
-            #Belt
-            GridContents {
-                shape: { (2, 2) },
-                header: { "Holds a container:".to_owned() },
-                expands: true,
-                inline: true,
-            }
-            Flags<ExFlags>({ ExFlags::CONTAINER }),
-
-            #Bag
-            GridContents {
-                shape: { (4, 4) },
-                header: { "Bag of any! 4x4:".to_owned() },
-            }
-            Flags<ExFlags>({ ExFlags::all() }),
-
-        ]
-        // Open
     ];
 
-    commands.spawn_scene_list(scene_list);
-}
+    dbg!(commands.spawn_scene(scene).id());
+    //.insert((Name::new("Root"), Pickable::IGNORE));
 
-// TODO lib
-fn item_icon_changed<T: Accepts>(
-    mut commands: Commands,
-    mut icons: Query<(Entity, &Icon), Changed<Icon>>,
-    mut textures: ResMut<EguiUserTextures>,
-    names: Query<&Name>,
-) {
-    for (item, icon) in &mut icons {
-        info!(
-            "icon changed: {:?} item: {item} name: {}",
-            icon.0.path(),
-            names.get(item).unwrap()
-        );
-        commands.entity(item).insert(IconId(
-            textures.add_image(EguiTextureHandle::Weak(icon.0.id())),
-        ));
-    }
-}
-
-fn update(
-    mut contexts: EguiContexts,
-    mut storage: ContentsStorage<ExFlags>,
-    opened: Query<(Entity, &Name), (With<Open>, Without<IsResource>)>,
-) -> Result {
-    let ctx = contexts.ctx_mut()?;
-
-    storage.update(ctx);
-
-    // TODO component
-    // Control-clicking items in the inventory will send them to ground.
-    //*storage.target = Some(ground.0);
-
-    // TODO: Titles stored in ECS?
-
-    // egui::Window::new("Paper doll:")
-    //     .resizable(false)
-    //     .movable(true)
-    //     .max_width(512.0)
-    //     .anchor(egui::Align2::LEFT_TOP, egui::Vec2::splat(16.0))
-    //     .show(ctx, |ui| {
-    //         storage.show(paper_doll.0, ui);
-    //     });
-
-    // Control-clicking items on the ground will send them to the inventory.
-    //*storage.target = Some(paper_doll.0);
-
-    // egui::Window::new("Ground 10x10:")
-    //     .resizable(false)
-    //     .movable(true)
-    //     .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
-    //     .show(ctx, |ui| {
-    //         storage.show(ground.0, ui);
-    //     });
-
-    // TODO Should containers opened in a window auto-raise, when dragged to? They can end up behind the fixed contents (ground, etc.).
-
-    // Show all open containers.
-    for (c, name, ..) in &opened {
-        let mut open = true;
-        egui::Window::new(name.as_str())
-            .resizable(false)
-            .movable(true)
-            .open(&mut open)
-            // .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-16.0, 16.0))
-            .show(ctx, |ui| {
-                storage.show(c, ui);
-            });
-        if !open {
-            storage.commands.entity(c).remove::<Open>();
-            // .trigger(ContainerClose); // 14.2 doesn't have this yet?
-            storage.commands.trigger(ContainerClose(c));
-        }
-    }
-
-    Ok(())
+    next_state.set(AppState::Running);
 }

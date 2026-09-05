@@ -15,9 +15,10 @@ name = "ex1"
 bevy_app = "0.19"
 bevy_asset = "0.19"
 bevy_ecs = "0.19"
-bevy_egui = { version = "0.41", features = ["serde"] }
 bevy_image = "0.19"
+bevy_input = "0.19"
 bevy_math = "0.19"
+bevy_picking = "0.19"
 bevy_reflect = "0.19"
 bevy_render = "0.19"
 bevy_scene = "0.19"
@@ -32,5 +33,5 @@ bevy = {
   version = "0.19",
   default-features = false,
   # Do we need 2d? Not for ui but maybe for egui?
-  features = ["audio", "ui"]
+  features = ["audio", "debug", "track_location", "ui"]
 }

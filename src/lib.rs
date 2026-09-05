@@ -2,7 +2,6 @@ mod contents;
 mod events;
 mod icon;
 mod item;
-mod min_frame;
 mod plugin;
 mod shape;
 

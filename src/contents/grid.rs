@@ -1,7 +1,8 @@
 use super::*;
 
-/// Contains items in a 2d grid.
-#[derive(Component, Clone, Reflect, FromTemplate)]
+/// Contains items in a 2D grid.
+// We want the shape to be required, but there is no way to do so (<https://github.com/bevyengine/bevy/issues/24739>).
+#[derive(Component, Clone, Reflect)]
 #[reflect(Component)]
 pub struct GridContents<const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
@@ -11,6 +12,18 @@ pub struct GridContents<const N: usize = 48> {
     pub header: Option<String>, // Use Name?
     /// The shape describes the dimensions of the container and which slots are filled.
     pub shape: Shape,
+}
+
+// I hate this but we need a default for now.
+impl Default for GridContents {
+    fn default() -> Self {
+        Self {
+            expands: false,
+            inline: false,
+            header: None,
+            shape: Shape::new((2, 2), false),
+        }
+    }
 }
 
 impl<const N: usize> GridContents<N> {

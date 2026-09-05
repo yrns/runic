@@ -9,12 +9,34 @@ use tracing::*;
 use crate::*;
 
 /// An item.
-#[derive(Component, Clone, Debug, Reflect, FromTemplate)]
+#[derive(Component, Clone, Debug, Reflect)]
 #[reflect(Component)]
 #[require(ItemRotation)]
 pub struct Item {
     /// The shape represents this items dimensions (and filled "slots" in case it is not rectangular).
     pub shape: Shape,
+}
+
+impl Default for Item {
+    fn default() -> Self {
+        Self {
+            shape: Shape::new([1, 1], true),
+        }
+    }
+}
+
+impl Item {
+    /// Apply `rotation` to shape.
+    // This should really only be used for temporary items. The actual item entities are stored unrotated and the rotation is applied when we need to check to see if it'll fit somewhere, or other operations where the rotation is pertinent.
+    pub fn with_rotation(mut self, rotation: ItemRotation) -> Self {
+        match rotation {
+            ItemRotation::None => (),
+            ItemRotation::R90 => self.shape = self.shape.rotate90(),
+            ItemRotation::R180 => self.shape = self.shape.rotate180(),
+            ItemRotation::R270 => self.shape = self.shape.rotate270(),
+        }
+        self
+    }
 }
 
 /// Update shape and transform when the item is rotated.
@@ -331,56 +353,6 @@ pub fn insert_nodes(
 ;
             }
         }
-    }
-}
-
-impl Item {
-    // Flags are required since the empty (default) flags allow the item to fit any container
-    // regardless of the container's flags.
-    pub fn new() -> Self {
-        Self {
-            shape: Shape::new([1, 1], true),
-        }
-    }
-
-    // /// Set the item shape and unset its rotation.
-    // pub fn with_shape(mut self, shape: impl Into<Shape>) -> Self {
-    //     self.shape = shape.into();
-    //     self.rotation = ItemRotation::None;
-    //     self
-    // }
-
-    // /// Set the item's rotation and apply it to its shape.
-    // pub fn with_rotation(mut self, r: ItemRotation) -> Self {
-    //     self.rotation = r;
-    //     self.rotate();
-    //     self
-    // }
-
-    /// Size in pixels.
-    pub fn size(&self, slot_dim: f32) -> Vec2 {
-        self.shape.size().as_vec2() * slot_dim
-    }
-
-    /// The width of the shape (in slots).
-    pub fn width(&self) -> usize {
-        self.shape.width()
-    }
-
-    /// Return index for offset in pixels.
-    pub fn index(&self, offset: Vec2) -> usize {
-        self.shape.index(offset.as_uvec2())
-    }
-
-    // Apply rotation to shape. This should really only be used for temporary items. The actual item entities are stored unrotated and the rotation is applied when we need to check to see if it'll fit somewhere, or other operations where the rotation is pertinent.
-    pub fn with_rotation(mut self, rotation: ItemRotation) -> Self {
-        match rotation {
-            ItemRotation::None => (),
-            ItemRotation::R90 => self.shape = self.shape.rotate90(),
-            ItemRotation::R180 => self.shape = self.shape.rotate180(),
-            ItemRotation::R270 => self.shape = self.shape.rotate270(),
-        }
-        self
     }
 }
 

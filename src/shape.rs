@@ -74,13 +74,6 @@ impl FromTemplate for Shape {
 }
  */
 
-// NOTE: Default only works because the fields are private.
-impl Default for Shape {
-    fn default() -> Self {
-        Self::from([[1]])
-    }
-}
-
 // impl From<(u32, u32)> for Shape {
 //     fn from((x, y): (u32, u32)) -> Self {
 //         Self {

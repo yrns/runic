@@ -197,20 +197,22 @@ pub fn on_item_drag_over<T>(
     mut sections: Query<(
         NameOrEntity,
         &GridContents,
+        Option<&DragShape>,
         &UiGlobalTransform,
         &ComputedNode,
         &mut DragSlot,
     )>,
 ) {
     if let Ok((item, Item { shape })) = items.get(event.dragged) {
-        if let Ok((id, section, transform, node, mut drag_slot)) =
+        if let Ok((id, section, drag_shape, transform, node, mut drag_slot)) =
             sections.get_mut(event.event_target())
         {
+            // Use the cached shape with the item unpainted when moving within the same container.
+            let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
             let slot = pointer_slot(event.pointer_location.position, section, transform, node);
             let slot = DragSlot(
-                section
-                    .shape
-                    .fits(shape, section.shape.index(slot))
+                section_shape
+                    .fits(shape, section_shape.index(slot))
                     .then(|| Slot(slot)),
             );
             if drag_slot.replace_if_neq(slot).is_some() {

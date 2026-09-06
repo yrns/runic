@@ -193,7 +193,7 @@ pub fn on_item_drag_enter<T: Accepts>(
 /// Sets the `DragSlot` for the currently hovered section.
 pub fn on_item_drag_over<T>(
     event: On<Pointer<DragOver>>,
-    items: Query<(NameOrEntity, &Item)>,
+    items: Query<(NameOrEntity, &Item, &ItemRotation, Option<&DragRotation>)>,
     mut sections: Query<(
         NameOrEntity,
         &GridContents,
@@ -203,21 +203,28 @@ pub fn on_item_drag_over<T>(
         &mut DragSlot,
     )>,
 ) {
-    if let Ok((item, Item { shape })) = items.get(event.dragged) {
+    if let Ok((item_id, item, rotation, drag_rotation)) = items.get(event.dragged) {
         if let Ok((id, section, drag_shape, transform, node, mut drag_slot)) =
             sections.get_mut(event.event_target())
         {
+            // Apply (drag) rotation.
+            let item = item
+                .clone()
+                .with_rotation(drag_rotation.map_or(*rotation, |r| r.0));
+
             // Use the cached shape with the item unpainted when moving within the same container.
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
             let slot = pointer_slot(event.pointer_location.position, section, transform, node);
             let slot = DragSlot(
                 section_shape
-                    .fits(shape, section_shape.index(slot))
+                    .fits(&item.shape, section_shape.index(slot))
                     .then(|| Slot(slot)),
             );
             if drag_slot.replace_if_neq(slot).is_some() {
-                info!("drag over: {item} -> {id} slot: {slot}");
-            }
+                info!("drag over: {item_id} -> {id} slot: {slot}");
+            } //  else {
+              //     warn!("does not fit: {slot}\n{}", &drag_shape.unwrap().0);
+              // }
         }
     }
 }

@@ -299,18 +299,19 @@ pub fn on_item_drag_end(
 }
 
 pub fn on_item_drag_leave(
-    mut event: On<Pointer<DragLeave>>,
+    event: On<Pointer<DragLeave>>,
     mut commands: Commands,
-    items: Query<NameOrEntity, With<Item>>,
+    // items: Query<NameOrEntity, With<Item>>,
     sections: Query<NameOrEntity, With<DragSlot>>,
 ) {
-    if let Ok(id) = items.get(event.event_target()) {
-        info!("drag leave item: {id}");
-        event.propagate(false);
-    } else if let Ok(id) = sections.get(event.event_target()) {
+    // if let Ok(id) = items.get(event.event_target()) {
+    //     info!("drag leave item: {id}");
+    //     // event.propagate(false);
+    // } else
+    if let Ok(id) = sections.get(event.event_target()) {
         info!("drag leave: {id}");
-        commands.entity(id.entity).remove::<DragSlot>();
-        event.propagate(false);
+        commands.entity(id.entity).remove::<(DragShape, DragSlot)>();
+        // event.propagate(false);
     }
 }
 

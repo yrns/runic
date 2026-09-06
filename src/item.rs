@@ -60,15 +60,7 @@ pub fn insert_rotation(
 // Or all three!
 // So we can't easily use component changes, and rather use item events.
 
-pub fn update_node(
-    Slot(slot): Slot,
-    item: &Item,
-    rotation: ItemRotation,
-    node: &mut Node,
-    transform: &mut UiTransform,
-) {
-    use bevy_math::Vec2Swizzles;
-
+pub fn update_node(Slot(slot): Slot, item: &Item, node: &mut Node) {
     let size = item.shape.size;
     // let size = match rotation {
     //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
@@ -87,6 +79,11 @@ pub fn update_node(
     // node.max_height = px(size.y as f32 * 48.0);
     // node.min_width = node.max_width;
     // node.min_height = node.max_height;
+}
+
+/// Resets an item's transform based on its rotation and size.
+pub fn reset_transform(size: Vec2, rotation: ItemRotation, transform: &mut UiTransform) {
+    use bevy_math::Vec2Swizzles;
 
     // Bevy rotates from the center. We're not just rotating it, we're trying to maintain the item's upper left corner in the current slot. So non-square items will need to be offset.
     transform.rotation = rotation.rot2();
@@ -105,7 +102,8 @@ pub fn on_item_insert(
     mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
 ) -> Result {
     let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
-    update_node(*slot, item, *rotation, &mut *node, &mut *transform);
+    update_node(*slot, item, &mut *node);
+    reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut *transform);
     Ok(())
 }
 
@@ -114,7 +112,8 @@ pub fn on_item_move(
     mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
 ) -> Result {
     let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
-    update_node(*slot, item, *rotation, &mut *node, &mut *transform);
+    update_node(*slot, item, &mut *node);
+    reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut *transform);
     Ok(())
 }
 
@@ -280,12 +279,21 @@ pub fn on_item_ctrl_click(
 pub fn on_item_drag_end(
     event: On<Pointer<DragEnd>>,
     mut commands: Commands,
-    items: Query<(NameOrEntity, &Item)>,
+    mut items: Query<(NameOrEntity, &Item, &ItemRotation, &mut UiTransform)>,
 ) {
-    if let Ok((item, _item)) = items.get(event.event_target()) {
+    if let Ok((
+        item,
+        Item {
+            shape: Shape { size, .. },
+        },
+        rotation,
+        mut transform,
+    )) = items.get_mut(event.event_target())
+    {
         commands
             .entity(item.entity)
             .insert((GlobalZIndex::default(), Pickable::default()));
+        reset_transform(size.as_vec2() * 48.0, *rotation, &mut *transform);
         info!("drag end: {item}");
     }
 }
@@ -346,18 +354,16 @@ pub fn insert_nodes(
                     ..Default::default()
                 };
                 let mut transform = UiTransform::IDENTITY;
-                update_node(*slot, item, *rotation, &mut node, &mut transform);
+                update_node(*slot, item, &mut node);
+                reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut transform);
+
                 commands.entity(id).insert((
                     node,
                     transform,
                     ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
                     Pickable::default(),
                     GlobalZIndex::default(),
-                ))
-                // .observe(|event: On<Pointer<DragStart>>| {
-                //     dbg!("drag start", event);
-                // })
-;
+                ));
             }
         }
     }

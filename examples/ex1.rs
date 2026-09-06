@@ -59,7 +59,7 @@ enum AppState {
 
 fn main() {
     App::new()
-        .insert_resource(WinitSettings::default())
+        .insert_resource(WinitSettings::desktop_app())
         .add_plugins((DefaultPlugins, RunicPlugin::<ExFlags>::default()))
         .init_state::<AppState>()
         // .add_plugins(EguiPlugin::default())

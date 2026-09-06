@@ -222,18 +222,23 @@ pub fn on_item_drag_over<T>(
 
 /// If dropped on an item, we attempt to find a section and slot for the item. If dropped on a suitable section slot we move it there.
 pub fn on_item_drag_drop<T: Accepts>(
-    mut event: On<Pointer<DragDrop>>,
+    event: On<Pointer<DragDrop>>,
     mut items: Items<T>,
     drag_slot: Query<(Entity, &DragSlot)>,
     mut contents: ContentsStorage<T>,
 ) {
+    // We only care about the original target? What if someone spawns something (text/icon?) inside the item? Then they'd have to be unpickable.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
     // Fetch the dragged item.
     if let Ok((id, slot, item, item_rotation, drag_rotation, child_of, flags)) =
         items.get_mut(event.dropped)
     {
         // We need to check if this is an item we're dropping onto or contents.
-        if let Some(target) = if let Ok((id, DragSlot(slot))) = drag_slot.get(event.event_target())
-        {
+        if let Some(target) = if let Ok((id, DragSlot(slot))) = drag_slot.get(t) {
             // If the slot is None the item won't fit.
             slot.map(|slot| (id, slot))
         } else {
@@ -249,7 +254,6 @@ pub fn on_item_drag_drop<T: Accepts>(
                 drag_rotation,
                 child_of,
             );
-            event.propagate(false);
         }
     }
 }

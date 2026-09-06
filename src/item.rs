@@ -124,11 +124,12 @@ pub fn on_item_drag_start(
     event: On<Pointer<DragStart>>,
     mut commands: Commands,
     contents: Query<&GridContents>,
-    items: Query<(&Item, &Slot, &ChildOf)>,
+    items: Query<(&Item, &ItemRotation, &Slot, &ChildOf)>,
 ) {
     let id = event.event_target();
-    if let Ok((item, Slot(slot), ChildOf(container))) = items.get(id) {
+    if let Ok((item, rotation, Slot(slot), ChildOf(container))) = items.get(id) {
         if let Ok(contents) = contents.get(*container) {
+            let item = item.clone().with_rotation(*rotation);
             let mut shape = contents.shape.clone();
             shape.unpaint(&item.shape, shape.index(*slot));
             commands.entity(*container).insert(DragShape(shape));

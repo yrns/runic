@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use bevy_app::*;
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_reflect::*;
 
 use crate::*;
@@ -19,17 +20,17 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
             .register_type::<Item>()
             .register_type::<Icon>()
             .add_systems(
-                Update,
+                PostUpdate,
                 (
                     contents::insert_item,
                     contents::contents_spawned,
-                    // item::update_rotation,
-                    item::insert_nodes,
+                    item::update_drag_rotation,
+                    (item::insert_nodes, item::update_nodes).chain(),
                 ),
             )
-            .add_observer(item::on_item_insert)
-            .add_observer(item::on_item_move)
-            .add_observer(item::on_item_rotate)
+            // .add_observer(item::on_item_insert)
+            // .add_observer(item::on_item_move)
+            // .add_observer(item::on_item_rotate)
             .add_observer(item::on_item_drag_start)
             .add_observer(item::on_item_drag)
             .add_observer(item::on_item_drag_enter::<T>)

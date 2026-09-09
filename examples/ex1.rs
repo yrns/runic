@@ -1,12 +1,7 @@
 use bevy::{
-    asset::AssetLoadFailedEvent,
-    color::palettes::basic::*,
-    ecs::{resource::IsResource, system::SystemId},
-    prelude::*,
-    tasks::IoTaskPool,
-    window::RequestRedraw,
-    winit::WinitSettings,
-    world_serialization::DynamicWorld,
+    asset::AssetLoadFailedEvent, color::palettes::basic::*, ecs::system::SystemId,
+    input::common_conditions::*, prelude::*, tasks::IoTaskPool, window::RequestRedraw,
+    winit::WinitSettings, world_serialization::DynamicWorld,
 };
 use runic::*;
 use serde::{Deserialize, Serialize};
@@ -74,7 +69,10 @@ fn main() {
         )
         .add_systems(
             Update,
-            (styling, save_items).run_if(in_state(AppState::Running)),
+            (
+                (styling, save_items).run_if(in_state(AppState::Running)),
+                rotate_items.run_if(input_just_pressed(KeyCode::KeyR)),
+            ),
         )
         // .add_systems(
         //     Last,
@@ -118,6 +116,13 @@ fn styling(
 
     for item in &items {
         commands.entity(item).insert((BorderColor::from(WHITE),));
+    }
+}
+
+// Increment the currently dragged item's rotation.
+fn rotate_items(mut items: Query<&mut DragRotation>) {
+    for mut r in &mut items {
+        r.0 = r.0.increment();
     }
 }
 
@@ -504,7 +509,7 @@ fn spawn_contents(
         ]
     ];
 
-    dbg!(commands.spawn_scene(scene).id());
+    commands.spawn_scene(scene);
     //.insert((Name::new("Root"), Pickable::IGNORE));
 
     next_state.set(AppState::Running);

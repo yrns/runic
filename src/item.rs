@@ -1,4 +1,4 @@
-use bevy_ecs::prelude::*;
+use bevy_ecs::{prelude::*, query::Spawned};
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
 use bevy_picking::prelude::*;
@@ -39,18 +39,15 @@ impl Item {
     }
 }
 
-/// Update shape and transform when the item is rotated.
-pub fn insert_rotation(
-    mut commands: Commands,
-    mut items: Query<(Entity, &mut Item, &ItemRotation), Changed<ItemRotation>>,
+/// Update the dragged item's transform when rotated.
+pub fn update_drag_rotation(
+    // mut commands: Commands,
+    mut items: Query<(&Item, &DragRotation, &mut UiTransform), Changed<DragRotation>>,
 ) {
-    for (id, _item, rotation) in &mut items {
-        // transform.rotation = rotation.rot2();
-        // commands
-        //     .entity(id)
-        //     .insert(UiTransform::from_rotation(rotation.rot2()));
-        // We no longer mutate the item shape.
-        // item.rotate(*rotation);
+    for (Item { shape }, DragRotation(drag_rotation, offset), mut transform) in &mut items {
+        transform.rotation = drag_rotation.rot2();
+        let Vec2 { x, y } = drag_rotation.offset(shape.size.as_vec2() * 48.0) + offset;
+        transform.translation = Val2::px(x, y);
     }
 }
 
@@ -60,61 +57,48 @@ pub fn insert_rotation(
 // Or all three!
 // So we can't easily use component changes, and rather use item events.
 
-pub fn update_node(Slot(slot): Slot, item: &Item, node: &mut Node) {
-    let size = item.shape.size;
-    // let size = match rotation {
-    //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
-    //     _ => size,
-    // };
-    node.grid_row = GridPlacement::start_span((slot.y + 1) as i16, size.y as u16);
-    node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
-    // Grid tracks are fixed.
+/// Update the node and transform when an item's size changes (via rotation) or its slot changes.
+pub fn update_nodes(
+    mut items: Query<
+        (
+            NameOrEntity,
+            &Item,
+            &ItemRotation,
+            &Slot,
+            &mut Node,
+            &mut UiTransform,
+        ),
+        Or<(Changed<ItemRotation>, Changed<Slot>)>, // ChildOf?
+    >,
+) {
+    for (_, Item { shape }, rotation, Slot(slot), mut node, mut transform) in &mut items {
+        let size = shape.size;
 
-    let size = size.as_vec2() * 48.0;
+        // We don't need to apply the rotation to the size because the transform does.
+        // let size = match rotation {
+        //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
+        //     _ => size,
+        // };
 
-    // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
-    node.width = px(size.x);
-    node.height = px(size.y);
-    // node.max_width = px(size.x as f32 * 48.0);
-    // node.max_height = px(size.y as f32 * 48.0);
-    // node.min_width = node.max_width;
-    // node.min_height = node.max_height;
-}
+        node.grid_row = GridPlacement::start_span((slot.y + 1) as i16, size.y as u16);
+        node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
 
-/// Resets an item's transform based on its rotation and size.
-pub fn reset_transform(size: Vec2, rotation: ItemRotation, transform: &mut UiTransform) {
-    use bevy_math::Vec2Swizzles;
+        // Grid tracks are fixed, is this needed?
+        let size = size.as_vec2() * 48.0;
 
-    // Bevy rotates from the center. We're not just rotating it, we're trying to maintain the item's upper left corner in the current slot. So non-square items will need to be offset.
-    transform.rotation = rotation.rot2();
-    transform.translation = match rotation {
-        ItemRotation::R90 | ItemRotation::R270 => {
-            let offset = (size.yx() - size) * 0.5;
-            Val2::px(offset.x, offset.y)
-        }
-        // Center pivot is fine. Clear translation.
-        _ => Val2::default(),
-    };
-}
+        // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
+        node.width = px(size.x);
+        node.height = px(size.y);
+        // node.max_width = px(size.x as f32 * 48.0);
+        // node.max_height = px(size.y as f32 * 48.0);
+        // node.min_width = node.max_width;
+        // node.min_height = node.max_height;
 
-pub fn on_item_insert(
-    event: On<ItemInsert>,
-    mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
-) -> Result {
-    let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
-    update_node(*slot, item, &mut *node);
-    reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut *transform);
-    Ok(())
-}
-
-pub fn on_item_move(
-    event: On<ItemMove>,
-    mut items: Query<(&Slot, &Item, &ItemRotation, &mut Node, &mut UiTransform)>,
-) -> Result {
-    let (slot, item, rotation, mut node, mut transform) = items.get_mut(event.item)?;
-    update_node(*slot, item, &mut *node);
-    reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut *transform);
-    Ok(())
+        // Update transform. What about scale?
+        transform.rotation = rotation.rot2();
+        let Vec2 { x, y } = rotation.offset(size);
+        transform.translation = Val2::px(x, y);
+    }
 }
 
 // If it's being dragged, it's not on the grid...
@@ -133,28 +117,24 @@ pub fn on_item_drag_start(
             let mut shape = contents.shape.clone();
             shape.unpaint(&item.shape, shape.index(*slot));
             commands.entity(*container).insert(DragShape(shape));
-            commands
-                .entity(id)
-                .insert((GlobalZIndex(1), Pickable::IGNORE));
+            commands.entity(id).insert((
+                GlobalZIndex(1),
+                Pickable::IGNORE,
+                DragRotation(*rotation, Vec2::ZERO),
+            ));
         }
     }
 }
 
-pub fn on_item_drag(event: On<Pointer<Drag>>, mut items: Query<&mut UiTransform, With<Item>>) {
-    if let Ok(mut transform) = items.get_mut(event.event_target()) {
-        // We can't use distance because the item may already have a translation (from rotation)
-        let bevy_math::Vec2 { x: dx, y: dy } = event.delta;
-
-        match &mut transform.translation {
-            Val2 {
-                x: Val::Px(x),
-                y: Val::Px(y),
-            } => {
-                *x += dx;
-                *y += dy;
-            }
-            _ => (),
-        }
+pub fn on_item_drag(
+    event: On<Pointer<Drag>>,
+    mut items: Query<(&Item, &mut DragRotation, &mut UiTransform)>,
+) {
+    if let Ok((item, mut drag, mut transform)) = items.get_mut(event.event_target()) {
+        drag.1 = event.distance;
+        transform.rotation = drag.0.rot2();
+        let d = drag.1 + drag.0.offset(item.shape.size.as_vec2() * 48.0);
+        transform.translation = Val2::px(d.x, d.y);
     }
 }
 
@@ -203,7 +183,9 @@ pub fn on_item_drag_over<T>(
         &mut DragSlot,
     )>,
 ) {
+    // Fetch the item we are dragging.
     if let Ok((item_id, item, rotation, drag_rotation)) = items.get(event.dragged) {
+        // Fetch the section we are hovering.
         if let Ok((id, section, drag_shape, transform, node, mut drag_slot)) =
             sections.get_mut(event.event_target())
         {
@@ -267,6 +249,7 @@ pub fn on_item_drag_drop<T: Accepts>(
     }
 }
 
+// TODO: move key input to example only?
 /// Send item to target container.
 pub fn on_item_ctrl_click(
     event: On<Pointer<Click>>,
@@ -289,22 +272,14 @@ pub fn on_item_ctrl_click(
 pub fn on_item_drag_end(
     event: On<Pointer<DragEnd>>,
     mut commands: Commands,
-    mut items: Query<(NameOrEntity, &Item, &ItemRotation, &mut UiTransform)>,
+    items: Query<NameOrEntity, With<Item>>,
 ) {
-    if let Ok((
-        item,
-        Item {
-            shape: Shape { size, .. },
-        },
-        rotation,
-        mut transform,
-    )) = items.get_mut(event.event_target())
-    {
+    if let Ok(item) = items.get(event.event_target()) {
+        info!("drag end: {item}");
         commands
             .entity(item.entity)
-            .insert((GlobalZIndex::default(), Pickable::default()));
-        reset_transform(size.as_vec2() * 48.0, *rotation, &mut *transform);
-        info!("drag end: {item}");
+            .insert((GlobalZIndex::default(), Pickable::default()))
+            .remove::<DragRotation>();
     }
 }
 
@@ -332,51 +307,34 @@ pub fn on_item_drag_cancel(event: On<Pointer<Cancel>>) {
 
 pub fn insert_nodes(
     mut commands: Commands,
-    icons: Query<(Entity, &Icon), Changed<Icon>>,
-    mut items: Query<
-        (
-            Entity,
-            &Slot,
-            &Item,
-            &ItemRotation,
-            &Icon,
-            Option<&mut Node>,
-        ),
-        Or<(Changed<Slot>, Changed<Item>)>,
-    >,
+    mut items: Query<(Entity, &Icon, Option<&mut Node>), Spawned>,
 ) {
-    // for (id, icon) in &icons {
-    //     commands.entity(id).insert(ImageNode::new(icon.0.clone()));
-    // }
-
-    for (id, slot, item, rotation, icon, node) in &mut items {
+    for (id, icon, node) in &mut items {
         match node {
-            Some(_node) => {
-                // transform.rotation = todo!();
+            Some(mut node) => {
+                node.border = px(1.).all(); // TEMP
+                node.align_items = AlignItems::Center;
+                node.justify_content = JustifyContent::Center;
             }
             _ => {
-                let mut node = Node {
+                commands.entity(id).insert(Node {
                     // TEMP styling?
                     // We don't want to border around the items because of irregular shapes. But it's useful for debugging.
                     border: px(1.).all(),
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::Center,
-                    // overflow: Overflow::clip(),
                     ..Default::default()
-                };
-                let mut transform = UiTransform::IDENTITY;
-                update_node(*slot, item, &mut node);
-                reset_transform(item.shape.size.as_vec2() * 48.0, *rotation, &mut transform);
-
-                commands.entity(id).insert((
-                    node,
-                    transform,
-                    ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
-                    Pickable::default(),
-                    GlobalZIndex::default(),
-                ));
+                });
             }
         }
+
+        commands.entity(id).insert((
+            ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
+            // This is also default behavior and is only needed when dragging?
+            Pickable::default(),
+            // Remove? This is only needed when dragging?
+            GlobalZIndex::default(),
+        ));
     }
 }
 
@@ -425,6 +383,17 @@ impl ItemRotation {
             Self::R90 => Rot2::FRAC_PI_2,
             Self::R180 => Rot2::PI,
             Self::R270 => Rot2::FRAC_PI_2.inverse(),
+        }
+    }
+
+    /// Bevy rotates from the center. We're not just rotating the item, we're trying to maintain its upper left corner in the current slot. So non-square items will need to be offset. This function returns that offset.
+    fn offset(&self, size: Vec2) -> Vec2 {
+        use bevy_math::Vec2Swizzles;
+
+        match self {
+            ItemRotation::R90 | ItemRotation::R270 => (size.yx() - size) * 0.5,
+            // Center pivot is fine.
+            _ => Vec2::ZERO,
         }
     }
 }

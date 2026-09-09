@@ -1,7 +1,7 @@
 mod grid;
 
 use bevy_ecs::{name::NameOrEntityItem, prelude::*, query::Spawned, system::SystemParam};
-use bevy_math::UVec2;
+use bevy_math::{UVec2, Vec2};
 use bevy_reflect::Reflect;
 use bevy_ui::*;
 use itertools::Itertools;
@@ -130,13 +130,15 @@ impl<T: Accepts> Flags<T> {
     }
 }
 
+/// The cached shape of the dragged item's original contents (with the item unpainted).
 #[derive(Component, Debug)]
 #[component(storage = "SparseSet")]
 pub struct DragShape(pub Shape);
 
+/// The drag item's rotation which will be applied when the drag ends, and the translation incurred by this rotation.
 #[derive(Component, Debug)]
 #[component(storage = "SparseSet")]
-pub struct DragRotation(pub ItemRotation);
+pub struct DragRotation(pub ItemRotation, pub Vec2);
 
 /// Current target slot in section contents when an item is being dragged over it. If the item does not fit this will be `None`.
 // TODO: Maybe this should be an enum and include "not accepts"?
@@ -162,7 +164,8 @@ pub type Items<'w, 's, T> = Query<
         &'static mut Slot,
         &'static Item,
         &'static mut ItemRotation,
-        Option<&'static DragRotation>,
+        // This is only used from on drag drop?
+        &'static DragRotation,
         &'static ChildOf,
         &'static Flags<T>,
     ),
@@ -296,7 +299,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         mut slot: Mut<Slot>,
         item: &Item,
         mut rotation: Mut<ItemRotation>,
-        drag_rotation: Option<&DragRotation>,
+        &DragRotation(drag_rotation, _): &DragRotation,
         child_of: &ChildOf,
         // flags: &Flags<T>,
     ) {
@@ -328,9 +331,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         contents.remove(*slot, &item.clone().with_rotation(*rotation));
 
         // Copy rotation from the dragged item.
-        if let Some(r) = drag_rotation {
-            rotation.set_if_neq(r.0);
-        }
+        rotation.set_if_neq(drag_rotation);
 
         // Set target slot.
         // self.commands.entity(id.entity).insert(target_slot);
@@ -343,12 +344,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 None => contents,
             };
             self.commands.entity(target_id).add_child(id.entity);
-            contents.insert(
-                target_slot,
-                &item
-                    .clone()
-                    .with_rotation(drag_rotation.map_or(*rotation, |r| r.0)),
-            );
+            contents.insert(target_slot, &item.clone().with_rotation(drag_rotation));
         }
 
         // Fire events.

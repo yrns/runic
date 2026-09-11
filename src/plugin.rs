@@ -28,9 +28,7 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
                     (item::insert_nodes, item::update_nodes).chain(),
                 ),
             )
-            // .add_observer(item::on_item_insert)
-            // .add_observer(item::on_item_move)
-            // .add_observer(item::on_item_rotate)
+            .add_observer(contents::on_open_container)
             .add_observer(item::on_item_drag_start)
             .add_observer(item::on_item_drag)
             .add_observer(item::on_item_drag_enter::<T>)

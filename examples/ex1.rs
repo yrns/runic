@@ -1,3 +1,5 @@
+use std::time::*;
+
 use bevy::{
     asset::AssetLoadFailedEvent, color::palettes::basic::*, ecs::system::SystemId,
     input::common_conditions::*, prelude::*, tasks::IoTaskPool, window::RequestRedraw,
@@ -38,12 +40,6 @@ impl std::fmt::Display for ExFlags {
 }
 
 // FIX? The migration guide explicitly mentions that it is no longer necessary to add derive MapEntities for a resource (<https://bevy.org/learn/migration-guides/0-18-to-0-19/#miscellaneous>)...
-
-// Remembers which containers are opened. TODO: move to lib?
-#[derive(Component, Clone, Default, Reflect)]
-#[reflect(Component)]
-#[component(storage = "SparseSet")]
-struct Open;
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
 enum AppState {
@@ -86,7 +82,8 @@ fn main() {
         .add_observer(drag_start)
         // .observe(drag_end)
         .add_observer(drag_over)
-        .add_observer(container_open)
+        .add_observer(open_container)
+        .add_observer(container_opened)
         .run();
 }
 
@@ -221,13 +218,42 @@ fn drag_over(
     Ok(())
 }
 
-fn container_open(
-    event: On<ContainerOpen>,
+#[derive(Component, Debug)]
+#[component(storage = "SparseSet")]
+struct LastClick(Instant);
+
+// Checks for a double click on an item to open it.
+fn open_container(
+    event: On<Pointer<Release>>,
+    mut commands: Commands,
+    mut items: Query<(NameOrEntity, Option<&mut LastClick>), With<Item>>,
+    // This does not work in desktop app mode...
+    // time: Res<Time<Real>>,
+) {
+    if event.button == PointerButton::Primary {
+        if let Ok((id, last)) = items.get_mut(event.event_target()) {
+            match last {
+                Some(mut last) => {
+                    if last.0.elapsed() < Duration::from_millis(300) {
+                        info!("open: {id}");
+                        commands
+                            .entity(id.entity)
+                            .remove::<LastClick>()
+                            .trigger(OpenContainer);
+                    }
+                    last.0 = Instant::now();
+                }
+                _ => _ = commands.entity(id.entity).insert(LastClick(Instant::now())),
+            }
+        }
+    }
+}
+
+fn container_opened(
+    event: On<ContainerOpened>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-    commands.entity(event.event_target()).insert(Open);
-
     commands
         .entity(event.event_target())
         .insert(AudioPlayer::new(asset_server.load("sfx100v2_wood_03.ogg")))

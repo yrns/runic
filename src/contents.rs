@@ -3,7 +3,8 @@ mod grid;
 use bevy_ecs::{name::NameOrEntityItem, prelude::*, query::Spawned, system::SystemParam};
 use bevy_math::{UVec2, Vec2};
 use bevy_reflect::Reflect;
-use bevy_ui::*;
+use bevy_scene::*;
+use bevy_ui::{widget::*, *};
 use itertools::Itertools;
 use tracing::*;
 
@@ -130,6 +131,12 @@ impl<T: Accepts> Flags<T> {
     }
 }
 
+/// Remember which containers are opened.
+#[derive(Component, Clone, Default, Reflect)]
+#[reflect(Component)]
+#[component(storage = "SparseSet")]
+pub struct Open;
+
 /// The cached shape of the dragged item's original contents (with the item unpainted).
 #[derive(Component, Debug)]
 #[component(storage = "SparseSet")]
@@ -152,6 +159,48 @@ impl std::fmt::Display for DragSlot {
             write!(f, "{slot}")
         } else {
             f.write_str("✘")
+        }
+    }
+}
+
+pub fn on_open_container(
+    event: On<OpenContainer>,
+    mut commands: Commands,
+    containers: Query<NameOrEntity, (With<Item>, Without<Open>)>,
+    contents: Query<(NameOrEntity, &GridContents)>,
+    children: Query<&Children>,
+) {
+    if let Ok(c) = containers
+        .get(event.event_target())
+        .and_then(|c| children.get(c.entity))
+    {
+        if contents.iter_many(c).next().is_some() {
+            commands.entity(event.event_target()).insert(Open);
+
+            // TODO: Disassociate items from contents...
+            let window = bsn![
+                #Window
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: px(32),
+                    left: px(32),
+                    flex_direction: FlexDirection::Column,
+                }
+                Children [
+                    #Header
+                    Node
+                    Children [
+                        Node Text("Contents"),
+                        Node Button Text("X")
+                    ],
+
+                    #Contents
+                    Node
+                    Text("Grid goes here")
+                ]
+            ];
+
+            commands.spawn_scene(window);
         }
     }
 }

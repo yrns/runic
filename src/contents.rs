@@ -1,10 +1,8 @@
 mod grid;
 
-use bevy_ecs::{name::NameOrEntityItem, prelude::*, query::Spawned, system::SystemParam};
+use bevy_ecs::{name::NameOrEntityItem, prelude::*, system::SystemParam};
 use bevy_math::{UVec2, Vec2};
 use bevy_reflect::Reflect;
-use bevy_scene::*;
-use bevy_ui::{widget::*, *};
 use itertools::Itertools;
 use tracing::*;
 
@@ -56,39 +54,6 @@ pub fn insert_item(
 //     }
 // }
 
-pub fn update_node(contents: &GridContents, node: &mut Node) {
-    let UVec2 { x, y } = contents.shape.size;
-
-    node.display = Display::Grid;
-    // TEMP styling remove
-    node.border = px(1.).all();
-    node.margin = px(2.).all();
-    node.padding = px(2.).all();
-    node.width = px(x * 48);
-    node.height = px(y * 48);
-    node.grid_template_columns = RepeatedGridTrack::px(x as u16, 48.0);
-    node.grid_template_rows = RepeatedGridTrack::px(y as u16, 48.0);
-    node.align_items = AlignItems::Center;
-    node.justify_content = JustifyContent::Center;
-}
-
-// Paint shape and set slots here?
-pub fn contents_spawned(
-    mut commands: Commands,
-    mut contents: Query<(Entity, &GridContents, Option<&mut Node>), Spawned>,
-) {
-    for (id, contents, node) in &mut contents {
-        match node {
-            Some(mut node) => update_node(contents, &mut *node),
-            _ => {
-                let mut node = Node::default();
-                update_node(contents, &mut node);
-                _ = commands.entity(id).insert(node);
-            }
-        }
-    }
-}
-
 // fn rotate90(&mut self) {
 //     self.rotation = self.rotation.increment();
 //     self.item.shape = self.item.shape.rotate90();
@@ -131,11 +96,14 @@ impl<T: Accepts> Flags<T> {
     }
 }
 
-/// Remember which containers are opened.
+/// Remembers which containers are opened.
+// TODO Open these on spawn.
 #[derive(Component, Clone, Default, Reflect)]
 #[reflect(Component)]
 #[component(storage = "SparseSet")]
 pub struct Open;
+
+// TODO: Move the drag shape, rotation, and slot to the view node. These are potentially muddying the model.
 
 /// The cached shape of the dragged item's original contents (with the item unpainted).
 #[derive(Component, Debug)]
@@ -163,48 +131,6 @@ impl std::fmt::Display for DragSlot {
     }
 }
 
-pub fn on_open_container(
-    event: On<OpenContainer>,
-    mut commands: Commands,
-    containers: Query<NameOrEntity, (With<Item>, Without<Open>)>,
-    contents: Query<(NameOrEntity, &GridContents)>,
-    children: Query<&Children>,
-) {
-    if let Ok(c) = containers
-        .get(event.event_target())
-        .and_then(|c| children.get(c.entity))
-    {
-        if contents.iter_many(c).next().is_some() {
-            commands.entity(event.event_target()).insert(Open);
-
-            // TODO: Disassociate items from contents...
-            let window = bsn![
-                #Window
-                Node {
-                    position_type: PositionType::Absolute,
-                    top: px(32),
-                    left: px(32),
-                    flex_direction: FlexDirection::Column,
-                }
-                Children [
-                    #Header
-                    Node
-                    Children [
-                        Node Text("Contents"),
-                        Node Button Text("X")
-                    ],
-
-                    #Contents
-                    Node
-                    Text("Grid goes here")
-                ]
-            ];
-
-            commands.spawn_scene(window);
-        }
-    }
-}
-
 pub type Items<'w, 's, T> = Query<
     'w,
     's,
@@ -217,6 +143,8 @@ pub type Items<'w, 's, T> = Query<
         &'static DragRotation,
         &'static ChildOf,
         &'static Flags<T>,
+        // We know there is at least one since we're dragging it.
+        // &'static ViewedBy,
     ),
 >;
 
@@ -344,17 +272,18 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     pub fn resolve_drag(
         &mut self,
         (target_id, target_slot): (Entity, Slot),
-        id: NameOrEntityItem,
+        id: &NameOrEntityItem,
         mut slot: Mut<Slot>,
         item: &Item,
         mut rotation: Mut<ItemRotation>,
         &DragRotation(drag_rotation, _): &DragRotation,
         child_of: &ChildOf,
         // flags: &Flags<T>,
-    ) {
+    ) -> bool {
         // Is the target the same as or inside the item being moved already?
         if id.entity == target_id || self.contains(id.entity, target_id) {
-            return warn!("cannot move item {id} inside itself");
+            warn!("cannot move item {id} inside itself");
+            return false;
         }
 
         let container_id = child_of.parent();
@@ -370,10 +299,11 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         } else if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
             (src, Some(dest))
         } else {
-            return error!(
+            error!(
                 "no contents for source ({}) or destination ({})",
                 container_id, target_id,
             );
+            return false;
         };
 
         // Remove from source container with the original rotation applied.
@@ -418,5 +348,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 item,
             });
         }
+
+        true
     }
 }

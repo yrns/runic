@@ -23,16 +23,21 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
                 PostUpdate,
                 (
                     contents::insert_item,
-                    contents::contents_spawned,
                     item::update_drag_rotation,
-                    (item::insert_nodes, item::update_nodes).chain(),
+                    (
+                        // view::spawn_item_views,
+                        view::contents_spawned,
+                        view::item_moved,
+                        item::update_nodes,
+                    )
+                        .chain(),
                 ),
             )
-            .add_observer(contents::on_open_container)
+            .add_observer(view::on_open_container)
             .add_observer(item::on_item_drag_start)
             .add_observer(item::on_item_drag)
             .add_observer(item::on_item_drag_enter::<T>)
-            .add_observer(item::on_item_drag_over::<T>)
+            .add_observer(item::on_item_drag_over)
             .add_observer(item::on_item_drag_drop::<T>)
             .add_observer(item::on_item_drag_end)
             .add_observer(item::on_item_drag_leave)

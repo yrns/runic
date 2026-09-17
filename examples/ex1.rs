@@ -94,25 +94,24 @@ fn startup(mut commands: Commands) {
 // We have to modify the node to change the border width?
 fn styling(
     mut commands: Commands,
-    contents: Query<Entity, Added<GridContents>>,
-    opened: Query<Entity, With<Open>>,
-    items: Query<Entity, Added<Item>>,
-    parents: Query<&ChildOf>,
+    sections: Query<&ViewedBy, Added<GridContents>>,
+    items: Query<&ViewedBy, Added<Item>>,
+    mut nodes: Query<(NameOrEntity, &mut Node)>,
 ) {
-    // FIX we have decouple the item contents from the item, because the item will be parented to the contents and we want the the inner contents to be unparented (in a window or otherwise) unless it's inline
-    for contents in &contents {
-        if let Some(_) = parents
-            .iter_ancestors(contents)
-            .find(|a| opened.contains(*a))
-        {
-            commands
-                .entity(contents)
-                .insert((BorderColor::from(FUCHSIA),));
-        }
+    let mut iter = nodes.iter_many_mut(sections.iter().flat_map(|v| v));
+    while let Some((id, mut node)) = iter.fetch_next() {
+        node.border = px(1.).all();
+        commands
+            .entity(id.entity)
+            .insert((BorderColor::from(FUCHSIA),));
     }
 
-    for item in &items {
-        commands.entity(item).insert((BorderColor::from(WHITE),));
+    let mut iter = nodes.iter_many_mut(items.iter().flat_map(|v| v));
+    while let Some((id, mut node)) = iter.fetch_next() {
+        node.border = px(1.).all();
+        commands
+            .entity(id.entity)
+            .insert((BorderColor::from(WHITE),));
     }
 }
 
@@ -426,35 +425,13 @@ fn spawn_contents(
     mut _storage: ContentsStorage<ExFlags>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
-    info!("spawning items!");
+    info!("spawning contents!");
 
-    let scene = bsn![
+    let scene = bsn_list![
         #Inventory
-        Node {
-            flex_direction: FlexDirection::Row,
-            width: percent(100.0),
-            // height: percent(100.0),
-            border: px(4.),
-            // align_items: AlignItems::Center,
-        }
-        BorderColor::all(WHITE)
         Children [
             #PaperDoll
-            Node {
-                flex_direction: FlexDirection::Column,
-                width: percent(50.0),
-                border: px(4.),
-            }
-            Pickable::IGNORE
-            BorderColor::all(GREEN)
-            Open
             Children [
-                (
-                    #PaperDollText
-                    Text::new("Paper Doll")
-                    Pickable::IGNORE
-                ),
-
                 #A1
                 GridContents {
                     shape: { (1, 2) },
@@ -509,21 +486,7 @@ fn spawn_contents(
             ],
 
             #Ground
-            Node {
-                flex_direction: FlexDirection::Column,
-                width: percent(50.0),
-                border: px(4.),
-            }
-            BorderColor::all(BLUE)
-            Pickable::IGNORE
-            Open
             Children [
-                (
-                    #GroundText
-                    Text::new("Ground")
-                    Pickable::IGNORE
-                ),
-
                 #Ground0
                 GridContents {
                     shape: { (10, 10) },
@@ -532,10 +495,63 @@ fn spawn_contents(
                 Flags<ExFlags>({ ExFlags::all() })
                 Children [{ items() }]
             ]
+        ],
+
+        #InventoryView
+        Node {
+            flex_direction: FlexDirection::Row,
+            width: percent(100.0),
+            // height: percent(100.0),
+            border: px(4.),
+            // align_items: AlignItems::Center,
+        }
+        BorderColor::all(WHITE)
+        Children [
+            #PaperDollView
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: percent(50.0),
+                border: px(4.),
+            }
+            Pickable::IGNORE
+            BorderColor::all(GREEN)
+            Children [
+                (
+                    #PaperDollText
+                    Text::new("Paper Doll")
+                    Pickable::IGNORE
+                ),
+
+                Viewing(#A1),
+                Viewing(#A2),
+                Viewing(#W1),
+                Viewing(#PX),
+                Viewing(#Weapon),
+                Viewing(#Belt),
+                Viewing(#Bag),
+            ],
+
+            #GroundView
+            Node {
+                flex_direction: FlexDirection::Column,
+                width: percent(50.0),
+                border: px(4.),
+            }
+            BorderColor::all(BLUE)
+            Pickable::IGNORE
+            Children [
+                (
+                    #GroundText
+                    Text::new("Ground")
+                    Pickable::IGNORE
+                ),
+
+                Viewing(#Ground0)
+            ]
         ]
     ];
 
-    commands.spawn_scene(scene);
+    commands.spawn_scene_list(scene);
     //.insert((Name::new("Root"), Pickable::IGNORE));
 
     next_state.set(AppState::Running);

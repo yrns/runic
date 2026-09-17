@@ -1,7 +1,7 @@
 [package]
 name = "runic"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [lib]
 
@@ -26,8 +26,4 @@ serde = { version = "1", features = ["derive"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-bevy = {
-  version = "0.19",
-  default-features = false,
-  features = ["audio", "debug", "track_location", "ui"]
-}
+bevy = { version = "0.19", default-features = false, features = ["audio", "debug", "track_location", "ui"] }

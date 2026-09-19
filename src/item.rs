@@ -174,8 +174,16 @@ fn pointer_slot(
     transform: &UiGlobalTransform,
     node: &ComputedNode,
 ) -> UVec2 {
-    let p = transform.affine().inverse().transform_point2(position) / node.size + Vec2::splat(0.5);
-    (section.shape.size().as_vec2() * p).as_uvec2()
+    // Get local position for the node.
+    let p = transform.affine().inverse().transform_point2(position);
+
+    // The transform origin is at the center of the node, so we add 0.5 to get it in the range of (0..1) in each axis.
+    let p = p / node.size + Vec2::splat(0.5);
+
+    // Note the pointer can be just outside the node's contents (in the border, for example) and thus we clamp the maximum edge in order to not return a slot outside the shape. We saturate to zero in the negative case so we don't need to clamp it.
+    (section.shape.size().as_vec2() * p)
+        .as_uvec2()
+        .min(section.shape.size - UVec2::ONE)
 }
 
 /// Inserts `DragSlot` in a target container if it accepts the dragged item.
@@ -232,11 +240,8 @@ pub fn on_item_drag_over(
             // Use the cached shape with the item unpainted when moving within the same container.
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
             let slot = pointer_slot(event.pointer_location.position, section, transform, node);
-            let slot = DragSlot(
-                section_shape
-                    .fits(&item.shape, section_shape.index(slot))
-                    .then(|| Slot(slot)),
-            );
+            let index = section_shape.index(slot);
+            let slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
             if drag_slot.replace_if_neq(slot).is_some() {
                 info!("drag over: {item_id} -> {id} slot: {slot}");
             } //  else {

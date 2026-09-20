@@ -4,7 +4,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_math::*;
-use bevy_picking::Pickable;
+use bevy_picking::{Pickable, events::*};
 use bevy_scene::*;
 use bevy_ui::{widget::*, *};
 use tracing::*;
@@ -122,21 +122,20 @@ pub fn item_moved(
 pub fn on_open_container(
     event: On<OpenContainer>,
     mut commands: Commands,
-    views: Query<&Viewing>,
+    // views: Query<&Viewing>,
     sections: Query<(Entity, &GridContents)>,
     children: Query<&Children, With<Item>>,
 ) {
-    let id = event.event_target();
-
     // This is duplicating is_container()...
-    if let Ok(c) = views.get(id).and_then(|e| children.get(e.0)) {
+    let t = event.event_target();
+    if let Ok(c) = children.get(t) {
         let sections = sections
             .iter_many(c)
             // Interpolate view name from section name?
             .map(|(e, _)| bsn! { Viewing(e) })
             .collect::<Vec<_>>();
 
-        commands.entity(id).insert(Open);
+        commands.entity(t).insert(Open);
 
         let window = bsn![
             #Window
@@ -146,17 +145,30 @@ pub fn on_open_container(
                 left: px(32),
                 flex_direction: FlexDirection::Column,
             }
+            // Should cover the default UI, but be under the dragged item.
+            GlobalZIndex(1)
             Children [
                 #Header
-                Node
+                Node {
+                    justify_content: JustifyContent::SpaceBetween,
+                    width: percent(100.0)
+                }
                 Children [
                     Node Text("Contents"),
-                    Node Button Text("X")
+                    Node { right: px(0.0) } Button Text("X") on(close_window),
                 ],
                 {sections}
             ]
         ];
 
         info!("new window: {}", commands.spawn_scene(window).id());
+    }
+}
+
+fn close_window(event: On<Pointer<Release>>, mut commands: Commands, child_of: Query<&ChildOf>) {
+    if let Ok(header) = child_of.get(event.event_target())
+        && let Ok(window) = child_of.get(header.0)
+    {
+        commands.entity(window.0).despawn();
     }
 }

@@ -94,24 +94,27 @@ fn startup(mut commands: Commands) {
 // We have to modify the node to change the border width?
 fn styling(
     mut commands: Commands,
-    sections: Query<&ViewedBy, Added<GridContents>>,
-    items: Query<&ViewedBy, Added<Item>>,
-    mut nodes: Query<(NameOrEntity, &mut Node)>,
+    sections: Query<(NameOrEntity, &GridContents)>,
+    items: Query<(NameOrEntity, &Item)>,
+    mut nodes: Query<(NameOrEntity, Option<&Viewing>, &mut Node), Added<Node>>,
 ) {
-    let mut iter = nodes.iter_many_mut(sections.iter().flat_map(|v| v));
-    while let Some((id, mut node)) = iter.fetch_next() {
-        node.border = px(1.).all();
-        commands
-            .entity(id.entity)
-            .insert((BorderColor::from(FUCHSIA),));
-    }
-
-    let mut iter = nodes.iter_many_mut(items.iter().flat_map(|v| v));
-    while let Some((id, mut node)) = iter.fetch_next() {
-        node.border = px(1.).all();
-        commands
-            .entity(id.entity)
-            .insert((BorderColor::from(WHITE),));
+    for (n, v, mut node) in &mut nodes {
+        if let Some(&Viewing(v)) = v {
+            if let Ok((_s, _)) = sections.get(v) {
+                node.border = px(1.).all();
+                commands
+                    .entity(n.entity)
+                    .insert((BackgroundColor::from(BLACK), BorderColor::from(FUCHSIA)));
+            } else if let Ok((_i, _)) = items.get(v) {
+                node.border = px(1.).all();
+                commands
+                    .entity(n.entity)
+                    .insert((BorderColor::from(WHITE),));
+            }
+        } else {
+            node.border = px(1.).all();
+            commands.entity(n.entity).insert((BorderColor::from(GRAY),));
+        }
     }
 }
 
@@ -225,12 +228,15 @@ struct LastClick(Instant);
 fn open_container(
     event: On<Pointer<Release>>,
     mut commands: Commands,
+    views: Query<&Viewing>,
     mut items: Query<(NameOrEntity, Option<&mut LastClick>), With<Item>>,
     // This does not work in desktop app mode...
     // time: Res<Time<Real>>,
 ) {
     if event.button == PointerButton::Primary {
-        if let Ok((id, last)) = items.get_mut(event.event_target()) {
+        if let Ok(&Viewing(v)) = views.get(event.event_target())
+            && let Ok((id, last)) = items.get_mut(v)
+        {
             match last {
                 Some(mut last) => {
                     if last.0.elapsed() < Duration::from_millis(300) {
@@ -370,26 +376,31 @@ fn items() -> impl SceneList {
         Flags<ExFlags>(ExFlags::CONTAINER)
         // Layout { direction: Direction::LeftToRight }
         Children [
-            #PouchAny
-            GridContents {
-                header: { "Any:".to_owned() },
-                shape: {(3, 2)},
-            }
-            Flags<ExFlags>({ ExFlags::all() }),
+            (
+                #PouchAny
+                GridContents {
+                    header: { "Any:".to_owned() },
+                    shape: {(3, 2)},
+                }
+                Flags<ExFlags>({ ExFlags::all() })
+            ),
 
-            #PouchP1,
-            GridContents {
-                header: { "P1:".to_owned() },
-                shape: {(1, 1)},
-            }
-            Flags<ExFlags>({ ExFlags::POTION }),
+            (
+                #PouchP1
+                GridContents {
+                    header: { "P1:".to_owned() },
+                    shape: {(1, 1)},
+                }
+                Flags<ExFlags>({ ExFlags::POTION })
+            ),
 
-            #PouchP2,
-            GridContents {
-                header: { "P2:".to_owned() },
-                shape: {(1, 1)},
-            }
-            Flags<ExFlags>({ ExFlags::POTION })
+            (
+                #PouchP2 GridContents {
+                    header: { "P2:".to_owned() },
+                    shape: {(1, 1)},
+                }
+                Flags<ExFlags>({ ExFlags::POTION })
+            ),
         ],
 
         #ShortSword

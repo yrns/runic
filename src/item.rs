@@ -145,7 +145,7 @@ pub fn on_item_drag_start(
 
         commands
             .entity(view)
-            .insert((GlobalZIndex(1), Pickable::IGNORE));
+            .insert((GlobalZIndex(2), Pickable::IGNORE));
         commands
             .entity(id)
             .insert(DragRotation(*rotation, Vec2::ZERO));

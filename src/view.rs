@@ -91,8 +91,6 @@ pub fn contents_spawned(
                         ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
                         // This is also default behavior and is only needed when dragging?
                         Pickable::default(),
-                        // Remove? This is only needed when dragging?
-                        GlobalZIndex::default(),
                     ));
 
                     // Copy the item's name.
@@ -147,7 +145,6 @@ pub fn on_open_container(
     if let Ok(c) = children.get(t) {
         let sections = sections
             .iter_many(c)
-            // Interpolate view name from section name?
             .map(|(e, _)| bsn! { Viewing(e) })
             .collect::<Vec<_>>();
 
@@ -174,6 +171,7 @@ pub fn on_open_container(
                     Node Text("Contents"),
                     Node { right: px(0.0) } Button Text("X") on(close_window),
                 ],
+
                 {sections}
             ]
         ];

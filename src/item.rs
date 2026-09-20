@@ -338,9 +338,7 @@ pub fn on_item_drag_end(
         && let Ok(i) = items.get(i)
     {
         info!("drag end: {i}");
-        commands
-            .entity(v.entity)
-            .insert((GlobalZIndex::default(), Pickable::default()));
+        commands.entity(v.entity).insert((Pickable::default(),));
         commands.entity(i.entity).remove::<DragRotation>();
     }
 }

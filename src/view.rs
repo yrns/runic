@@ -62,7 +62,7 @@ fn update_node(contents: &GridContents, node: &mut Node) {
 pub fn contents_spawned(
     mut commands: Commands,
     mut views: Query<(NameOrEntity, &Viewing, &mut Node), Changed<Viewing>>,
-    icons: Query<&Icon>,
+    icons: Query<(NameOrEntity, &Icon)>,
     sections: Query<(NameOrEntity, &GridContents, Option<&Children>)>,
 ) {
     // Node is a required component of Viewing, so we can count on it existing on spawn.
@@ -72,11 +72,9 @@ pub fn contents_spawned(
             update_node(section, &mut *node);
 
             if let Some(items) = items {
-                for &item in items {
-                    // FIX: unwrap
-                    let icon = icons.get(item).unwrap();
-                    commands.spawn((
-                        Name::new("Foo"),
+                // TODO: This will silently omit an item if the icon is missing.
+                for (i, icon) in icons.iter_many(items) {
+                    let mut item_view = commands.spawn((
                         Node {
                             align_items: AlignItems::Center,
                             justify_content: JustifyContent::Center,
@@ -84,13 +82,18 @@ pub fn contents_spawned(
                         },
                         // The item view is a child of the section view.
                         ChildOf(v.entity),
-                        Viewing(item),
+                        Viewing(i.entity),
                         ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
                         // This is also default behavior and is only needed when dragging?
                         Pickable::default(),
                         // Remove? This is only needed when dragging?
                         GlobalZIndex::default(),
                     ));
+
+                    // Copy the item's name.
+                    if let Some(name) = i.name {
+                        item_view.insert(name.clone());
+                    }
                 }
             }
         }

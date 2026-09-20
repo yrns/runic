@@ -71,6 +71,11 @@ pub fn contents_spawned(
             info!("section view changed: {v} section: {s}");
             update_node(section, &mut *node);
 
+            // Copy the section name.
+            if let Some(name) = s.name {
+                commands.entity(v.entity).insert(name.clone());
+            }
+
             if let Some(items) = items {
                 // TODO: This will silently omit an item if the icon is missing.
                 for (i, icon) in icons.iter_many(items) {

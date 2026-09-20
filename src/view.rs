@@ -107,21 +107,29 @@ pub fn contents_spawned(
 
 pub fn item_moved(
     mut commands: Commands,
-    items: Query<(NameOrEntity, &ChildOf), (Changed<ChildOf>, With<Item>)>,
-    views: Query<&ViewedBy>,
+    items: Query<(NameOrEntity, &ViewedBy, &ChildOf), (Changed<ChildOf>, With<Item>)>,
+    sections: Query<&ViewedBy, With<GridContents>>,
+    views: Query<NameOrEntity, With<Viewing>>,
 ) {
-    for (id, &ChildOf(s)) in &items {
+    for (_, vs, &ChildOf(s)) in &items {
         // In what case are there differing numbers of item views and section views? Never, I think.
-        match (views.get(id.entity), views.get(s)) {
-            (Ok(i), Ok(s)) if i.len() == s.len() => {
-                // We may actually care about the ordering here, meaning matching pairs of items and sections. TODO test multiple views
-                for (i, s) in i.iter().zip(s.iter()) {
-                    info!("item_moved: {i} -> {s}");
-                    commands.entity(i).insert(ChildOf(s));
-                }
+        if let Ok(s) = sections.get(s) {
+            assert_eq!(
+                vs.len(),
+                s.len(),
+                "item views and parent section views match"
+            );
+
+            // We may actually care about the ordering here, meaning matching pairs of items and sections.
+            // TODO test this works for multiple views
+            for (i, s) in vs.iter().zip(s.iter()) {
+                info!(
+                    "item view moved: {} -> {}",
+                    views.get(i).unwrap(),
+                    views.get(s).unwrap()
+                );
+                commands.entity(i).insert(ChildOf(s));
             }
-            (Err(_), Err(_)) => (),
-            _ => panic!("item views and parent section views do not match"),
         }
     }
 }

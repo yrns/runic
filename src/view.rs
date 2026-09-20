@@ -156,6 +156,7 @@ pub fn on_open_container(
                     justify_content: JustifyContent::SpaceBetween,
                     width: percent(100.0)
                 }
+                on(drag_by_header)
                 Children [
                     Node Text("Contents"),
                     Node { right: px(0.0) } Button Text("X") on(close_window),
@@ -173,5 +174,27 @@ fn close_window(event: On<Pointer<Release>>, mut commands: Commands, child_of: Q
         && let Ok(window) = child_of.get(header.0)
     {
         commands.entity(window.0).despawn();
+    }
+}
+
+fn drag_by_header(
+    mut event: On<Pointer<Drag>>,
+    mut nodes: Query<&mut Node>,
+    parents: Query<&ChildOf>,
+) {
+    let entity = event.entity;
+    if let Ok(&ChildOf(p)) = parents.get(entity) {
+        event.propagate(false);
+        if let Ok(mut node) = nodes.get_mut(p) {
+            let Vec2 { x, y } = event.delta;
+            let Node { top, left, .. } = &mut *node;
+            match (top, left) {
+                (Val::Px(top), Val::Px(left)) => {
+                    *top += y;
+                    *left += x;
+                }
+                _ => (),
+            }
+        }
     }
 }

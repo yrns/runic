@@ -39,6 +39,7 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
             .add_observer(item::on_item_drag_enter::<T>)
             .add_observer(item::on_item_drag_over)
             .add_observer(item::on_item_drag_drop::<T>)
+            .add_observer(item::on_send_item::<T>)
             .add_observer(item::on_item_drag_end)
             .add_observer(item::on_item_drag_leave)
             .add_observer(item::on_item_drag_cancel);

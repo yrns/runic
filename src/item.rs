@@ -257,24 +257,27 @@ pub fn on_item_drag_drop<T: Accepts>(
     views: Query<&Viewing>,
     mut items: Items<T>,
     drag_slot: Query<(Entity, &DragSlot)>,
-    mut contents: ContentsStorage<T>,
-) {
+    mut contents: Contents<T>,
+) -> Result {
     // We only care about the original target? What if someone spawns something (text/icon?) inside the item? Then they'd have to be unpickable.
     let t = event.original_event_target();
     if t != event.event_target() {
-        return;
+        return Ok(());
     }
 
     // Fetch target section.
     let Ok(&Viewing(target)) = views.get(t) else {
-        return;
+        return Ok(());
     };
 
     // Fetch the dropped item.
-    let Ok((id, slot, item, item_rotation, drag_rotation, child_of, flags)) =
-        views.get(event.dropped).and_then(|d| items.get_mut(d.0))
+    let Ok(&Viewing(v)) = views.get(event.dropped) else {
+        return Ok(());
+    };
+    let Ok((id, slot, item, item_rotation, drag_rotation, &ChildOf(section), flags)) =
+        items.get_mut(v)
     else {
-        return;
+        return Ok(());
     };
 
     // We need to check if this is an item we're dropping onto or contents. Should this check just be moved to resolve_drag? We're fetching the contents twice?
@@ -285,47 +288,85 @@ pub fn on_item_drag_drop<T: Accepts>(
         // Item. Find a target.
         contents.find_section_slot(t, item, flags)
     } {
-        if contents.resolve_drag(
-            target,
-            &id,
-            slot,
-            item,
-            item_rotation,
-            drag_rotation,
-            child_of,
-        ) {
+        if contents
+            .resolve_drag(
+                target,
+                &id,
+                slot,
+                item,
+                item_rotation,
+                Some(drag_rotation.0),
+                section,
+            )
+            .is_ok()
+        {
             info!("drag resolved");
         }
     }
+
+    Ok(())
 }
 
 // TODO: move key input to example only?
 /// Send item to target container.
-pub fn on_item_ctrl_click(
+pub fn on_send_item<T: Accepts>(
     event: On<Pointer<Click>>,
     input: Res<ButtonInput<KeyCode>>,
-    views: Query<&Viewing>,
-    // Items?
-    items: Query<(
+    views: Query<(NameOrEntity, &Viewing)>,
+    targets: Query<&Target>,
+    mut items: Query<(
         NameOrEntity,
+        &mut Slot,
         &Item,
-        &Slot,
-        &ItemRotation,
-        &Children,
+        &mut ItemRotation,
         &ChildOf,
+        &Flags<T>,
     )>,
-    // mut contents: Query<(&mut GridContents)>,
-) {
+    parents: Query<&ChildOf>,
+    mut contents: Contents<T>,
+) -> Result {
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return Ok(());
+    }
+
     match event.button {
-        PointerButton::Primary => {
-            if input.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
-                if let Ok((id, ..)) = views.get(event.event_target()).and_then(|v| items.get(v.0)) {
-                    info!("sending item: {id}");
+        PointerButton::Primary
+            if input.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) =>
+        {
+            // Fetch the clicked item.
+            let Ok((_id, &Viewing(v))) = views.get(t) else {
+                return Ok(());
+            };
+
+            let Ok((i, slot, item, item_rotation, &ChildOf(section), flags)) = items.get_mut(v)
+            else {
+                return Ok(());
+            };
+
+            for p in parents.iter_ancestors(i.entity) {
+                if let Ok(&Target(target)) = targets.get(p) {
+                    if let Some(target) = contents.find_section_slot(target, item, flags) {
+                        contents.resolve_drag(
+                            target,
+                            &i,
+                            slot,
+                            item,
+                            item_rotation,
+                            None,
+                            section,
+                        )?;
+                        info!("sent item: {i}");
+                    }
+                    break;
                 }
             }
+            warn!("no target set in parent containers");
         }
         _ => (),
     }
+
+    Ok(())
 }
 
 pub fn on_item_drag_end(

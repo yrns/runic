@@ -433,7 +433,7 @@ fn items() -> impl SceneList {
 fn spawn_contents(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
-    mut _storage: ContentsStorage<ExFlags>,
+    mut _storage: Contents<ExFlags>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     info!("spawning contents!");
@@ -442,6 +442,7 @@ fn spawn_contents(
         #Inventory
         Children [
             #PaperDoll
+            Target(#Ground)
             Children [
                 #A1
                 GridContents {
@@ -497,6 +498,7 @@ fn spawn_contents(
             ],
 
             #Ground
+            Target(#PaperDoll)
             Children [
                 #Ground0
                 GridContents {

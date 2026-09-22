@@ -4,7 +4,7 @@ use bevy_ecs::{name::NameOrEntityItem, prelude::*, system::SystemParam};
 use bevy_math::{UVec2, Vec2};
 use bevy_reflect::Reflect;
 use itertools::Itertools;
-use tracing::*;
+// use tracing::*;
 
 use crate::*;
 pub use grid::*;
@@ -131,6 +131,10 @@ impl std::fmt::Display for DragSlot {
     }
 }
 
+/// This container's target container, where items are sent via control-click.
+#[derive(Component, Debug, FromTemplate)]
+pub struct Target(pub Entity);
+
 pub type Items<'w, 's, T> = Query<
     'w,
     's,
@@ -148,12 +152,11 @@ pub type Items<'w, 's, T> = Query<
     ),
 >;
 
-/// Contents storage.
-// TODO: There is no more `Contents` trait, so we can rename this. GridSection?
+/// Contents.
 #[derive(SystemParam)]
-pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
+pub struct Contents<'w, 's, T: Send + Sync + 'static> {
     pub commands: Commands<'w, 's>,
-    pub contents: Query<
+    pub sections: Query<
         'w,
         's,
         (
@@ -168,7 +171,7 @@ pub struct ContentsStorage<'w, 's, T: Send + Sync + 'static> {
     pub options: Res<'w, Options>,
 }
 
-impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
+impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
     pub fn update(&mut self) {
         // if let Some(drag) = self.drag.as_mut() {
         // Rotate the dragged item.
@@ -218,7 +221,7 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
     // Only for items, though?
     pub fn is_container(&self, id: Entity) -> bool {
         if let Ok(c) = self.children.get(id) {
-            self.contents.iter_many(c).next().is_some()
+            self.sections.iter_many(c).next().is_some()
         } else {
             false
         }
@@ -249,18 +252,15 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             .map(|i| Slot(shape.slot(i)))
     }
 
-    /// Search all sections of container `id` for an available slot.
-    // Cache this over the span of many frames on drag over? This is used every pointer move when dragging?
+    /// Search all sections in container `target` for an available section and slot.
+    // TODO: Priority for sections based on flags?
     pub fn find_section_slot(
         &self,
         target: Entity,
         item: &Item,
         flags: &Flags<T>,
-        // source: &DragSource,
     ) -> Option<(Entity, Slot)> {
-        // Pass in sections since we're probably already fetching it?
-        // Consider layout in the order?
-        self.contents
+        self.sections
             .iter_many(self.children.get(target).ok()?)
             .filter(|(.., f)| f.accepts(&flags))
             .find_map(|(id, section, drag_shape, _)| {
@@ -276,41 +276,33 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
         mut slot: Mut<Slot>,
         item: &Item,
         mut rotation: Mut<ItemRotation>,
-        &DragRotation(drag_rotation, _): &DragRotation,
-        child_of: &ChildOf,
+        drag_rotation: Option<ItemRotation>,
+        section: Entity,
         // flags: &Flags<T>,
-    ) -> bool {
+    ) -> Result {
         // Is the target the same as or inside the item being moved already?
         if id.entity == target_id || self.contains(id.entity, target_id) {
-            warn!("cannot move item {id} inside itself");
-            return false;
+            return Err(BevyError::warning(format!(
+                "cannot move item {id} inside itself"
+            )));
         }
 
-        let container_id = child_of.parent();
-
         // We can't fetch the source and destination container mutably if they're the same.
-        let ((_, mut contents, _flags, _items), dest) = if container_id == target_id {
-            (
-                self.contents
-                    .get_mut(container_id)
-                    .expect("src container exists"),
-                None,
-            )
-        } else if let Ok([src, dest]) = self.contents.get_many_mut([container_id, target_id]) {
-            (src, Some(dest))
+        let ((_, mut contents, _flags, _items), dest) = if section == target_id {
+            (self.sections.get_mut(section)?, None)
         } else {
-            error!(
-                "no contents for source ({}) or destination ({})",
-                container_id, target_id,
-            );
-            return false;
+            self.sections
+                .get_many_mut([section, target_id])
+                .map(|[a, b]| (a, Some(b)))?
         };
 
         // Remove from source container with the original rotation applied.
         contents.remove(*slot, &item.clone().with_rotation(*rotation));
 
         // Copy rotation from the dragged item.
-        rotation.set_if_neq(drag_rotation);
+        if let Some(r) = drag_rotation {
+            rotation.set_if_neq(r);
+        }
 
         // Set target slot.
         // self.commands.entity(id.entity).insert(target_slot);
@@ -323,21 +315,21 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
                 None => contents,
             };
             self.commands.entity(target_id).add_child(id.entity);
-            contents.insert(target_slot, &item.clone().with_rotation(drag_rotation));
+            contents.insert(target_slot, &item.clone().with_rotation(*rotation));
         }
 
         // Fire events.
         let item = id.entity;
-        if container_id == target_id {
+        if section == target_id {
             self.commands.trigger(ItemMove {
-                entity: container_id,
+                entity: section,
                 old_slot: *slot,
                 new_slot: target_slot,
                 item,
             });
         } else {
             self.commands.trigger(ItemRemove {
-                entity: container_id,
+                entity: section,
                 slot: *slot,
                 item,
             });
@@ -349,6 +341,6 @@ impl<'w, 's, T: Accepts> ContentsStorage<'w, 's, T> {
             });
         }
 
-        true
+        Ok(())
     }
 }

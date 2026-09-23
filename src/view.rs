@@ -103,30 +103,34 @@ pub fn contents_spawned(
     }
 }
 
+/// When items change sections, we need to update the corresponding views.
 pub fn item_moved(
     mut commands: Commands,
     items: Query<(NameOrEntity, &ViewedBy, &ChildOf), (Changed<ChildOf>, With<Item>)>,
     sections: Query<&ViewedBy, With<GridContents>>,
     views: Query<NameOrEntity, With<Viewing>>,
 ) {
-    for (_, vs, &ChildOf(s)) in &items {
-        // In what case are there differing numbers of item views and section views? Never, I think.
-        if let Ok(s) = sections.get(s) {
-            assert_eq!(
-                vs.len(),
-                s.len(),
-                "item views and parent section views match"
-            );
+    for (i, item_views, &ChildOf(s)) in &items {
+        if let Ok(section_views) = sections.get(s) {
+            // We may actually care about the ordering here, meaning matching pairs of item and section views.
+            let mut iter = views.iter_many(item_views);
+            for s in views.iter_many(section_views) {
+                match iter.next() {
+                    Some(i) => {
+                        commands.entity(i.entity).insert(ChildOf(s.entity));
+                        info!("item view moved: {i} -> {s}");
+                    }
+                    None => {
+                        // Create a new item view.
+                        commands.spawn((Viewing(i.entity), ChildOf(s.entity)));
+                        info!("new item view: {i} -> {s}");
+                    }
+                }
+            }
 
-            // We may actually care about the ordering here, meaning matching pairs of items and sections.
-            // TODO test this works for multiple views
-            for (i, s) in vs.iter().zip(s.iter()) {
-                info!(
-                    "item view moved: {} -> {}",
-                    views.get(i).unwrap(),
-                    views.get(s).unwrap()
-                );
-                commands.entity(i).insert(ChildOf(s));
+            // If we have more item views than section views we despawn the excess.
+            for i in iter {
+                commands.entity(i.entity).despawn();
             }
         }
     }

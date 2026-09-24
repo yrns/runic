@@ -2,7 +2,9 @@
 
 // What about dragging items? We only draw one? What if somehow the contents gets destroyed or closed while dragging?
 
+use bevy_asset::Handle;
 use bevy_ecs::prelude::*;
+use bevy_image::Image;
 use bevy_math::*;
 use bevy_picking::{Pickable, events::*};
 use bevy_scene::*;
@@ -56,6 +58,36 @@ fn update_node(contents: &GridContents, node: &mut Node) {
     node.justify_content = JustifyContent::Center;
 }
 
+/// Returns an item view scene.
+pub fn item_view(
+    // How?
+    // name: Option<&Name>,
+    icon: Handle<Image>,
+    section_view: Entity,
+    item: Entity,
+) -> impl Scene {
+    // let name: Box<dyn Scene> = Box::new(match name {
+    //     Some(name) => {
+    //         let name = name.clone();
+    //         bsn![{ name }]
+    //     }
+    //     None => bsn! [#ItemView],
+    // });
+
+    bsn! [
+        Node {
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+        }
+        // The item view is a child of the section view.
+        ChildOf(section_view)
+        Viewing(item)
+        ImageNode { image: icon }
+        // This is also default behavior and is only needed when dragging?
+        Pickable::default()
+    ]
+}
+
 // Paint shape and set slots here?
 // TODO: There is no longer a way to specify the layout of an item container. There never was?
 // Despawn existing items on view change?
@@ -78,20 +110,9 @@ pub fn contents_spawned(
 
             if let Some(items) = items {
                 // TODO: This will silently omit an item if the icon is missing.
-                for (i, icon) in icons.iter_many(items) {
-                    let mut item_view = commands.spawn((
-                        Node {
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::Center,
-                            ..Default::default()
-                        },
-                        // The item view is a child of the section view.
-                        ChildOf(v.entity),
-                        Viewing(i.entity),
-                        ImageNode::new(icon.0.clone()).with_mode(NodeImageMode::Auto),
-                        // This is also default behavior and is only needed when dragging?
-                        Pickable::default(),
-                    ));
+                for (i, Icon(icon)) in icons.iter_many(items) {
+                    let mut item_view =
+                        commands.spawn_scene(item_view(icon.clone(), v.entity, i.entity));
 
                     // Copy the item's name.
                     if let Some(name) = i.name {
@@ -106,11 +127,11 @@ pub fn contents_spawned(
 /// When items change sections, we need to update the corresponding views.
 pub fn item_moved(
     mut commands: Commands,
-    items: Query<(NameOrEntity, &ViewedBy, &ChildOf), (Changed<ChildOf>, With<Item>)>,
+    items: Query<(NameOrEntity, &Icon, &ViewedBy, &ChildOf), (Changed<ChildOf>, With<Item>)>,
     sections: Query<&ViewedBy, With<GridContents>>,
     views: Query<NameOrEntity, With<Viewing>>,
 ) {
-    for (i, item_views, &ChildOf(s)) in &items {
+    for (i, Icon(icon), item_views, &ChildOf(s)) in &items {
         if let Ok(section_views) = sections.get(s) {
             // We may actually care about the ordering here, meaning matching pairs of item and section views.
             let mut iter = views.iter_many(item_views);
@@ -122,7 +143,13 @@ pub fn item_moved(
                     }
                     None => {
                         // Create a new item view.
-                        commands.spawn((Viewing(i.entity), ChildOf(s.entity)));
+                        let mut view =
+                            commands.spawn_scene(item_view(icon.clone(), s.entity, i.entity));
+                        if let Some(name) = i.name {
+                            view.insert(name.clone());
+                        } else {
+                            // #ItemView?
+                        }
                         info!("new item view: {i} -> {s}");
                     }
                 }

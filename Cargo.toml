@@ -11,6 +11,7 @@ name = "ex1"
 [dependencies]
 bevy_app = "0.19"
 bevy_asset = "0.19"
+bevy_camera = "0.19"
 bevy_ecs = "0.19"
 bevy_image = "0.19"
 bevy_input = "0.19"

@@ -1,3 +1,4 @@
+use bevy_camera::visibility::Visibility;
 use bevy_ecs::prelude::*;
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
@@ -123,9 +124,8 @@ pub fn on_item_drag_start(
     event: On<Pointer<DragStart>>,
     mut commands: Commands,
     views: Query<&Viewing>,
-    contents: Query<&GridContents>,
-    // TODO: ViewedBy and hide other views of the same item
-    items: Query<(&Item, &ItemRotation, &Slot, &ChildOf)>,
+    sections: Query<&GridContents>,
+    items: Query<(&Item, &ItemRotation, &Slot, &ViewedBy, &ChildOf)>,
 ) {
     let view = event.event_target();
 
@@ -133,11 +133,11 @@ pub fn on_item_drag_start(
         return;
     };
 
-    let Ok((item, rotation, Slot(slot), ChildOf(container))) = items.get(id) else {
+    let Ok((item, rotation, Slot(slot), vs, ChildOf(container))) = items.get(id) else {
         return;
     };
 
-    if let Ok(contents) = contents.get(*container) {
+    if let Ok(contents) = sections.get(*container) {
         let item = item.clone().with_rotation(*rotation);
         let mut shape = contents.shape.clone();
         shape.unpaint(&item.shape, shape.index(*slot));
@@ -149,6 +149,13 @@ pub fn on_item_drag_start(
         commands
             .entity(id)
             .insert(DragRotation(*rotation, Vec2::ZERO));
+
+        // Hide other item views.
+        for &v in vs {
+            if v != view {
+                commands.entity(v).insert(Visibility::Hidden);
+            }
+        }
     }
 }
 
@@ -373,14 +380,22 @@ pub fn on_item_drag_end(
     event: On<Pointer<DragEnd>>,
     mut commands: Commands,
     views: Query<(NameOrEntity, &Viewing)>,
-    items: Query<NameOrEntity, With<Item>>,
+    items: Query<(NameOrEntity, &ViewedBy), With<Item>>,
 ) {
-    if let Ok((v, &Viewing(i))) = views.get(event.event_target())
-        && let Ok(i) = items.get(i)
+    let t = event.event_target();
+    if let Ok((v, &Viewing(i))) = views.get(t)
+        && let Ok((i, vs)) = items.get(i)
     {
         info!("drag end: {i}");
         commands.entity(v.entity).insert((Pickable::default(),));
         commands.entity(i.entity).remove::<DragRotation>();
+
+        // Unhide other item views.
+        for &v in vs {
+            if v != t {
+                commands.entity(v).insert(Visibility::Inherited);
+            }
+        }
     }
 }
 

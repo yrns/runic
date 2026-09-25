@@ -42,18 +42,20 @@ impl Item {
 
 /// Update the dragged item's transform when rotated or removed.
 pub fn update_drag_rotation(
-    // mut commands: Commands,
+    mut commands: Commands,
     mut views: Query<&mut UiTransform>,
-    items: Query<(&Item, &DragRotation, &ViewedBy), Changed<DragRotation>>,
+    items: Query<(NameOrEntity, &Item, &DragRotation, &ViewedBy), Changed<DragRotation>>,
     mut rm: RemovedComponents<DragRotation>,
     item_rotations: Query<(&Item, &ItemRotation, &ViewedBy)>,
 ) {
-    for (Item { shape }, DragRotation(r, offset), vs) in &items {
+    for (i, Item { shape }, DragRotation(r, offset), vs) in &items {
         let mut iter = views.iter_many_mut(vs);
         while let Some(mut t) = iter.fetch_next() {
             t.rotation = r.rot2();
             let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0) + offset;
             t.translation = Val2::px(x, y);
+
+            commands.entity(i.entity).trigger(ItemDragRotate);
         }
     }
 
@@ -68,11 +70,6 @@ pub fn update_drag_rotation(
         }
     }
 }
-
-// The slot can change (move inside a container).
-// The slot and parent can change.
-// The rotation can change.
-// Or all three!
 
 /// Update the node and transform when an item's size changes (via rotation) or its slot changes.
 pub fn update_nodes(
@@ -116,10 +113,7 @@ pub fn update_nodes(
     }
 }
 
-// TODO fire event
-// If it's being dragged, it's not on the grid...
-pub fn on_item_rotate(_event: On<ItemDragRotate>) {}
-
+/// Start dragging an item.
 pub fn on_item_drag_start(
     event: On<Pointer<DragStart>>,
     mut commands: Commands,
@@ -133,22 +127,27 @@ pub fn on_item_drag_start(
         return;
     };
 
-    let Ok((item, rotation, Slot(slot), vs, ChildOf(container))) = items.get(id) else {
+    let Ok((item, rotation, &slot, vs, &ChildOf(section))) = items.get(id) else {
         return;
     };
 
-    if let Ok(contents) = sections.get(*container) {
+    if let Ok(contents) = sections.get(section) {
         let item = item.clone().with_rotation(*rotation);
         let mut shape = contents.shape.clone();
-        shape.unpaint(&item.shape, shape.index(*slot));
-        commands.entity(*container).insert(DragShape(shape));
+        shape.unpaint(&item.shape, shape.index(slot.0));
+        commands.entity(section).insert(DragShape(shape));
 
         commands
             .entity(view)
             .insert((GlobalZIndex(2), Pickable::IGNORE));
         commands
             .entity(id)
-            .insert(DragRotation(*rotation, Vec2::ZERO));
+            .insert(DragRotation(*rotation, Vec2::ZERO))
+            .trigger(|entity| ItemDragStart {
+                entity,
+                section,
+                slot,
+            });
 
         // Hide other item views.
         for &v in vs {
@@ -223,6 +222,7 @@ pub fn on_item_drag_enter<T: Accepts>(
 /// Sets the `DragSlot` for the currently hovered section.
 pub fn on_item_drag_over(
     event: On<Pointer<DragOver>>,
+    mut commands: Commands,
     items: Query<(NameOrEntity, &Item, &ItemRotation, Option<&DragRotation>)>,
     mut sections: Query<(
         NameOrEntity,
@@ -236,8 +236,8 @@ pub fn on_item_drag_over(
         views.get_many([event.dragged, event.event_target()])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
-        if let Ok((item_id, item, rotation, drag_rotation)) = items.get(dragged)
-            && let Ok((id, section, drag_shape, mut drag_slot)) = sections.get_mut(target)
+        if let Ok((i, item, rotation, drag_rotation)) = items.get(dragged)
+            && let Ok((s, section, drag_shape, mut drag_slot)) = sections.get_mut(target)
         {
             // Apply (drag) rotation.
             let item = item
@@ -248,9 +248,15 @@ pub fn on_item_drag_over(
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
             let slot = pointer_slot(event.pointer_location.position, section, transform, node);
             let index = section_shape.index(slot);
-            let slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
-            if drag_slot.replace_if_neq(slot).is_some() {
-                info!("drag over: {item_id} -> {id} slot: {slot}");
+            let new_slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
+            if drag_slot.replace_if_neq(new_slot).is_some() {
+                info!("drag over: {i} -> {s} slot: {new_slot}");
+
+                commands.trigger(ItemDragOver {
+                    entity: i.entity,
+                    section: s.entity,
+                    slot: Slot(slot),
+                });
             } //  else {
             //     warn!("does not fit: {slot}\n{}", &drag_shape.unwrap().0);
             // }
@@ -380,15 +386,27 @@ pub fn on_item_drag_end(
     event: On<Pointer<DragEnd>>,
     mut commands: Commands,
     views: Query<(NameOrEntity, &Viewing)>,
-    items: Query<(NameOrEntity, &ViewedBy), With<Item>>,
+    items: Query<(NameOrEntity, &ViewedBy, &ChildOf), With<Item>>,
+    sections: Query<&DragSlot>,
 ) {
     let t = event.event_target();
     if let Ok((v, &Viewing(i))) = views.get(t)
-        && let Ok((i, vs)) = items.get(i)
+        && let Ok((i, vs, &ChildOf(s))) = items.get(i)
     {
         info!("drag end: {i}");
         commands.entity(v.entity).insert((Pickable::default(),));
-        commands.entity(i.entity).remove::<DragRotation>();
+
+        let target = sections
+            .get(s)
+            .ok()
+            .map(|slot| slot.0)
+            .flatten()
+            .map(|slot| (s, slot));
+
+        commands
+            .entity(i.entity)
+            .remove::<DragRotation>()
+            .trigger(|entity| ItemDragEnd { entity, target });
 
         // Unhide other item views.
         for &v in vs {

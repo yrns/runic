@@ -198,18 +198,18 @@ fn drag_start(event: On<ItemDragStart>, mut commands: Commands, asset_server: Re
 fn drag_over(
     event: On<ItemDragOver>,
     mut commands: Commands,
-    names: Query<Option<&Name>>,
+    // names: Query<Option<&Name>>,
     asset_server: Res<AssetServer>,
 ) -> Result {
-    let drag_over = event.event();
-    let [target, item] = names.get_many([event.event_target(), drag_over.item])?;
-    let target = target.map(|n| n.as_str()).unwrap_or("section");
-    info!(
-        target,
-        item = item.unwrap().as_str(),
-        slot = ?drag_over.slot,
-        "drag over"
-    );
+    // let drag_over = event.event();
+    // let [target, item] = names.get_many([event.event_target(), drag_over.item])?;
+    // let target = target.map(|n| n.as_str()).unwrap_or("section");
+    // info!(
+    //     target,
+    //     item = item.unwrap().as_str(),
+    //     slot = ?drag_over.slot,
+    //     "drag over"
+    // );
 
     commands
         .entity(event.event_target())

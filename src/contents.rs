@@ -172,50 +172,6 @@ pub struct Contents<'w, 's, T: Send + Sync + 'static> {
 }
 
 impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
-    pub fn update(&mut self) {
-        // if let Some(drag) = self.drag.as_mut() {
-        // Rotate the dragged item.
-        //if ctx.input(|i| i.key_pressed(egui::Key::R)) {
-        // drag.rotate90();
-        // TODO: self.commands.trigger(ItemDragRotate { entity: drag.id });
-        // }
-        // }
-    }
-
-    // Some(ContentsResponse::NewTarget((id, slot, _))) => {
-    //     // Overwrite the egui id. The original is effectively unused.
-    //     self.set_drag_target(Some((id, slot, ui.id())))
-    // }
-    // Some(ContentsResponse::NewDrag(new_drag)) => {
-    //     *self.drag = Some(new_drag);
-
-    //     if let Some(DragItem {
-    //         id: item,
-    //         source: Some((id, slot, _)),
-    //         ..
-    //     }) = &*self.drag
-    //     {
-    //         self.commands.trigger(ItemDragStart {
-    //             // source contents
-    //             entity: *id,
-    //             slot: *slot,
-    //             item: *item,
-    //         });
-    //     }
-    // }
-    // Some(ContentsResponse::SendItem(mut item)) => {
-    //     item.target = self.target.and_then(|t| {
-    //         self.find_section_slot(t, &item.item, &item.flags, &item.source)
-    //             .map(|(id, slot)| (id, slot, ui.id()))
-    //     });
-    //     self.resolve_drag(item);
-    // }
-    // Some(ContentsResponse::Open(item)) => {
-    //     if self.is_container(item) {
-    //         self.commands.trigger(ContainerOpen(item));
-    //     }
-    // }
-
     // Containers and items are now always separate entities (each with separate flags). And the contents entities are contained in the section entity of the item. This means every item that's a container is always two entities...
     // FIX: Items may contain other children besides contents.
     // Only for items, though?

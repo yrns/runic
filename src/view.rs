@@ -164,6 +164,10 @@ pub fn item_moved(
 }
 
 // TODO: Check for an already opened container and then raise it.
+/// Stores which container this view belongs to.
+#[derive(Component, Debug, FromTemplate)]
+pub struct ContainerView(pub Entity);
+
 pub fn on_open_container(
     event: On<OpenContainer>,
     mut commands: Commands,
@@ -179,11 +183,13 @@ pub fn on_open_container(
             .map(|(e, _)| bsn! { Viewing(e) })
             .collect::<Vec<_>>();
 
-        commands.entity(t).insert(Open);
+        commands.entity(t).insert(Open).trigger(ContainerOpened);
 
         let window = bsn![
             #Window
+            ContainerView(t)
             Node {
+                // TODO Find empty screen position.
                 position_type: PositionType::Absolute,
                 top: px(32),
                 left: px(32),
@@ -211,11 +217,16 @@ pub fn on_open_container(
     }
 }
 
-fn close_window(event: On<Pointer<Release>>, mut commands: Commands, child_of: Query<&ChildOf>) {
-    if let Ok(header) = child_of.get(event.event_target())
-        && let Ok(window) = child_of.get(header.0)
-    {
-        commands.entity(window.0).despawn();
+fn close_window(
+    event: On<Pointer<Release>>,
+    mut commands: Commands,
+    child_of: Query<&ChildOf>,
+    views: Query<&ContainerView>,
+) {
+    let root = child_of.root_ancestor(event.event_target());
+    if let Ok(&ContainerView(v)) = views.get(root) {
+        commands.entity(v).trigger(ContainerClosed);
+        commands.entity(root).despawn();
     }
 }
 

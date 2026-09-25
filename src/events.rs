@@ -31,49 +31,47 @@ pub struct ItemMove {
     // pub container: Entity,
 }
 
-/// Item `item` started dragging from target container at `slot`.
+/// Item started dragging from `section` at `slot`.
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragStart {
     pub entity: Entity,
+    pub section: Entity,
     pub slot: Slot,
-    pub item: Entity,
     // pub container: Entity,
 }
 
-/// Item `item` drag ended at target container at `slot`. No event is fired if the drag is not released over a target item or container.
-// TODO: add "drag canceled"? or make slot/item an option
+/// Item drag ended at target section and slot, if any.
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragEnd {
     pub entity: Entity,
-    pub slot: Slot,
-    pub item: Entity,
+    pub target: Option<(Entity, Slot)>,
     // pub container: Entity,
 }
 
-/// Item `item` dragged over target container at `slot`.
+/// Item was dragged over `section` at `slot`.
+// We removed the drag to item variant here.
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragOver {
-    /// If we are dragging over an item that's a container, and it accepts the dragged item, then the target and slot will be accurate even if the contents are not visible. If the container does not accept the dragged item the target and slot will be of the occupied item.
+    /// Dragged item.
     pub entity: Entity,
-    // TODO: this is confusing; distinguish "drag to item"?
+    /// Target section.
+    pub section: Entity,
+    /// Target slot.
     pub slot: Slot,
-    pub item: Entity,
     // pub container: Entity,
 }
 
 /// Dragged item was rotated.
 #[derive(EntityEvent, Debug)]
-pub struct ItemDragRotate {
-    pub entity: Entity,
-}
+pub struct ItemDragRotate(pub Entity);
 
 /// Request to open a container.
 #[derive(EntityEvent, Debug)]
 pub struct OpenContainer(pub Entity);
 
-/// Request to close a container.
-#[derive(EntityEvent, Debug)]
-pub struct CloseContainer(pub Entity);
+// /// Request to close a container.
+// #[derive(EntityEvent, Debug)]
+// pub struct CloseContainer(pub Entity);
 
 /// This container was just opened.
 #[derive(EntityEvent, Debug)]

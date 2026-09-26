@@ -67,8 +67,8 @@ pub struct ItemDragRotate(pub Entity);
 
 /// This container was just opened.
 #[derive(EntityEvent, Debug)]
-pub struct ContainerOpened(pub Entity);
+pub struct ContainerOpen(pub Entity);
 
 /// This container was just closed.
 #[derive(EntityEvent, Debug)]
-pub struct ContainerClosed(pub Entity);
+pub struct ContainerClose(pub Entity);

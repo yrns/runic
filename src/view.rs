@@ -182,7 +182,7 @@ pub fn open_container(
             .collect::<Vec<_>>();
 
         let entity = c.entity;
-        commands.entity(entity).trigger(ContainerOpened);
+        commands.entity(entity).trigger(ContainerOpen);
 
         let window = bsn![
             #Window
@@ -225,7 +225,7 @@ fn close_window(
 ) {
     let root = child_of.root_ancestor(event.event_target());
     if let Ok(&ContainerView(v)) = views.get(root) {
-        commands.entity(v).remove::<Open>().trigger(ContainerClosed);
+        commands.entity(v).remove::<Open>().trigger(ContainerClose);
         commands.entity(root).despawn();
     }
 }

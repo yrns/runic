@@ -257,7 +257,7 @@ fn open_container(
 }
 
 fn container_opened(
-    event: On<ContainerOpened>,
+    event: On<ContainerOpen>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {

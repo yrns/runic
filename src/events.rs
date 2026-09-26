@@ -65,14 +65,6 @@ pub struct ItemDragOver {
 #[derive(EntityEvent, Debug)]
 pub struct ItemDragRotate(pub Entity);
 
-/// Request to open a container.
-#[derive(EntityEvent, Debug)]
-pub struct OpenContainer(pub Entity);
-
-// /// Request to close a container.
-// #[derive(EntityEvent, Debug)]
-// pub struct CloseContainer(pub Entity);
-
 /// This container was just opened.
 #[derive(EntityEvent, Debug)]
 pub struct ContainerOpened(pub Entity);

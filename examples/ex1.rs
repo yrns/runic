@@ -244,7 +244,9 @@ fn open_container(
                         commands
                             .entity(id.entity)
                             .remove::<LastClick>()
-                            .trigger(OpenContainer);
+                            .insert(Open(
+                                event.pointer_location.position + Vec2::new(-40.0, 40.0),
+                            ));
                     }
                     last.0 = Instant::now();
                 }

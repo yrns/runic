@@ -96,12 +96,12 @@ impl<T: Accepts> Flags<T> {
     }
 }
 
-/// Remembers which containers are opened.
+/// Remembers which containers are opened and their screen positions. This is only for contents displayed in windows and does not affect fixed contents being displayed, nor inline contents.
 // TODO Open these on spawn.
 #[derive(Component, Clone, Default, Reflect)]
 #[reflect(Component)]
 #[component(storage = "SparseSet")]
-pub struct Open;
+pub struct Open(pub Vec2);
 
 // TODO: Move the drag shape, rotation, and slot to the view node. These are potentially muddying the model.
 

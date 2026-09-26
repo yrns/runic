@@ -24,6 +24,7 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
                 (
                     contents::insert_item,
                     item::update_drag_rotation,
+                    view::open_container,
                     (
                         // view::spawn_item_views,
                         view::contents_spawned,
@@ -33,7 +34,6 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
                         .chain(),
                 ),
             )
-            .add_observer(view::on_open_container)
             .add_observer(item::on_item_drag_start)
             .add_observer(item::on_item_drag)
             .add_observer(item::on_item_drag_enter::<T>)

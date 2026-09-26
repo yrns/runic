@@ -163,36 +163,35 @@ pub fn item_moved(
     }
 }
 
-// TODO: Check for an already opened container and then raise it.
 /// Stores which container this view belongs to.
 #[derive(Component, Debug, FromTemplate)]
 pub struct ContainerView(pub Entity);
 
-pub fn on_open_container(
-    event: On<OpenContainer>,
+// TODO: Check for an already opened container and then raise it!
+// Rely on Open? Update drag position of window...
+pub fn open_container(
     mut commands: Commands,
-    // views: Query<&Viewing>,
     sections: Query<(Entity, &GridContents)>,
-    children: Query<&Children, With<Item>>,
+    containers: Query<(NameOrEntity, &Open, &Children), Added<Open>>,
 ) {
-    // This is duplicating is_container()...
-    let t = event.event_target();
-    if let Ok(c) = children.get(t) {
+    for (c, &Open(p), children) in &containers {
         let sections = sections
-            .iter_many(c)
+            .iter_many(children)
+            // section_view?
             .map(|(e, _)| bsn! { Viewing(e) })
             .collect::<Vec<_>>();
 
-        commands.entity(t).insert(Open).trigger(ContainerOpened);
+        let entity = c.entity;
+        commands.entity(entity).trigger(ContainerOpened);
 
         let window = bsn![
             #Window
-            ContainerView(t)
+            ContainerView(entity)
             Node {
                 // TODO Find empty screen position.
                 position_type: PositionType::Absolute,
-                top: px(32),
-                left: px(32),
+                left: px(p.x),
+                top: px(p.y),
                 flex_direction: FlexDirection::Column,
             }
             // Should cover the default UI, but be under the dragged item.
@@ -204,6 +203,7 @@ pub fn on_open_container(
                     width: percent(100.0)
                 }
                 on(drag_by_header)
+                on(drag_by_header_end)
                 Children [
                     Node Text("Contents"),
                     Node { right: px(0.0) } Button Text("X") on(close_window),
@@ -213,7 +213,7 @@ pub fn on_open_container(
             ]
         ];
 
-        info!("new window: {}", commands.spawn_scene(window).id());
+        info!("new window for {c}: {}", commands.spawn_scene(window).id());
     }
 }
 
@@ -225,11 +225,12 @@ fn close_window(
 ) {
     let root = child_of.root_ancestor(event.event_target());
     if let Ok(&ContainerView(v)) = views.get(root) {
-        commands.entity(v).trigger(ContainerClosed);
+        commands.entity(v).remove::<Open>().trigger(ContainerClosed);
         commands.entity(root).despawn();
     }
 }
 
+/// Move contents.
 fn drag_by_header(
     mut event: On<Pointer<Drag>>,
     mut nodes: Query<&mut Node>,
@@ -247,6 +248,26 @@ fn drag_by_header(
                     *left += x;
                 }
                 _ => (),
+            }
+        }
+    }
+}
+
+/// Update `Open` to represent the new position.
+pub fn drag_by_header_end(
+    event: On<Pointer<DragEnd>>,
+    views: Query<(&Node, &ContainerView)>,
+    parents: Query<&ChildOf>,
+    mut containers: Query<&mut Open>,
+) {
+    let root = parents.root_ancestor(event.event_target());
+    if let Ok((node, &ContainerView(v))) = views.get(root)
+        && let Ok(mut open) = containers.get_mut(v)
+    {
+        match (node.left, node.top) {
+            (Val::Px(x), Val::Px(y)) => open.0 = Vec2::new(x, y),
+            _ => {
+                error!("contents position not in pixels");
             }
         }
     }

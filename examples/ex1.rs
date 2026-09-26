@@ -330,13 +330,11 @@ fn save_items_scene(world: &mut World) {
     let mut query = world.query_filtered::<Entity, Or<(With<Item>, With<GridContents>)>>();
     let type_registry = world.resource::<AppTypeRegistry>().read();
     let scene = DynamicWorldBuilder::from_world(&world, &type_registry)
-        // .deny_all_resources()
+        .deny_all_resources()
         .deny_component::<PlaybackSettings>()
         .extract_resources()
         .extract_entities(query.iter(&world))
         .build();
-
-    assert!(!scene.resources.is_empty());
 
     let type_registry = world.resource::<AppTypeRegistry>();
     let type_registry = type_registry.read();

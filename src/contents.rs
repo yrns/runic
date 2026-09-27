@@ -2,7 +2,6 @@ mod grid;
 
 use bevy_ecs::{name::NameOrEntityItem, prelude::*, system::SystemParam};
 use bevy_math::{UVec2, Vec2};
-use bevy_reflect::Reflect;
 use itertools::Itertools;
 // use tracing::*;
 
@@ -11,8 +10,9 @@ pub use grid::*;
 
 /// The slot this item occupies in its parent container.
 // This really shouldn't derive `Default`, but it has to for BSN?
-#[derive(Component, Copy, Clone, PartialEq, Eq, Reflect, FromTemplate)]
-#[reflect(Component)]
+#[derive(Component, Copy, Clone, PartialEq, Eq, FromTemplate)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component))]
 pub struct Slot(pub UVec2);
 
 impl std::fmt::Debug for Slot {
@@ -86,8 +86,9 @@ where
 pub struct Options {}
 
 /// Bit flags used to determine compatibility between containers and items.
-#[derive(Component, Copy, Clone, Debug, Default, Reflect)]
-#[reflect(Component)]
+#[derive(Component, Copy, Clone, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component))]
 pub struct Flags<T>(pub T);
 
 impl<T: Accepts> Flags<T> {
@@ -98,8 +99,9 @@ impl<T: Accepts> Flags<T> {
 
 /// Remembers which containers are opened and their screen positions. This is only for contents displayed in windows and does not affect fixed contents being displayed, nor inline contents.
 // TODO Open these on spawn.
-#[derive(Component, Clone, Default, Reflect)]
-#[reflect(Component)]
+#[derive(Component, Clone, Debug, Default)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, Debug))]
 #[component(storage = "SparseSet")]
 pub struct Open(pub Vec2);
 

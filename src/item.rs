@@ -1,17 +1,25 @@
+use bevy_asset::Handle;
 use bevy_camera::visibility::Visibility;
 use bevy_ecs::prelude::*;
+use bevy_image::Image;
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
 use bevy_picking::prelude::*;
-use bevy_reflect::prelude::*;
 use bevy_ui::*;
 use tracing::*;
 
 use crate::*;
 
+/// `Item` icon.
+#[derive(Component, Clone, Debug, FromTemplate)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, Debug))]
+pub struct Icon(pub Handle<Image>);
+
 /// An item.
-#[derive(Component, Clone, Debug, Reflect)]
-#[reflect(Component)]
+#[derive(Component, Clone, Debug)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, Debug))]
 #[require(ItemRotation)]
 pub struct Item {
     /// The shape represents this items dimensions (and filled "slots" in case it is not rectangular).
@@ -444,8 +452,9 @@ pub fn on_item_drag_cancel(event: On<Pointer<Cancel>>) {
 
 // TODO: rename?
 /// Clockwise rotation.
-#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Reflect)]
-#[reflect(Component)]
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, Debug))]
 pub enum ItemRotation {
     #[default]
     None,

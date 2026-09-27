@@ -229,10 +229,13 @@ fn open_container(
     event: On<Pointer<Release>>,
     mut commands: Commands,
     views: Query<&Viewing>,
+    // world: &World,
     mut items: Query<(NameOrEntity, Option<&mut LastClick>), With<Item>>,
     // This does not work in desktop app mode...
     // time: Res<Time<Real>>,
 ) {
+    // dbg!(world.entity(event.event_target()).spawned_by());
+
     if event.button == PointerButton::Primary {
         if let Ok(&Viewing(v)) = views.get(event.event_target())
             && let Ok((id, last)) = items.get_mut(v)
@@ -326,14 +329,28 @@ fn save_items(
     }
 }
 
-fn save_items_scene(world: &mut World) {
-    let mut query = world.query_filtered::<Entity, Or<(With<Item>, With<GridContents>)>>();
+fn save_items_scene(names: Query<(Entity, &Name)>, children: Query<&Children>, world: &World) {
+    use bevy::ui::*;
+
+    let iter = names
+        .iter()
+        .filter(|(_, n)| n.as_str() == "Inventory" || n.as_str() == "InventoryView")
+        .flat_map(|(e, _)| children.iter_descendants(e));
+
     let type_registry = world.resource::<AppTypeRegistry>().read();
     let scene = DynamicWorldBuilder::from_world(&world, &type_registry)
         .deny_all_resources()
         .deny_component::<PlaybackSettings>()
+        .deny_component::<ComputedStackIndex>()
+        .deny_component::<ComputedNode>()
+        .deny_component::<ComputedUiRenderTargetInfo>()
+        .deny_component::<ComputedUiTargetCamera>()
+        .deny_component::<UiGlobalTransform>()
+        .deny_component::<ScrollPosition>()
+        .deny_component::<bevy::ui::widget::ImageNodeSize>()
+        .deny_component::<bevy::picking::hover::PickingInteraction>()
         .extract_resources()
-        .extract_entities(query.iter(&world))
+        .extract_entities(iter)
         .build();
 
     let type_registry = world.resource::<AppTypeRegistry>();

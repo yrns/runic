@@ -2,8 +2,9 @@ use super::*;
 
 /// Contains items in a 2D grid.
 // We want the shape to be required, but there is no way to do so (<https://github.com/bevyengine/bevy/issues/24739>).
-#[derive(Component, Clone, Reflect)]
-#[reflect(Component)]
+#[derive(Component, Debug, Clone)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, Debug))]
 pub struct GridContents<const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
@@ -52,11 +53,7 @@ impl<const N: usize> GridContents<N> {
     }
 
     pub fn slots(&self) -> usize {
-        if self.expands {
-            1
-        } else {
-            self.shape.area()
-        }
+        if self.expands { 1 } else { self.shape.area() }
     }
 
     pub fn insert(&mut self, Slot(slot): Slot, item: &Item) {

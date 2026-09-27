@@ -10,11 +10,11 @@
 
 // use bevy_ecs::template::*;
 use bevy_math::UVec2;
-use bevy_reflect::Reflect;
 
 pub use bevy_math::UVec2 as Size;
 
-#[derive(Clone, Debug, PartialEq, Eq, Reflect)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 pub struct Shape {
     pub(crate) size: Size,
     pub(crate) fill: Vec<bool>, // bit-vec is in the lockfile already.

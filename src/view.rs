@@ -7,19 +7,46 @@ use bevy_ecs::prelude::*;
 use bevy_image::Image;
 use bevy_math::*;
 use bevy_picking::{Pickable, events::*};
+#[cfg(feature = "reflect")]
+use bevy_reflect::std_traits::ReflectDefault;
+#[cfg(all(feature = "serialize", feature = "reflect"))]
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use bevy_scene::*;
 use bevy_ui::{widget::*, *};
 use tracing::*;
 
 use crate::*;
 
-#[derive(Component, Debug, Clone, FromTemplate)]
+/// This entity is viewing a specific item or section. This decouples the inventory entities from the UI nodes (both of which already use `ChildOf`).
+#[derive(Component, FromTemplate, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(
+    feature = "reflect",
+    reflect(Component, PartialEq, Debug, FromWorld, Clone)
+)]
+#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    all(feature = "serialize", feature = "reflect"),
+    reflect(Serialize, Deserialize)
+)]
 #[relationship(relationship_target = ViewedBy)]
 #[require(Node)]
 pub struct Viewing(pub Entity);
 
-#[derive(Component, Debug, Clone, FromTemplate)]
-#[relationship_target(relationship = Viewing)]
+// See comments for ChildOf...
+impl FromWorld for Viewing {
+    #[inline(always)]
+    fn from_world(_world: &mut World) -> Self {
+        Self(Entity::PLACEHOLDER)
+    }
+}
+
+/// Entities viewing this item or section.
+// TODO: Test views despawning with linked_spawn.
+#[derive(Component, Default, Debug, PartialEq, Eq)]
+#[relationship_target(relationship = Viewing, linked_spawn)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[cfg_attr(feature = "reflect", reflect(Component, FromWorld, Default))]
 pub struct ViewedBy(Vec<Entity>);
 
 // Copied from Children.

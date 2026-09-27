@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use bevy_app::*;
 use bevy_ecs::schedule::IntoScheduleConfigs;
+#[cfg(feature = "reflect")]
 use bevy_reflect::*;
 
 use crate::*;

@@ -52,39 +52,43 @@ impl<const N: usize> GridContents<N> {
         self
     }
 
+    /// Returns the size of the section. For expanding sections `Self::size` is the maximum item size and the size returned here is always 1x1.
+    pub fn size(&self) -> UVec2 {
+        if self.expands {
+            UVec2::ONE
+        } else {
+            self.shape.size()
+        }
+    }
+
+    /// Returns number of slots. Expanding section only have one slot.
     pub fn slots(&self) -> usize {
         if self.expands { 1 } else { self.shape.area() }
     }
 
-    pub fn insert(&mut self, Slot(slot): Slot, item: &Item) {
-        let index = self.shape.index(slot);
+    /// Paint item shape.
+    pub fn insert(&mut self, slot: Slot, item: &Item) {
+        let index = self.index(slot);
         assert!(index < self.slots(), "slot in contents length");
         self.shape.paint(&item.shape, index);
     }
 
-    pub fn remove(&mut self, Slot(slot): Slot, item: &Item) {
-        let index = self.shape.index(slot);
+    /// Unpaint item shape.
+    pub fn remove(&mut self, slot: Slot, item: &Item) {
+        let index = self.index(slot);
         assert!(index < self.slots(), "slot in contents length");
         self.shape.unpaint(&item.shape, index);
     }
 
-    // fn pos(&self, Slot(UVec2 { x, y }): Slot) -> egui::Vec2 {
-    //     // Expanding only ever has one slot.
-    //     if self.expands {
-    //         egui::Vec2::ZERO
-    //     } else {
-    //         egui::Vec2::new(x as f32, y as f32) * N as f32
-    //     }
-    // }
-
-    // fn index(&self, p: egui::Vec2) -> usize {
-    //     // Expanding only ever has one.
-    //     if self.expands {
-    //         0
-    //     } else {
-    //         self.shape.index(to_size(p / N as f32))
-    //     }
-    // }
+    /// Returns an index for `slot`. Always returns 0 for expanding sections.
+    pub fn index(&self, Slot(slot): Slot) -> usize {
+        // Expanding only ever has one.
+        if self.expands {
+            0
+        } else {
+            self.shape.index(slot)
+        }
+    }
 
     // This got moved to find_section_slot?
     // fn fits(&self, id: Entity, item: &Item, index: usize, source: &DragSource) -> bool {

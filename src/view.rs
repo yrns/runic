@@ -71,7 +71,7 @@ impl std::ops::Deref for ViewedBy {
 }
 
 fn update_node(contents: &GridContents, node: &mut Node) {
-    let UVec2 { x, y } = contents.shape.size;
+    let UVec2 { x, y } = contents.size();
 
     node.display = Display::Grid;
     // TEMP styling remove

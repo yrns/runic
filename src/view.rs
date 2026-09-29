@@ -172,9 +172,10 @@ pub fn item_moved(
     views: Query<NameOrEntity, With<Viewing>>,
 ) {
     for (i, Icon(icon), item_views, &ChildOf(s)) in &items {
+        // We may actually care about the ordering here of matching item and section view pairs. Sort?
+        let mut iter = views.iter_many(item_views);
+
         if let Ok(section_views) = sections.get(s) {
-            // We may actually care about the ordering here, meaning matching pairs of item and section views.
-            let mut iter = views.iter_many(item_views);
             for s in views.iter_many(section_views) {
                 match iter.next() {
                     Some(i) => {
@@ -194,11 +195,11 @@ pub fn item_moved(
                     }
                 }
             }
+        }
 
-            // If we have more item views than section views we despawn the excess.
-            for i in iter {
-                commands.entity(i.entity).despawn();
-            }
+        // If we have more item views than section views we despawn the excess.
+        for i in iter {
+            commands.entity(i.entity).despawn();
         }
     }
 }

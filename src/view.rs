@@ -73,14 +73,27 @@ impl std::ops::Deref for ViewedBy {
 fn update_node(contents: &GridContents, node: &mut Node) {
     let UVec2 { x, y } = contents.size();
 
-    node.display = Display::Grid;
+    // If the section expands, we use 1x1 until an item is placed here, then it expands to the size of the item's node.
+    if contents.expands {
+        node.display = Display::Flex;
+        node.min_width = px(48);
+        node.min_height = px(48);
+        node.width = Val::Auto;
+        node.height = Val::Auto;
+        node.grid_template_columns = Vec::new();
+        node.grid_template_rows = Vec::new();
+        // The parent default seems to be stretch even though it's AlignItems::Default?
+        node.align_self = AlignSelf::FlexStart;
+    } else {
+        node.display = Display::Grid;
+        node.width = px(x * 48);
+        node.height = px(y * 48);
+        node.grid_template_columns = RepeatedGridTrack::px(x as u16, 48.0);
+        node.grid_template_rows = RepeatedGridTrack::px(y as u16, 48.0);
+    }
     // TEMP styling remove
     node.margin = px(2.).all();
     node.padding = px(2.).all();
-    node.width = px(x * 48);
-    node.height = px(y * 48);
-    node.grid_template_columns = RepeatedGridTrack::px(x as u16, 48.0);
-    node.grid_template_rows = RepeatedGridTrack::px(y as u16, 48.0);
     node.align_items = AlignItems::Center;
     node.justify_content = JustifyContent::Center;
 }

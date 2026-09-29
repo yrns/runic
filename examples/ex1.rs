@@ -96,9 +96,17 @@ fn styling(
     mut commands: Commands,
     sections: Query<(NameOrEntity, &GridContents)>,
     items: Query<(NameOrEntity, &Item)>,
-    mut nodes: Query<(NameOrEntity, Option<&Viewing>, &mut Node), Added<Node>>,
+    mut nodes: Query<
+        (
+            NameOrEntity,
+            Option<&BorderColor>,
+            Option<&Viewing>,
+            &mut Node,
+        ),
+        Added<Node>,
+    >,
 ) {
-    for (n, v, mut node) in &mut nodes {
+    for (n, border_color, v, mut node) in &mut nodes {
         if let Some(&Viewing(v)) = v {
             if let Ok((_s, _)) = sections.get(v) {
                 node.border = px(1.).all();
@@ -112,8 +120,10 @@ fn styling(
                     .insert((BorderColor::from(WHITE),));
             }
         } else {
-            node.border = px(1.).all();
-            commands.entity(n.entity).insert((BorderColor::from(GRAY),));
+            if border_color.is_none() {
+                node.border = px(1.).all();
+                commands.entity(n.entity).insert((BorderColor::from(GRAY),));
+            }
         }
     }
 }
@@ -532,16 +542,21 @@ fn spawn_contents(
             flex_direction: FlexDirection::Row,
             width: percent(100.0),
             // height: percent(100.0),
-            border: px(4.),
+            // border: px(4.),
+            padding: px(8),
             // align_items: AlignItems::Center,
         }
-        BorderColor::all(WHITE)
+        // BorderColor::all(WHITE)
         Children [
             #PaperDollView
+            // Viewing(#PaperDoll)?
             Node {
                 flex_direction: FlexDirection::Column,
                 width: percent(50.0),
                 border: px(4.),
+                padding: px(8),
+                // This was for expands but we can set it in the section node.
+                // align_items: AlignItems::FlexStart,
             }
             Pickable::IGNORE
             BorderColor::all(GREEN)
@@ -566,6 +581,7 @@ fn spawn_contents(
                 flex_direction: FlexDirection::Column,
                 width: percent(50.0),
                 border: px(4.),
+                padding: px(8),
             }
             BorderColor::all(BLUE)
             Pickable::IGNORE

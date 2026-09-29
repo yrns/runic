@@ -195,7 +195,7 @@ fn pointer_slot(
     let p = p / node.size + Vec2::splat(0.5);
 
     // Note the pointer can be just outside the node's contents (in the border, for example) and thus we clamp the maximum edge in order to not return a slot outside the shape. We saturate to zero in the negative case so we don't need to clamp it.
-    (section.shape.size().as_vec2() * p)
+    (section.size().as_vec2() * p)
         .as_uvec2()
         .min(section.shape.size - UVec2::ONE)
 }

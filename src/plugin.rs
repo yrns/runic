@@ -30,7 +30,8 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
                         // view::spawn_item_views,
                         view::contents_spawned,
                         view::item_moved,
-                        item::update_nodes,
+                        item::item_moved_or_rotated,
+                        item::item_view_changed,
                     )
                         .chain(),
                 ),

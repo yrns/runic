@@ -79,46 +79,68 @@ pub fn update_drag_rotation(
     }
 }
 
-/// Update the node and transform when an item's size changes (via rotation) or its slot changes.
-pub fn update_nodes(
+/// Update the item view's node and transform when the item slot or size (via rotation) changes.
+pub fn item_moved_or_rotated(
     items: Query<
         (NameOrEntity, &Item, &ItemRotation, &Slot, &ViewedBy),
         Or<(Changed<ItemRotation>, Changed<Slot>, Changed<ChildOf>)>,
     >,
     mut views: Query<(&mut Node, &mut UiTransform)>,
 ) {
-    for (id, Item { shape }, rotation, Slot(slot), vs) in &items {
-        info!("updating views for {id}");
+    for (i, Item { shape }, rotation, Slot(slot), vs) in &items {
         let mut iter = views.iter_many_mut(vs);
-        while let Some((mut node, mut transform)) = iter.fetch_next() {
-            let size = shape.size;
-
-            // We don't need to apply the rotation to the size because the transform does.
-            // let size = match rotation {
-            //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
-            //     _ => size,
-            // };
-
-            node.grid_row = GridPlacement::start_span((slot.y + 1) as i16, size.y as u16);
-            node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
-
-            // Grid tracks are fixed, is this needed?
-            let size = size.as_vec2() * 48.0;
-
-            // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
-            node.width = px(size.x);
-            node.height = px(size.y);
-            // node.max_width = px(size.x as f32 * 48.0);
-            // node.max_height = px(size.y as f32 * 48.0);
-            // node.min_width = node.max_width;
-            // node.min_height = node.max_height;
-
-            // Update transform. What about scale?
-            transform.rotation = rotation.rot2();
-            let Vec2 { x, y } = rotation.offset(size);
-            transform.translation = Val2::px(x, y);
+        while let Some((node, transform)) = iter.fetch_next() {
+            info!("updated: {i}");
+            update_item_view(shape, rotation, slot, node, transform);
         }
     }
+}
+
+pub fn item_view_changed(
+    items: Query<(NameOrEntity, &Item, &ItemRotation, &Slot)>,
+    mut views: Query<(&Viewing, &mut Node, &mut UiTransform), Changed<Viewing>>,
+) {
+    // We also need to update item views that are added (when opening containers). In theory there could be duplicates with the above system, but not in practice?
+    for (&Viewing(v), node, transform) in &mut views {
+        if let Ok((i, Item { shape }, rotation, Slot(slot))) = items.get(v) {
+            info!("view changed: {i}");
+            update_item_view(shape, rotation, slot, node, transform);
+        }
+    }
+}
+
+/// Updates an item view based on it's rotation and slot.
+pub fn update_item_view(
+    &Shape { size, .. }: &Shape,
+    rotation: &ItemRotation,
+    slot: &UVec2,
+    mut node: Mut<'_, Node>,
+    mut transform: Mut<'_, UiTransform>,
+) {
+    // We don't need to apply the rotation to the size because the transform does.
+    // let size = match rotation {
+    //     ItemRotation::R90 | ItemRotation::R270 => size.yx(),
+    //     _ => size,
+    // };
+
+    node.grid_row = GridPlacement::start_span((slot.y + 1) as i16, size.y as u16);
+    node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
+
+    // Grid tracks are fixed, is this needed?
+    let size = size.as_vec2() * 48.0;
+
+    // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
+    node.width = px(size.x);
+    node.height = px(size.y);
+    // node.max_width = px(size.x as f32 * 48.0);
+    // node.max_height = px(size.y as f32 * 48.0);
+    // node.min_width = node.max_width;
+    // node.min_height = node.max_height;
+
+    // Update transform. What about scale?
+    transform.rotation = rotation.rot2();
+    let Vec2 { x, y } = rotation.offset(size);
+    transform.translation = Val2::px(x, y);
 }
 
 /// Start dragging an item.
@@ -307,7 +329,7 @@ pub fn on_item_drag_drop<T: Accepts>(
         slot.map(|slot| (id, slot))
     } else {
         // Item. Find a target.
-        contents.find_section_slot(t, item, flags)
+        contents.find_section_slot(target, item, flags)
     } {
         if contents
             .resolve_drag(

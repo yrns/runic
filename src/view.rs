@@ -70,11 +70,12 @@ impl std::ops::Deref for ViewedBy {
     }
 }
 
-fn update_node(contents: &GridContents, node: &mut Node) {
-    let UVec2 { x, y } = contents.size();
+/// Updates a section view's node to match.
+fn update_section_view(section: &GridContents, node: &mut Node) {
+    let UVec2 { x, y } = section.size();
 
     // If the section expands, we use 1x1 until an item is placed here, then it expands to the size of the item's node.
-    if contents.expands {
+    if section.expands {
         node.display = Display::Flex;
         node.min_width = px(48);
         node.min_height = px(48);
@@ -128,6 +129,7 @@ pub fn item_view(
     ]
 }
 
+/// This updates a section view when spawned or updated and spawns its contained items' views.
 // Paint shape and set slots here?
 // TODO: There is no longer a way to specify the layout of an item container. There never was?
 // Despawn existing items on view change?
@@ -141,12 +143,14 @@ pub fn contents_spawned(
     for (v, &Viewing(s), mut node) in &mut views {
         if let Ok((s, section, items)) = sections.get(s) {
             info!("section view changed: {v} section: {s}");
-            update_node(section, &mut *node);
+            update_section_view(section, &mut *node);
 
             // Copy the section name.
             if let Some(name) = s.name {
                 commands.entity(v.entity).insert(name.clone());
             }
+
+            dbg!(&items);
 
             if let Some(items) = items {
                 // TODO: This will silently omit an item if the icon is missing.
@@ -171,6 +175,7 @@ pub fn item_moved(
     sections: Query<&ViewedBy, With<GridContents>>,
     views: Query<NameOrEntity, With<Viewing>>,
 ) {
+    // Can `viewed_by` be None?
     for (i, Icon(icon), item_views, &ChildOf(s)) in &items {
         // We may actually care about the ordering here of matching item and section view pairs. Sort?
         let mut iter = views.iter_many(item_views);

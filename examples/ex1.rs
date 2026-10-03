@@ -552,7 +552,11 @@ fn spawn_contents(
             // Viewing(#PaperDoll)?
             Node {
                 flex_direction: FlexDirection::Column,
-                width: percent(50.0),
+                flex_grow: 0.0,
+                // flex_shrink: 0.0,
+                // flex_basis: Val::ZERO,
+                min_width: Val::ZERO,
+                // width: percent(50.0),
                 border: px(4.),
                 padding: px(8),
                 // This was for expands but we can set it in the section node.
@@ -578,8 +582,14 @@ fn spawn_contents(
 
             #GroundView
             Node {
+                justify_self: JustifySelf::End,
                 flex_direction: FlexDirection::Column,
-                width: percent(50.0),
+                flex_grow: 1.0,
+                // flex_shrink: 1.0,
+                // flex_basis: Val::ZERO,
+                min_width: Val::ZERO,
+                overflow: Overflow::clip(),
+                // width: percent(50.0),
                 border: px(4.),
                 padding: px(8),
             }

@@ -588,7 +588,8 @@ fn spawn_contents(
                 // flex_shrink: 1.0,
                 // flex_basis: Val::ZERO,
                 min_width: Val::ZERO,
-                overflow: Overflow::clip(),
+                // Clipping causes problems w/ dragging to other sections.
+                // overflow: Overflow::clip(),
                 // width: percent(50.0),
                 border: px(4.),
                 padding: px(8),

@@ -21,7 +21,7 @@ impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts
             .register_type::<Item>()
             .register_type::<Icon>()
             .add_systems(
-                PostUpdate,
+                Update,
                 (
                     contents::insert_item,
                     item::update_drag_rotation,

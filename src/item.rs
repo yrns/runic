@@ -389,7 +389,12 @@ pub fn on_send_item<T: Accepts>(
 
             for p in parents.iter_ancestors(i.entity) {
                 if let Ok(&Target(target)) = targets.get(p) {
-                    if let Some(target) = contents.find_section_slot(target, item, flags) {
+                    if let Some(target) = contents.find_section_slot(
+                        target,
+                        // Apply the rotation when checking.
+                        &item.clone().with_rotation(*item_rotation),
+                        flags,
+                    ) {
                         contents.resolve_drag(
                             target,
                             &i,

@@ -7,6 +7,7 @@ edition = "2024"
 
 [[example]]
 name = "ex1"
+required-features = ["reflect"]
 
 [dependencies]
 bevy_app = "0.19"
@@ -17,19 +18,18 @@ bevy_image = "0.19"
 bevy_input = "0.19"
 bevy_math = "0.19"
 bevy_picking = "0.19"
-bevy_reflect = { version = "0.19", optional = true }
+bevy_reflect = "0.19"
 bevy_render = "0.19"
 bevy_scene = "0.19"
 bevy_ui = "0.19"
-bitflags = { version = "2.6.0", features = ["serde"] }
 itertools = "0.15"
-serde = { version = "1", features = ["derive"], optional = true }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 bevy = { version = "0.19", default-features = false, features = ["audio", "debug", "track_location", "ui"] }
+bitflags = { version = "2.6.0", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 
 [features]
-default = ["reflect", "serialize"]
-reflect = ["dep:bevy_reflect"]
-serialize = ["dep:serde"]
+default = ["reflect"]
+reflect = []  # "dep:bevy_reflect"

@@ -12,11 +12,11 @@ use serde::{Deserialize, Serialize};
 // You can get flags to serialize with the reflect serialization if you derive reflect outside the bitflags! macro (and NOT use reflect_value) as described here (https://docs.rs/bitflags/latest/bitflags/#custom-derives). This serializes as a struct tuple containing a u32. If you use reflect_value you're pretty much required to implement Serialize yourself. The serde flag for bitflags enables the fancy serialization with flag names.
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Deserialize, Serialize)]
+    #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Hash, Reflect, Deserialize, Serialize)]
     #[serde(transparent)]
     #[reflect(opaque)]
     #[reflect(Hash, PartialEq, Debug, Deserialize, Serialize)]
-    pub struct ExFlags: u32 {
+    pub struct Flags: u32 {
         const WEAPON = 1;
         const ARMOR = 1 << 1;
         const POTION = 1 << 2;
@@ -25,14 +25,20 @@ bitflags::bitflags! {
     }
 }
 
+impl Accepts for Flags {
+    fn accepts(&self, other: &Self) -> bool {
+        self.contains(*other)
+    }
+}
+
 // By default, containers can contain any item. The derived default (0) does not work well, see https://docs.rs/bitflags/latest/bitflags/index.html#zero-bit-flags. This is why items require flags.
-impl Default for ExFlags {
+impl Default for Flags {
     fn default() -> Self {
         Self::all()
     }
 }
 
-impl std::fmt::Display for ExFlags {
+impl std::fmt::Display for Flags {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let names = self.iter_names().map(|(n, _)| n);
         f.write_str(&itertools::join(names, "|"))
@@ -51,7 +57,7 @@ enum AppState {
 fn main() {
     App::new()
         .insert_resource(WinitSettings::desktop_app())
-        .add_plugins((DefaultPlugins, RunicPlugin::<ExFlags>::default()))
+        .add_plugins((DefaultPlugins, RunicPlugin::<Flags>::default()))
         .init_state::<AppState>()
         // .add_plugins(EguiPlugin::default())
         .add_systems(Startup, startup)
@@ -392,7 +398,7 @@ fn items() -> impl SceneList {
         Item {
             shape: { [[1, 1], [1, 0]] },
         }
-        Flags<ExFlags>(ExFlags::WEAPON),
+        Flags::WEAPON,
 
         #Pouch
         Slot({(2, 0)})
@@ -400,7 +406,7 @@ fn items() -> impl SceneList {
         Item {
             shape: { Shape::new((2, 2), true) }
         }
-        Flags<ExFlags>(ExFlags::CONTAINER)
+        Flags::CONTAINER
         // Layout { direction: Direction::LeftToRight }
         Children [
             (
@@ -409,7 +415,7 @@ fn items() -> impl SceneList {
                     header: { "Any:".to_owned() },
                     shape: {(3, 2)},
                 }
-                Flags<ExFlags>({ ExFlags::all() })
+                Flags
             ),
 
             (
@@ -418,7 +424,7 @@ fn items() -> impl SceneList {
                     header: { "P1:".to_owned() },
                     shape: {(1, 1)},
                 }
-                Flags<ExFlags>({ ExFlags::POTION })
+                Flags::POTION
             ),
 
             (
@@ -426,7 +432,7 @@ fn items() -> impl SceneList {
                     header: { "P2:".to_owned() },
                     shape: {(1, 1)},
                 }
-                Flags<ExFlags>({ ExFlags::POTION })
+                Flags::POTION
             ),
         ],
 
@@ -438,7 +444,7 @@ fn items() -> impl SceneList {
             shape: { Shape::new((3, 1), true) }
         }
         ItemRotation::R90
-        Flags<ExFlags>(ExFlags::WEAPON),
+        Flags::WEAPON,
 
         // Potion 1 & 2 are almost the same?
         #Potion1
@@ -446,21 +452,21 @@ fn items() -> impl SceneList {
         Slot({(5, 0)})
         Icon("potion.png")
         Item
-        Flags<ExFlags>(ExFlags::POTION),
+        Flags::POTION,
 
         #Potion2
         Name("Potion 2")
         Slot({(6, 0)})
         Icon("potion.png")
         Item
-        Flags<ExFlags>(ExFlags::POTION),
+        Flags::POTION,
     ]
 }
 
 fn spawn_contents(
     mut commands: Commands,
     _asset_server: Res<AssetServer>,
-    mut _storage: Contents<ExFlags>,
+    mut _storage: Contents<Flags>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     info!("spawning contents!");
@@ -476,28 +482,28 @@ fn spawn_contents(
                     shape: { (1, 2) },
                     header: { "A1".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::all() }),
+                Flags,
 
                 #A2
                 GridContents {
                     shape: { (1, 2) },
                     header: { "A2".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::all() }),
+                Flags,
 
                 #W1
                 GridContents {
                     shape: { (1, 2) },
                     header: { "W1".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::WEAPON }),
+                Flags::WEAPON,
 
                 #PX
                 GridContents {
                     shape: { (2, 2) },
                     header: { "Only potions! 2x2:".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::POTION }),
+                Flags::POTION,
 
                 #Weapon
                 GridContents {
@@ -505,7 +511,7 @@ fn spawn_contents(
                     header: { "Weapon (3x2 MAX):".to_owned() },
                     expands: true,
                 }
-                Flags<ExFlags>({ ExFlags::WEAPON }),
+                Flags::WEAPON,
 
                 #Belt
                 GridContents {
@@ -514,14 +520,14 @@ fn spawn_contents(
                     expands: true,
                     inline: true,
                 }
-                Flags<ExFlags>({ ExFlags::CONTAINER }),
+                Flags::CONTAINER,
 
                 #Bag
                 GridContents {
                     shape: { (4, 4) },
                     header: { "Bag of any! 4x4:".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::all() }),
+                Flags,
             ],
 
             #Ground
@@ -532,7 +538,7 @@ fn spawn_contents(
                     shape: { (10, 10) },
                     header: { "Ground 10x10".to_owned() },
                 }
-                Flags<ExFlags>({ ExFlags::all() })
+                Flags
                 Children [{ items() }]
             ]
         ],

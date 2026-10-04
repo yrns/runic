@@ -66,36 +66,15 @@ pub fn insert_item(
 //     }
 // }
 
-/// `Accepts` must be `Clone` because items are cloned.
+/// Determines whether a section will accept an item as its contents.
 // TODO Indicate textually why something does't accept another?
-pub trait Accepts: Copy + Clone + Default + std::fmt::Display + Send + Sync + 'static {
+pub trait Accepts: Component + Default + std::fmt::Debug + std::fmt::Display {
     fn accepts(&self, other: &Self) -> bool;
-}
-
-impl<T> Accepts for T
-where
-    T: bitflags::Flags + Copy + Clone + Default + std::fmt::Display + Send + Sync + 'static,
-{
-    fn accepts(&self, other: &Self) -> bool {
-        self.contains(*other)
-    }
 }
 
 /// Options.
 #[derive(Clone, Debug, Default, Resource)]
 pub struct Options {}
-
-/// Bit flags used to determine compatibility between containers and items.
-#[derive(Component, Copy, Clone, Debug, Default)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
-#[cfg_attr(feature = "reflect", reflect(Component))]
-pub struct Flags<T>(pub T);
-
-impl<T: Accepts> Flags<T> {
-    pub fn accepts(&self, flags: &Flags<T>) -> bool {
-        self.0.accepts(&flags.0)
-    }
-}
 
 /// Remembers which containers are opened and their screen positions. This is only for contents displayed in windows and does not affect fixed contents being displayed, nor inline contents.
 // TODO Open these on spawn.
@@ -148,7 +127,7 @@ pub type Items<'w, 's, T> = Query<
         // This is only used from on drag drop?
         &'static DragRotation,
         &'static ChildOf,
-        &'static Flags<T>,
+        &'static T,
         // We know there is at least one since we're dragging it.
         // &'static ViewedBy,
     ),
@@ -156,7 +135,7 @@ pub type Items<'w, 's, T> = Query<
 
 /// Contents.
 #[derive(SystemParam)]
-pub struct Contents<'w, 's, T: Send + Sync + 'static> {
+pub struct Contents<'w, 's, T: Component> {
     pub commands: Commands<'w, 's>,
     pub sections: Query<
         'w,
@@ -165,7 +144,7 @@ pub struct Contents<'w, 's, T: Send + Sync + 'static> {
             NameOrEntity,
             &'static mut GridContents,
             Option<&'static DragShape>,
-            &'static Flags<T>,
+            &'static T,
         ),
     >,
     /// A container must have children (sections), but is not necessarily an item for "fixed" containers.
@@ -216,7 +195,7 @@ impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
         &self,
         target: Entity,
         item: &Item,
-        flags: &Flags<T>,
+        flags: &T,
     ) -> Option<(Entity, Slot)> {
         self.sections
             .iter_many(self.children.get(target).ok()?)

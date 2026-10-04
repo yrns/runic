@@ -227,8 +227,8 @@ pub fn on_item_drag_enter<T: Accepts>(
     mut event: On<Pointer<DragEnter>>,
     mut commands: Commands,
     views: Query<&Viewing>,
-    items: Query<(NameOrEntity, &Flags<T>), With<Item>>,
-    sections: Query<(NameOrEntity, &Flags<T>), With<GridContents>>,
+    items: Query<(NameOrEntity, &T), With<Item>>,
+    sections: Query<(NameOrEntity, &T), With<GridContents>>,
 ) {
     if let Ok([&Viewing(target), &Viewing(dragged)]) =
         views.get_many([event.event_target(), event.dragged])
@@ -363,7 +363,7 @@ pub fn on_send_item<T: Accepts>(
         &Item,
         &mut ItemRotation,
         &ChildOf,
-        &Flags<T>,
+        &T,
     )>,
     parents: Query<&ChildOf>,
     mut contents: Contents<T>,

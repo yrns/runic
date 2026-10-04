@@ -9,8 +9,6 @@ use bevy_math::*;
 use bevy_picking::{Pickable, events::*};
 #[cfg(feature = "reflect")]
 use bevy_reflect::std_traits::ReflectDefault;
-#[cfg(all(feature = "serialize", feature = "reflect"))]
-use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use bevy_scene::*;
 use bevy_ui::{widget::*, *};
 use tracing::*;
@@ -23,11 +21,6 @@ use crate::*;
 #[cfg_attr(
     feature = "reflect",
     reflect(Component, PartialEq, Debug, FromWorld, Clone)
-)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(
-    all(feature = "serialize", feature = "reflect"),
-    reflect(Serialize, Deserialize)
 )]
 #[relationship(relationship_target = ViewedBy)]
 #[require(Node)]

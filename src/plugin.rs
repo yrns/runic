@@ -10,16 +10,18 @@ use crate::*;
 #[derive(Default)]
 pub struct RunicPlugin<T>(PhantomData<T>);
 
-impl<T: Reflect + FromReflect + GetTypeRegistration + TypePath + Typed + Accepts> Plugin
-    for RunicPlugin<T>
+impl<T> Plugin for RunicPlugin<T>
+where
+    T: Accepts + GetTypeRegistration,
 {
     fn build(&self, app: &mut App) {
-        // TODO: separate options per T?
-        app.init_resource::<Options>()
-            .register_type::<Flags<T>>()
+        #[cfg(feature = "reflect")]
+        app.register_type::<T>()
             .register_type::<GridContents>()
             .register_type::<Item>()
-            .register_type::<Icon>()
+            .register_type::<Icon>();
+
+        app.init_resource::<Options>()
             .add_systems(
                 Update,
                 (

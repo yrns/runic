@@ -206,8 +206,7 @@ pub fn item_moved(
 #[derive(Component, Debug, FromTemplate)]
 pub struct ContainerView(pub Entity);
 
-// TODO: Check for an already opened container and then raise it!
-// Rely on Open? Update drag position of window...
+/// When the `Open` component is added to a container, this displays a draggable window with the contents.
 pub fn open_container(
     mut commands: Commands,
     sections: Query<(Entity, &GridContents)>,

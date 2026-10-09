@@ -389,7 +389,30 @@ fn save_items_scene(names: Query<(Entity, &Name)>, children: Query<&Children>, w
         .detach();
 }
 
+fn pouch_view(sections: Vec<Entity>) -> Box<dyn Scene> {
+    use itertools::Itertools;
+
+    let (a1, p1, p2) = sections
+        .into_iter()
+        .map(|e| bsn! { Viewing(e) })
+        .collect_tuple()
+        .unwrap();
+
+    Box::new(bsn! {
+        Node
+        Children [
+            a1,
+            Node {
+                flex_direction: FlexDirection::Column,
+            }
+            Children [p1, p2],
+        ]
+    })
+}
+
 fn items() -> impl SceneList {
+    let pouch_view = pouch_view as fn(sections: Vec<Entity>) -> Box<dyn Scene>;
+
     bsn_list! [
         #Boomerang
         // This really shouldn't be Default.
@@ -407,7 +430,7 @@ fn items() -> impl SceneList {
             shape: { Shape::new((2, 2), true) }
         }
         Flags::CONTAINER
-        // Layout { direction: Direction::LeftToRight }
+        ContentsView(pouch_view)
         Children [
             (
                 #PouchAny
@@ -463,12 +486,8 @@ fn items() -> impl SceneList {
     ]
 }
 
-fn spawn_contents(
-    mut commands: Commands,
-    _asset_server: Res<AssetServer>,
-    mut _storage: Contents<Flags>,
-    mut next_state: ResMut<NextState<AppState>>,
-) {
+/// Note the paper doll and ground are fixed containers and don't use `ContentsView` since they are only spawned once. It's also easier to create the views with entity references.
+fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppState>>) {
     info!("spawning contents!");
 
     let scene = bsn_list![
@@ -555,7 +574,6 @@ fn spawn_contents(
         // BorderColor::all(WHITE)
         Children [
             #PaperDollView
-            // Viewing(#PaperDoll)?
             Node {
                 flex_direction: FlexDirection::Column,
                 flex_grow: 0.0,
@@ -577,8 +595,14 @@ fn spawn_contents(
                     Pickable::IGNORE
                 ),
 
-                Viewing(#A1),
-                Viewing(#A2),
+                Node {
+                    flex_direction: FlexDirection::Row,
+                }
+                Children [
+                    Viewing(#A1),
+                    Viewing(#A2),
+                ],
+
                 Viewing(#W1),
                 Viewing(#PX),
                 Viewing(#Weapon),

@@ -124,7 +124,6 @@ pub fn item_view(
 
 /// This updates a section view when spawned or updated and spawns its contained items' views.
 // Paint shape and set slots here?
-// TODO: There is no longer a way to specify the layout of an item container. There never was?
 // Despawn existing items on view change?
 pub fn contents_spawned(
     mut commands: Commands,
@@ -142,8 +141,6 @@ pub fn contents_spawned(
             if let Some(name) = s.name {
                 commands.entity(v.entity).insert(name.clone());
             }
-
-            dbg!(&items);
 
             if let Some(items) = items {
                 // TODO: This will silently omit an item if the icon is missing.
@@ -202,22 +199,43 @@ pub fn item_moved(
     }
 }
 
-/// Stores which container this view belongs to.
+/// Stores the container this view belongs to. We can't use `Viewing`/`ViewedBy` because this is usually an item which may have its own view already. This is only to connect pointer events to the original container (item).
 #[derive(Component, Debug, FromTemplate)]
 pub struct ContainerView(pub Entity);
+
+/// For containers which can be opened, this provides the contents layout. Since this view is spawned well after the actual item and contets are spawned we cannot resue the entity references (if any) that were used, so we have to rely on the number and ordering of the entities.
+// We could also store a lookup table?
+#[derive(Component, Clone)]
+pub struct ContentsView(pub fn(Vec<Entity>) -> Box<dyn Scene>);
+
+/// Default section (row) layout.
+pub fn default_contents(sections: Vec<Entity>) -> Box<dyn Scene> {
+    let sections: Vec<_> = sections.into_iter().map(|e| bsn! { Viewing(e) }).collect();
+
+    Box::new(bsn! {
+        Node Children [{sections}]
+    })
+}
+
+// Just for BSN.
+impl Default for ContentsView {
+    fn default() -> Self {
+        Self(default_contents)
+    }
+}
 
 /// When the `Open` component is added to a container, this displays a draggable window with the contents.
 pub fn open_container(
     mut commands: Commands,
     sections: Query<(Entity, &GridContents)>,
-    containers: Query<(NameOrEntity, &Open, &Children), Added<Open>>,
+    containers: Query<(NameOrEntity, &Open, Option<&ContentsView>, &Children), Added<Open>>,
 ) {
-    for (c, &Open(p), children) in &containers {
-        let sections = sections
-            .iter_many(children)
-            // section_view?
-            .map(|(e, _)| bsn! { Viewing(e) })
-            .collect::<Vec<_>>();
+    for (c, &Open(p), contents_view, children) in &containers {
+        let sections = sections.iter_many(children).map(|(e, _)| e).collect();
+        let sections = match contents_view {
+            Some(v) => v.0(sections),
+            None => default_contents(sections),
+        };
 
         let entity = c.entity;
         commands.entity(entity).trigger(ContainerOpen);
@@ -246,8 +264,7 @@ pub fn open_container(
                     Node Text("Contents"),
                     Node { right: px(0.0) } Button Text("X") on(close_window),
                 ],
-
-                {sections}
+                sections
             ]
         ];
 
@@ -261,6 +278,7 @@ fn close_window(
     child_of: Query<&ChildOf>,
     views: Query<&ContainerView>,
 ) {
+    // Does this propagate up?
     let root = child_of.root_ancestor(event.event_target());
     if let Ok(&ContainerView(v)) = views.get(root) {
         commands.entity(v).remove::<Open>().trigger(ContainerClose);

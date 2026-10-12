@@ -274,7 +274,7 @@ pub fn open_container(
                 on(drag_by_header_end)
                 Children [
                     Node Text("Contents"),
-                    Node { right: px(0.0) } Button Text("X") on(close_window),
+                    Node { right: px(0.0) } Button ImageNode { image: "close.png" } on(close_window),
                 ],
                 sections
             ]

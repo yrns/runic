@@ -606,7 +606,14 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
                 Viewing(#W1),
                 Viewing(#PX),
                 Viewing(#Weapon),
-                Viewing(#Belt),
+
+                Node {
+                    flex_direction: FlexDirection::Row,
+                }
+                Children [
+                    Viewing(#Belt),
+                    InlineContents(#Belt),
+                ],
                 Viewing(#Bag),
             ],
 

@@ -22,9 +22,15 @@ where
             .register_type::<Icon>();
 
         app.init_resource::<Options>()
+            .init_resource::<InlinedContentsMap>()
             .add_systems(
                 Update,
                 (
+                    (
+                        view::update_inline_contents_map,
+                        view::update_inline_contents,
+                    )
+                        .chain(),
                     contents::insert_item,
                     item::update_drag_rotation,
                     view::open_container,

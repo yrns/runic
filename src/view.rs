@@ -3,7 +3,8 @@
 // What about dragging items? We only draw one? What if somehow the contents gets destroyed or closed while dragging?
 
 use bevy_asset::Handle;
-use bevy_ecs::prelude::*;
+use bevy_derive::*;
+use bevy_ecs::{entity::EntityHashMap, prelude::*};
 use bevy_image::Image;
 use bevy_math::*;
 use bevy_picking::{Pickable, events::*};
@@ -60,6 +61,17 @@ impl std::ops::Deref for ViewedBy {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+/// When the specified section is filled, the contents of those items (if any) will be displayed as child nodes of this entity.
+#[derive(Component, Debug, FromTemplate)]
+#[require(Node)]
+pub struct InlineContents(pub Entity);
+
+impl From<Entity> for InlineContents {
+    fn from(section: Entity) -> Self {
+        Self(section)
     }
 }
 
@@ -269,6 +281,67 @@ pub fn open_container(
         ];
 
         info!("new window for {c}: {}", commands.spawn_scene(window).id());
+    }
+}
+
+/// Reverse map of section entity to inline contents.
+#[derive(Resource, Debug, Default, Clone, Deref, DerefMut)]
+pub(crate) struct InlinedContentsMap(EntityHashMap<Entity>);
+
+pub(crate) fn update_inline_contents_map(
+    mut commands: Commands,
+    changed: Query<(Entity, &InlineContents), Changed<InlineContents>>,
+    mut removed: RemovedComponents<InlineContents>,
+    mut inlined: ResMut<InlinedContentsMap>,
+) {
+    for r in removed.read() {
+        inlined.remove(&r);
+        if let Ok(mut r) = commands.get_entity(r) {
+            r.despawn_children();
+        }
+    }
+
+    for (c, &InlineContents(section)) in changed {
+        inlined.insert(section, c);
+    }
+}
+
+pub(crate) fn update_inline_contents(
+    mut commands: Commands,
+    mut removed: RemovedComponents<Children>,
+    sections: Query<(NameOrEntity, &Children), (With<GridContents>, Changed<Children>)>,
+    items: Query<(NameOrEntity, Option<&ContentsView>, &Children), With<Item>>,
+    inlined: Res<InlinedContentsMap>,
+    // sections: Query<(Entity, &GridContents)>,
+) {
+    // Remove inlined contents when the `Children` component is removed from the source section.
+    for r in removed.read() {
+        if let Some(&i) = inlined.get(&r) {
+            commands.entity(i).despawn_children();
+        }
+    }
+
+    // Inlined contents relate to a single section.
+    // The section contains items.
+    // Each item (usually just one) correlates to a child node of the inlined contents entity.
+    // The children of that child node are section views, much like that of an opened container.
+
+    // When the children of a section are updated, we look for inlined contents.
+    for (section, children) in &sections {
+        info!("section contents changed: {section}");
+        if let Some(&i) = inlined.get(&section.entity) {
+            info!("inlined!");
+            commands.entity(i).despawn_children();
+            for (item, contents_view, sections) in items.iter_many(children) {
+                info!("updating inline contents for: {section}: {item}");
+                let sections = sections.into_iter().copied().collect();
+                let scene = match contents_view {
+                    Some(v) => v.0(sections),
+                    None => default_contents(sections),
+                };
+                commands.spawn_scene(scene).insert(ChildOf(i));
+            }
+        }
     }
 }
 

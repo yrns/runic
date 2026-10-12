@@ -537,7 +537,6 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
                     shape: { (2, 2) },
                     header: { "Holds a container:".to_owned() },
                     expands: true,
-                    inline: true,
                 }
                 Flags::CONTAINER,
 

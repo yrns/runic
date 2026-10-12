@@ -8,8 +8,6 @@ use super::*;
 pub struct GridContents<const N: usize = 48> {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
-    /// If true, show inline contents for the contained item.
-    pub inline: bool,
     pub header: Option<String>, // Use Name?
     /// The shape describes the dimensions of the container and which slots are filled.
     pub shape: Shape,
@@ -20,7 +18,6 @@ impl Default for GridContents {
     fn default() -> Self {
         Self {
             expands: false,
-            inline: false,
             header: None,
             shape: Shape::new((2, 2), false),
         }
@@ -31,7 +28,6 @@ impl<const N: usize> GridContents<N> {
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
             expands: false,
-            inline: false,
             header: None,
             shape: Shape::new(size.into(), false),
         }
@@ -39,11 +35,6 @@ impl<const N: usize> GridContents<N> {
 
     pub fn with_expands(mut self, expands: bool) -> Self {
         self.expands = expands;
-        self
-    }
-
-    pub fn with_inline(mut self, inline: bool) -> Self {
-        self.inline = inline;
         self
     }
 

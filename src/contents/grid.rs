@@ -5,7 +5,7 @@ use super::*;
 #[derive(Component, Debug, Clone)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
 #[cfg_attr(feature = "reflect", reflect(Component, Debug))]
-pub struct GridContents<const N: usize = 48> {
+pub struct GridContents {
     /// If true, this grid only holds one item, but the size of that item can be any up to the maximum size.
     pub expands: bool,
     pub header: Option<String>, // Use Name?
@@ -24,7 +24,7 @@ impl Default for GridContents {
     }
 }
 
-impl<const N: usize> GridContents<N> {
+impl GridContents {
     pub fn new(size: impl Into<Size>) -> Self {
         Self {
             expands: false,

@@ -624,8 +624,7 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
                 // flex_shrink: 1.0,
                 // flex_basis: Val::ZERO,
                 min_width: Val::ZERO,
-                // Clipping causes problems w/ dragging to other sections.
-                // overflow: Overflow::clip(),
+                overflow: Overflow::clip(),
                 // width: percent(50.0),
                 border: px(4.),
                 padding: px(8),

@@ -91,10 +91,10 @@ pub struct Open(pub Vec2);
 #[component(storage = "SparseSet")]
 pub struct DragShape(pub Shape);
 
-/// The drag item's rotation which will be applied when the drag ends, and the translation incurred by this rotation.
+/// The drag item's rotation which will be applied when the drag ends.
 #[derive(Component, Debug)]
 #[component(storage = "SparseSet")]
-pub struct DragRotation(pub ItemRotation, pub Vec2);
+pub struct DragRotation(pub ItemRotation);
 
 /// Current target slot in section contents when an item is being dragged over it. If the item does not fit this will be `None`.
 // TODO: Maybe this should be an enum and include "not accepts"?

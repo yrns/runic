@@ -56,11 +56,11 @@ pub fn update_drag_rotation(
     mut rm: RemovedComponents<DragRotation>,
     item_rotations: Query<(&Item, &ItemRotation, &ViewedBy)>,
 ) {
-    for (i, Item { shape }, DragRotation(r, offset), vs) in &items {
+    for (i, Item { shape }, DragRotation(r), vs) in &items {
         let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
             t.rotation = r.rot2();
-            let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0) + offset;
+            let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0);
             t.translation = Val2::px(x, y);
 
             commands.entity(i.entity).trigger(ItemDragRotate);
@@ -169,10 +169,10 @@ pub fn on_item_drag_start(
 
         commands
             .entity(view)
-            .insert((GlobalZIndex(2), Pickable::IGNORE));
+            .insert((GlobalZIndex(2), Pickable::IGNORE, FixedNode));
         commands
             .entity(id)
-            .insert(DragRotation(*rotation, Vec2::ZERO))
+            .insert(DragRotation(*rotation))
             .trigger(|entity| ItemDragStart {
                 entity,
                 section,
@@ -190,17 +190,17 @@ pub fn on_item_drag_start(
 
 pub fn on_item_drag(
     event: On<PointerDrag>,
-    mut views: Query<(&mut UiTransform, &Viewing)>,
-    mut items: Query<(&Item, &mut DragRotation)>,
+    mut views: Query<(&mut Node, &Viewing)>,
+    items: Query<Entity, With<Item>>,
 ) {
-    if let Ok((mut transform, &Viewing(id))) = views.get_mut(event.event_target())
-        && let Ok((item, mut drag)) = items.get_mut(id)
+    if let Ok((mut node, &Viewing(id))) = views.get_mut(event.event_target())
+        && items.contains(id)
     {
-        // Update transform.
-        drag.1 = event.distance;
-        transform.rotation = drag.0.rot2();
-        let d = drag.1 + drag.0.offset(item.shape.size.as_vec2() * 48.0);
-        transform.translation = Val2::px(d.x, d.y);
+        // Update fixed node position.
+        let d = event.pointer.position;
+        node.position_type = PositionType::Absolute;
+        node.left = px(d.x);
+        node.top = px(d.y);
     }
 }
 
@@ -420,18 +420,23 @@ pub fn on_send_item<T: Accepts>(
 pub fn on_item_drag_end(
     event: On<PointerDragEnd>,
     mut commands: Commands,
-    views: Query<(NameOrEntity, &Viewing)>,
+    mut views: Query<(NameOrEntity, &Viewing, &mut Node)>,
     items: Query<(NameOrEntity, &ViewedBy, &ChildOf), With<Item>>,
     sections: Query<&DragSlot>,
 ) {
     let t = event.event_target();
-    if let Ok((v, &Viewing(i))) = views.get(t)
+    if let Ok((v, &Viewing(i), mut node)) = views.get_mut(t)
         && let Ok((i, vs, &ChildOf(s))) = items.get(i)
     {
         info!("drag end: {i}");
         commands
             .entity(v.entity)
-            .remove::<(GlobalZIndex, Pickable)>();
+            .remove::<(GlobalZIndex, Pickable, FixedNode)>();
+
+        // Restore relative grid position.
+        node.position_type = PositionType::Relative;
+        node.left = Val::Auto;
+        node.top = Val::Auto;
 
         let target = sections
             .get(s)

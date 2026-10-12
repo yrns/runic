@@ -242,7 +242,7 @@ struct LastClick(Instant);
 
 // Checks for a double click on an item to open it.
 fn open_container(
-    event: On<Pointer<Release>>,
+    event: On<PointerRelease>,
     mut commands: Commands,
     views: Query<&Viewing>,
     // world: &World,
@@ -263,9 +263,7 @@ fn open_container(
                         commands
                             .entity(id.entity)
                             .remove::<LastClick>()
-                            .insert(Open(
-                                event.pointer_location.position + Vec2::new(-40.0, 40.0),
-                            ));
+                            .insert(Open(event.pointer.position + Vec2::new(-40.0, 40.0)));
                     }
                     last.0 = Instant::now();
                 }
@@ -401,11 +399,16 @@ fn pouch_view(sections: Vec<Entity>) -> Box<dyn Scene> {
     Box::new(bsn! {
         Node
         Children [
-            a1,
+            @a1
+            --
             Node {
                 flex_direction: FlexDirection::Column,
             }
-            Children [p1, p2],
+            Children [
+                @p1
+                --
+                @p2
+            ]
         ]
     })
 }
@@ -413,7 +416,7 @@ fn pouch_view(sections: Vec<Entity>) -> Box<dyn Scene> {
 fn items() -> impl SceneList {
     let pouch_view = pouch_view as fn(sections: Vec<Entity>) -> Box<dyn Scene>;
 
-    bsn_list! [
+    bsn_list! {
         #Boomerang
         // This really shouldn't be Default.
         Slot({(0, 0)})
@@ -421,8 +424,8 @@ fn items() -> impl SceneList {
         Item {
             shape: { [[1, 1], [1, 0]] },
         }
-        Flags::WEAPON,
-
+        Flags::WEAPON
+        --
         #Pouch
         Slot({(2, 0)})
         Icon("pouch.png")
@@ -432,33 +435,27 @@ fn items() -> impl SceneList {
         Flags::CONTAINER
         ContentsView(pouch_view)
         Children [
-            (
-                #PouchAny
-                GridContents {
-                    header: { "Any:".to_owned() },
-                    shape: {(3, 2)},
-                }
-                Flags
-            ),
-
-            (
-                #PouchP1
-                GridContents {
-                    header: { "P1:".to_owned() },
-                    shape: {(1, 1)},
-                }
-                Flags::POTION
-            ),
-
-            (
-                #PouchP2 GridContents {
-                    header: { "P2:".to_owned() },
-                    shape: {(1, 1)},
-                }
-                Flags::POTION
-            ),
-        ],
-
+            #PouchAny
+            GridContents {
+                header: { "Any:".to_owned() },
+                shape: {(3, 2)},
+            }
+            Flags
+            --
+            #PouchP1
+            GridContents {
+                header: { "P1:".to_owned() },
+                shape: {(1, 1)},
+            }
+            Flags::POTION
+            --
+            #PouchP2 GridContents {
+                header: { "P2:".to_owned() },
+                shape: {(1, 1)},
+            }
+            Flags::POTION
+        ]
+        --
         #ShortSword
         Name("Short-sword")
         Slot({(4, 0)})
@@ -467,30 +464,30 @@ fn items() -> impl SceneList {
             shape: { Shape::new((3, 1), true) }
         }
         ItemRotation::R90
-        Flags::WEAPON,
-
+        Flags::WEAPON
+        --
         // Potion 1 & 2 are almost the same?
         #Potion1
         Name("Potion 1")
         Slot({(5, 0)})
         Icon("potion.png")
         Item
-        Flags::POTION,
-
+        Flags::POTION
+        --
         #Potion2
         Name("Potion 2")
         Slot({(6, 0)})
         Icon("potion.png")
         Item
-        Flags::POTION,
-    ]
+        Flags::POTION
+    }
 }
 
 /// Note the paper doll and ground are fixed containers and don't use `ContentsView` since they are only spawned once. It's also easier to create the views with entity references.
 fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppState>>) {
     info!("spawning contents!");
 
-    let scene = bsn_list![
+    let scene = bsn_list! {
         #Inventory
         Children [
             #PaperDoll
@@ -501,53 +498,53 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
                     shape: { (1, 2) },
                     header: { "A1".to_owned() },
                 }
-                Flags,
-
+                Flags
+                --
                 #A2
                 GridContents {
                     shape: { (1, 2) },
                     header: { "A2".to_owned() },
                 }
-                Flags,
-
+                Flags
+                --
                 #W1
                 GridContents {
                     shape: { (1, 2) },
                     header: { "W1".to_owned() },
                 }
-                Flags::WEAPON,
-
+                Flags::WEAPON
+                --
                 #PX
                 GridContents {
                     shape: { (2, 2) },
                     header: { "Only potions! 2x2:".to_owned() },
                 }
-                Flags::POTION,
-
+                Flags::POTION
+                --
                 #Weapon
                 GridContents {
                     shape: { (3, 2) },
                     header: { "Weapon (3x2 MAX):".to_owned() },
                     expands: true,
                 }
-                Flags::WEAPON,
-
+                Flags::WEAPON
+                --
                 #Belt
                 GridContents {
                     shape: { (2, 2) },
                     header: { "Holds a container:".to_owned() },
                     expands: true,
                 }
-                Flags::CONTAINER,
-
+                Flags::CONTAINER
+                --
                 #Bag
                 GridContents {
                     shape: { (4, 4) },
                     header: { "Bag of any! 4x4:".to_owned() },
                 }
-                Flags,
-            ],
-
+                Flags
+            ]
+            --
             #Ground
             Target(#PaperDoll)
             Children [
@@ -559,8 +556,8 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
                 Flags
                 Children [{ items() }]
             ]
-        ],
-
+        ]
+        --
         #InventoryView
         Node {
             flex_direction: FlexDirection::Row,
@@ -588,34 +585,37 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
             Pickable::IGNORE
             BorderColor::all(GREEN)
             Children [
-                (
-                    #PaperDollText
-                    Text::new("Paper Doll")
-                    Pickable::IGNORE
-                ),
-
+                #PaperDollText
+                Text::new("Paper Doll")
+                Pickable::IGNORE
+                --
                 Node {
                     flex_direction: FlexDirection::Row,
                 }
                 Children [
-                    Viewing(#A1),
-                    Viewing(#A2),
-                ],
-
-                Viewing(#W1),
-                Viewing(#PX),
-                Viewing(#Weapon),
-
+                    Viewing(#A1)
+                    --
+                    Viewing(#A2)
+                ]
+                --
+                Viewing(#W1)
+                --
+                Viewing(#PX)
+                --
+                Viewing(#Weapon)
+                --
                 Node {
                     flex_direction: FlexDirection::Row,
                 }
                 Children [
-                    Viewing(#Belt),
-                    InlineContents(#Belt),
-                ],
-                Viewing(#Bag),
-            ],
-
+                    Viewing(#Belt)
+                    --
+                    InlineContents(#Belt)
+                ]
+                --
+                Viewing(#Bag)
+            ]
+            --
             #GroundView
             Node {
                 justify_self: JustifySelf::End,
@@ -633,16 +633,14 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
             BorderColor::all(BLUE)
             Pickable::IGNORE
             Children [
-                (
-                    #GroundText
-                    Text::new("Ground")
-                    Pickable::IGNORE
-                ),
-
+                #GroundText
+                Text::new("Ground")
+                Pickable::IGNORE
+                --
                 Viewing(#Ground0)
             ]
         ]
-    ];
+    };
 
     commands.spawn_scene_list(scene);
     //.insert((Name::new("Root"), Pickable::IGNORE));

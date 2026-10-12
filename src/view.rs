@@ -11,7 +11,11 @@ use bevy_picking::{Pickable, events::*};
 #[cfg(feature = "reflect")]
 use bevy_reflect::std_traits::ReflectDefault;
 use bevy_scene::*;
-use bevy_ui::{widget::*, *};
+use bevy_ui::{
+    widget::{ImageNode, Text},
+    *,
+};
+use bevy_ui_widgets::Button;
 use tracing::*;
 
 use crate::*;
@@ -120,7 +124,7 @@ pub fn item_view(
     //     None => bsn! [#ItemView],
     // });
 
-    bsn! [
+    bsn! {
         Node {
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
@@ -131,7 +135,7 @@ pub fn item_view(
         ImageNode { image: icon }
         // This is also default behavior and is only needed when dragging?
         Pickable::default()
-    ]
+    }
 }
 
 /// This updates a section view when spawned or updated and spawns its contained items' views.
@@ -156,7 +160,7 @@ pub fn contents_spawned(
 
             if let Some(items) = items {
                 // TODO: This will silently omit an item if the icon is missing.
-                for (i, Icon(icon)) in icons.iter_many(items) {
+                for (i, Icon(icon)) in icons.iter_many(items).matched() {
                     let mut item_view =
                         commands.spawn_scene(item_view(icon.clone(), v.entity, i.entity));
 
@@ -180,10 +184,10 @@ pub fn item_moved(
     // Can `viewed_by` be None?
     for (i, Icon(icon), item_views, &ChildOf(s)) in &items {
         // We may actually care about the ordering here of matching item and section view pairs. Sort?
-        let mut iter = views.iter_many(item_views);
+        let mut iter = views.iter_many(item_views).matched();
 
         if let Ok(section_views) = sections.get(s) {
-            for s in views.iter_many(section_views) {
+            for s in views.iter_many(section_views).matched() {
                 match iter.next() {
                     Some(i) => {
                         commands.entity(i.entity).insert(ChildOf(s.entity));
@@ -243,7 +247,11 @@ pub fn open_container(
     containers: Query<(NameOrEntity, &Open, Option<&ContentsView>, &Children), Added<Open>>,
 ) {
     for (c, &Open(p), contents_view, children) in &containers {
-        let sections = sections.iter_many(children).map(|(e, _)| e).collect();
+        let sections = sections
+            .iter_many(children)
+            .matched()
+            .map(|(e, _)| e)
+            .collect();
         let sections = match contents_view {
             Some(v) => v.0(sections),
             None => default_contents(sections),
@@ -252,7 +260,7 @@ pub fn open_container(
         let entity = c.entity;
         commands.entity(entity).trigger(ContainerOpen);
 
-        let window = bsn![
+        let window = bsn! {
             #Window
             ContainerView(entity)
             Node {
@@ -273,12 +281,14 @@ pub fn open_container(
                 on(drag_by_header)
                 on(drag_by_header_end)
                 Children [
-                    Node Text("Contents"),
-                    Node { right: px(0.0) } Button ImageNode { image: "close.png" } on(close_window),
-                ],
-                sections
+                    Node Text("Contents")
+                    --
+                    Node { right: px(0.0) } Button ImageNode { image: "close.png" } on(close_window)
+                ]
+                --
+                @sections
             ]
-        ];
+        };
 
         info!("new window for {c}: {}", commands.spawn_scene(window).id());
     }
@@ -332,7 +342,7 @@ pub(crate) fn update_inline_contents(
         if let Some(&i) = inlined.get(&section.entity) {
             info!("inlined!");
             commands.entity(i).despawn_children();
-            for (item, contents_view, sections) in items.iter_many(children) {
+            for (item, contents_view, sections) in items.iter_many(children).matched() {
                 info!("updating inline contents for: {section}: {item}");
                 let sections = sections.into_iter().copied().collect();
                 let scene = match contents_view {
@@ -346,7 +356,7 @@ pub(crate) fn update_inline_contents(
 }
 
 fn close_window(
-    event: On<Pointer<Release>>,
+    event: On<PointerRelease>,
     mut commands: Commands,
     child_of: Query<&ChildOf>,
     views: Query<&ContainerView>,
@@ -361,7 +371,7 @@ fn close_window(
 
 /// Move contents.
 fn drag_by_header(
-    mut event: On<Pointer<Drag>>,
+    mut event: On<PointerDrag>,
     mut nodes: Query<&mut Node>,
     parents: Query<&ChildOf>,
 ) {
@@ -384,7 +394,7 @@ fn drag_by_header(
 
 /// Update `Open` to represent the new position.
 pub fn drag_by_header_end(
-    event: On<Pointer<DragEnd>>,
+    event: On<PointerDragEnd>,
     views: Query<(&Node, &ContainerView)>,
     parents: Query<&ChildOf>,
     mut containers: Query<&mut Open>,

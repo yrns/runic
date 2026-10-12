@@ -10,24 +10,25 @@ name = "ex1"
 required-features = ["reflect"]
 
 [dependencies]
-bevy_app = "0.19"
-bevy_asset = "0.19"
-bevy_camera = "0.19"
-bevy_derive = "0.19"
-bevy_ecs = "0.19"
-bevy_image = "0.19"
-bevy_input = "0.19"
-bevy_math = "0.19"
-bevy_picking = "0.19"
-bevy_reflect = "0.19"
-bevy_render = "0.19"
-bevy_scene = "0.19"
-bevy_ui = "0.19"
+bevy_app = "0.20"
+bevy_asset = "0.20"
+bevy_camera = "0.20"
+bevy_derive = "0.20"
+bevy_ecs = "0.20"
+bevy_image = "0.20"
+bevy_input = "0.20"
+bevy_math = "0.20"
+bevy_picking = "0.20"
+bevy_reflect = "0.20"
+bevy_render = "0.20"
+bevy_scene = "0.20"
+bevy_ui = "0.20"
+bevy_ui_widgets = "0.20"
 itertools = "0.15"
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-bevy = { version = "0.19", default-features = false, features = ["audio", "debug", "track_location", "ui"] }
+bevy = { version = "0.20", default-features = false, features = ["audio", "debug", "track_location", "ui"] }
 bitflags = { version = "2.6.0", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 

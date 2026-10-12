@@ -57,7 +57,7 @@ pub fn update_drag_rotation(
     item_rotations: Query<(&Item, &ItemRotation, &ViewedBy)>,
 ) {
     for (i, Item { shape }, DragRotation(r, offset), vs) in &items {
-        let mut iter = views.iter_many_mut(vs);
+        let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
             t.rotation = r.rot2();
             let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0) + offset;
@@ -69,7 +69,7 @@ pub fn update_drag_rotation(
 
     for e in rm.read() {
         if let Ok((Item { shape }, r, vs)) = item_rotations.get(e) {
-            let mut iter = views.iter_many_mut(vs);
+            let mut iter = views.iter_many_mut(vs).matched();
             while let Some(mut t) = iter.fetch_next() {
                 t.rotation = r.rot2();
                 let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0);
@@ -88,7 +88,7 @@ pub fn item_moved_or_rotated(
     mut views: Query<(&mut Node, &mut UiTransform)>,
 ) {
     for (i, Item { shape }, rotation, Slot(slot), vs) in &items {
-        let mut iter = views.iter_many_mut(vs);
+        let mut iter = views.iter_many_mut(vs).matched();
         while let Some((node, transform)) = iter.fetch_next() {
             info!("updated: {i}");
             update_item_view(shape, rotation, slot, node, transform);
@@ -145,7 +145,7 @@ pub fn update_item_view(
 
 /// Start dragging an item.
 pub fn on_item_drag_start(
-    event: On<Pointer<DragStart>>,
+    event: On<PointerDragStart>,
     mut commands: Commands,
     views: Query<&Viewing>,
     sections: Query<&GridContents>,
@@ -189,7 +189,7 @@ pub fn on_item_drag_start(
 }
 
 pub fn on_item_drag(
-    event: On<Pointer<Drag>>,
+    event: On<PointerDrag>,
     mut views: Query<(&mut UiTransform, &Viewing)>,
     mut items: Query<(&Item, &mut DragRotation)>,
 ) {
@@ -224,7 +224,7 @@ fn pointer_slot(
 
 /// Inserts `DragSlot` in a target container if it accepts the dragged item.
 pub fn on_item_drag_enter<T: Accepts>(
-    mut event: On<Pointer<DragEnter>>,
+    mut event: On<PointerDragEnter>,
     mut commands: Commands,
     views: Query<&Viewing>,
     items: Query<(NameOrEntity, &T), With<Item>>,
@@ -251,7 +251,7 @@ pub fn on_item_drag_enter<T: Accepts>(
 
 /// Sets the `DragSlot` for the currently hovered section.
 pub fn on_item_drag_over(
-    event: On<Pointer<DragOver>>,
+    event: On<PointerDragOver>,
     mut commands: Commands,
     items: Query<(NameOrEntity, &Item, &ItemRotation, Option<&DragRotation>)>,
     mut sections: Query<(
@@ -276,7 +276,7 @@ pub fn on_item_drag_over(
 
             // Use the cached shape with the item unpainted when moving within the same container.
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
-            let slot = pointer_slot(event.pointer_location.position, section, transform, node);
+            let slot = pointer_slot(event.pointer.position, section, transform, node);
             let index = section_shape.index(slot);
             let new_slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
             if drag_slot.replace_if_neq(new_slot).is_some() {
@@ -296,7 +296,7 @@ pub fn on_item_drag_over(
 
 /// If dropped on an item, we attempt to find a section and slot for the item. If dropped on a suitable section slot we move it there.
 pub fn on_item_drag_drop<T: Accepts>(
-    event: On<Pointer<DragDrop>>,
+    event: On<PointerDragDrop>,
     views: Query<&Viewing>,
     mut items: Items<T>,
     drag_slot: Query<(Entity, &DragSlot)>,
@@ -353,7 +353,7 @@ pub fn on_item_drag_drop<T: Accepts>(
 // TODO: move key input to example only?
 /// Send item to target container.
 pub fn on_send_item<T: Accepts>(
-    event: On<Pointer<Click>>,
+    event: On<PointerClick>,
     input: Res<ButtonInput<KeyCode>>,
     views: Query<(NameOrEntity, &Viewing)>,
     targets: Query<&Target>,
@@ -418,7 +418,7 @@ pub fn on_send_item<T: Accepts>(
 }
 
 pub fn on_item_drag_end(
-    event: On<Pointer<DragEnd>>,
+    event: On<PointerDragEnd>,
     mut commands: Commands,
     views: Query<(NameOrEntity, &Viewing)>,
     items: Query<(NameOrEntity, &ViewedBy, &ChildOf), With<Item>>,
@@ -455,7 +455,7 @@ pub fn on_item_drag_end(
 }
 
 pub fn on_item_drag_leave(
-    event: On<Pointer<DragLeave>>,
+    event: On<PointerDragLeave>,
     mut commands: Commands,
     views: Query<&Viewing>,
     // items: Query<NameOrEntity, With<Item>>,
@@ -475,7 +475,7 @@ pub fn on_item_drag_leave(
 }
 
 // How do we trigger this?
-pub fn on_item_drag_cancel(event: On<Pointer<Cancel>>) {
+pub fn on_item_drag_cancel(event: On<PointerCancel>) {
     warn!("cancel! {}", event.event_target());
 }
 

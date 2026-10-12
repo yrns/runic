@@ -158,7 +158,7 @@ impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
     // Only for items, though?
     pub fn is_container(&self, id: Entity) -> bool {
         if let Ok(c) = self.children.get(id) {
-            self.sections.iter_many(c).next().is_some()
+            self.sections.iter_many(c).matched().next().is_some()
         } else {
             false
         }
@@ -199,6 +199,7 @@ impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
     ) -> Option<(Entity, Slot)> {
         self.sections
             .iter_many(self.children.get(target).ok()?)
+            .matched()
             .filter(|(.., f)| f.accepts(&flags))
             .find_map(|(id, section, drag_shape, _)| {
                 self.find_slot(section, drag_shape, item)

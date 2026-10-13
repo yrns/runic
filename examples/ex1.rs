@@ -2,8 +2,9 @@ use std::time::*;
 
 use bevy::{
     asset::AssetLoadFailedEvent, color::palettes::basic::*, ecs::system::SystemId,
-    input::common_conditions::*, prelude::*, tasks::IoTaskPool, window::RequestRedraw,
-    winit::WinitSettings, world_serialization::DynamicWorld,
+    input::common_conditions::*, picking::hover::Hovered, prelude::*, tasks::IoTaskPool,
+    ui::Pressed, ui_widgets::Button, window::RequestRedraw, winit::WinitSettings,
+    world_serialization::DynamicWorld,
 };
 use runic::*;
 use serde::{Deserialize, Serialize};
@@ -72,7 +73,7 @@ fn main() {
         .add_systems(
             Update,
             (
-                (styling, save_items).run_if(in_state(AppState::Running)),
+                (style_buttons, styling, save_items).run_if(in_state(AppState::Running)),
                 rotate_items.run_if(input_just_pressed(KeyCode::KeyR)),
             ),
         )
@@ -97,6 +98,38 @@ fn startup(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
 
+const NORMAL_BUTTON: Color = Color::srgb(0.75, 0.75, 0.75);
+const HOVERED_BUTTON: Color = Color::srgb(0.85, 0.85, 0.85);
+const PRESSED_BUTTON: Color = Color::srgb(1., 1., 1.);
+
+fn style_buttons(
+    mut buttons: Query<
+        (
+            &Hovered,
+            Has<Pressed>,
+            Option<&mut BackgroundColor>,
+            Option<&mut BorderColor>,
+            Option<&mut ImageNode>,
+            Option<&Children>,
+        ),
+        (With<Button>, Or<(Changed<Hovered>, Changed<Pressed>)>),
+    >,
+    // mut text_query: Query<&mut Text>,
+) {
+    for (hovered, pressed, _bg, _border, image, _children) in &mut buttons {
+        if let Some(mut image) = image {
+            if pressed {
+                image.color = PRESSED_BUTTON;
+            } else if hovered.get() {
+                image.color = HOVERED_BUTTON;
+            } else {
+                image.color = NORMAL_BUTTON;
+            }
+        }
+    }
+}
+
+// TODO use EBGaramond12-Regular
 // We have to modify the node to change the border width?
 fn styling(
     mut commands: Commands,

@@ -7,7 +7,7 @@ use bevy_derive::*;
 use bevy_ecs::{entity::EntityHashMap, prelude::*};
 use bevy_image::Image;
 use bevy_math::*;
-use bevy_picking::{Pickable, events::*};
+use bevy_picking::{Pickable, events::*, hover::Hovered};
 #[cfg(feature = "reflect")]
 use bevy_reflect::std_traits::ReflectDefault;
 use bevy_scene::*;
@@ -15,7 +15,7 @@ use bevy_ui::{
     widget::{ImageNode, Text},
     *,
 };
-use bevy_ui_widgets::Button;
+use bevy_ui_widgets::{Activate, Button};
 use tracing::*;
 
 use crate::*;
@@ -283,7 +283,11 @@ pub fn open_container(
                 Children [
                     Node Text("Contents")
                     --
-                    Node { right: px(0.0) } Button ImageNode { image: "close.png" } on(close_window)
+                    Node { right: px(0.0) }
+                    Button
+                    Hovered
+                    ImageNode { image: "close.png" }
+                    on(close_window)
                 ]
                 --
                 @sections
@@ -356,7 +360,7 @@ pub(crate) fn update_inline_contents(
 }
 
 fn close_window(
-    event: On<PointerRelease>,
+    event: On<Activate>,
     mut commands: Commands,
     child_of: Query<&ChildOf>,
     views: Query<&ContainerView>,

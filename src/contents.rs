@@ -112,6 +112,11 @@ impl std::fmt::Display for DragSlot {
     }
 }
 
+/// An item shadow when dragged that corresponds to the final slot (`DragSlot`).
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct DragShadow(pub Entity);
+
 /// This container's target container, where items are sent via control-click.
 #[derive(Component, Debug, FromTemplate)]
 pub struct Target(pub Entity);

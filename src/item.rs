@@ -5,7 +5,7 @@ use bevy_image::Image;
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
 use bevy_picking::prelude::*;
-use bevy_ui::*;
+use bevy_ui::{widget::ImageNode, *};
 use tracing::*;
 
 use crate::*;
@@ -96,6 +96,7 @@ pub fn item_moved_or_rotated(
     }
 }
 
+/// Update the node and transform when an item view is added or changed.
 pub fn item_view_changed(
     items: Query<(NameOrEntity, &Item, &ItemRotation, &Slot)>,
     mut views: Query<(&Viewing, &mut Node, &mut UiTransform), Changed<Viewing>>,
@@ -109,7 +110,7 @@ pub fn item_view_changed(
     }
 }
 
-/// Updates an item view based on it's rotation and slot.
+/// Updates an item view based on its rotation and slot.
 pub fn update_item_view(
     &Shape { size, .. }: &Shape,
     rotation: &ItemRotation,
@@ -226,24 +227,41 @@ fn pointer_slot(
 pub fn on_item_drag_enter<T: Accepts>(
     mut event: On<PointerDragEnter>,
     mut commands: Commands,
-    views: Query<&Viewing>,
-    items: Query<(NameOrEntity, &T), With<Item>>,
+    views: Query<(NameOrEntity, &Viewing)>,
+    items: Query<(NameOrEntity, &Icon, &T), With<Item>>,
     sections: Query<(NameOrEntity, &T), With<GridContents>>,
 ) {
-    if let Ok([&Viewing(target), &Viewing(dragged)]) =
+    if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) =
         views.get_many([event.event_target(), event.dragged])
-        && let Ok((item, item_flags)) = items.get(dragged)
+        && let Ok((item, icon, item_flags)) = items.get(dragged)
     {
         if let Ok((target, ..)) = items.get(target) {
             info!("drag enter item: {item} -> {target}");
             // TODO hit check
             // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section.
             event.propagate(false);
-        } else if let Ok((id, section_flags)) = sections.get(target) {
+        } else if let Ok((s, section_flags)) = sections.get(target) {
+            // TODO: Visually indicate "no accepts". Gray/green/red?
             if section_flags.accepts(item_flags) {
-                commands.entity(target).insert(DragSlot(None));
+                // Spawn item shadow.
+                let shadow = commands
+                    .spawn((
+                        // Use item_view?
+                        Node::default(),
+                        ImageNode::new(icon.0.clone()),
+                        ChildOf(v.entity), // target section view
+                        Pickable::IGNORE,
+                        Visibility::Hidden, // unhide later
+                    ))
+                    .id();
+
+                // Insert the drag slot and item shadow.
+                commands
+                    .entity(target)
+                    .insert((DragSlot(None), DragShadow(shadow)));
+
                 event.propagate(false);
-                info!("drag enter: {item} -> {id}");
+                info!("drag enter: {item} -> {s}");
             }
         }
     }
@@ -259,15 +277,18 @@ pub fn on_item_drag_over(
         &GridContents,
         Option<&DragShape>,
         &mut DragSlot,
+        &DragShadow,
     )>,
     views: Query<(&UiGlobalTransform, &ComputedNode, &Viewing)>,
+    mut shadows: Query<(&mut Node, &mut UiTransform, &mut ImageNode, &mut Visibility)>,
 ) {
     if let Ok([(.., &Viewing(dragged)), (transform, node, &Viewing(target))]) =
         views.get_many([event.dragged, event.event_target()])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
         if let Ok((i, item, rotation, drag_rotation)) = items.get(dragged)
-            && let Ok((s, section, drag_shape, mut drag_slot)) = sections.get_mut(target)
+            && let Ok((s, section, drag_shape, mut drag_slot, &DragShadow(shadow))) =
+                sections.get_mut(target)
         {
             // Apply (drag) rotation.
             let item = item
@@ -279,6 +300,7 @@ pub fn on_item_drag_over(
             let slot = pointer_slot(event.pointer.position, section, transform, node);
             let index = section_shape.index(slot);
             let new_slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
+
             if drag_slot.replace_if_neq(new_slot).is_some() {
                 info!("drag over: {i} -> {s} slot: {new_slot}");
 
@@ -287,6 +309,14 @@ pub fn on_item_drag_over(
                     section: s.entity,
                     slot: Slot(slot),
                 });
+
+                // Update the item shadow.
+                if let Ok((node, t, mut _image, mut vis)) = shadows.get_mut(shadow) {
+                    update_item_view(&item.shape, rotation, &slot, node, t);
+                    // FIX no color crate
+                    // image.color.set_alpha(0.65);
+                    vis.set_if_neq(Visibility::Inherited);
+                }
             } //  else {
             //     warn!("does not fit: {slot}\n{}", &drag_shape.unwrap().0);
             // }
@@ -464,17 +494,23 @@ pub fn on_item_drag_leave(
     mut commands: Commands,
     views: Query<&Viewing>,
     // items: Query<NameOrEntity, With<Item>>,
-    sections: Query<NameOrEntity, With<DragSlot>>,
+    sections: Query<(NameOrEntity, &DragShadow), With<DragSlot>>,
 ) {
     // if let Ok(id) = items.get(event.event_target()) {
     //     info!("drag leave item: {id}");
     //     // event.propagate(false);
     // } else
     if let Ok(&Viewing(s)) = views.get(event.event_target())
-        && let Ok(s) = sections.get(s)
+        && let Ok((s, &DragShadow(shadow))) = sections.get(s)
     {
         info!("drag leave: {s}");
-        commands.entity(s.entity).remove::<(DragShape, DragSlot)>();
+        commands
+            .entity(s.entity)
+            .remove::<(DragShape, DragSlot, DragShadow)>();
+
+        // Despawn shadow entity.
+        commands.entity(shadow).despawn();
+
         // event.propagate(false);
     }
 }

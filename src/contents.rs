@@ -98,14 +98,15 @@ pub struct DragRotation(pub ItemRotation);
 
 /// Current target slot in section contents when an item is being dragged over it. If the item does not fit this will be `None`.
 // TODO: Maybe this should be an enum and include "not accepts"?
-#[derive(Component, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[component(storage = "SparseSet")]
-pub struct DragSlot(pub Option<Slot>);
+pub struct DragSlot(pub UVec2, pub bool); // slot, fits
 
 impl std::fmt::Display for DragSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let DragSlot(Some(Slot(slot))) = self {
-            write!(f, "{slot}")
+        write!(f, "{}", self.0)?;
+        if self.1 {
+            f.write_str("✔")
         } else {
             f.write_str("✘")
         }
@@ -113,6 +114,7 @@ impl std::fmt::Display for DragSlot {
 }
 
 /// An item shadow when dragged that corresponds to the final slot (`DragSlot`).
+// TODO With sufficient information/events this could be considered styling.
 #[derive(Component, Clone, Debug)]
 #[component(storage = "SparseSet")]
 pub struct DragShadow(pub Entity);

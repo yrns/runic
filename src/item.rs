@@ -110,7 +110,7 @@ pub fn item_view_changed(
     }
 }
 
-/// Updates an item view based on its rotation and slot.
+/// Updates an item's view based on its rotation and slot. Note the shape is the item's base (unrotated) shape.
 pub fn update_item_view(
     &Shape { size, .. }: &Shape,
     rotation: &ItemRotation,
@@ -246,7 +246,7 @@ pub fn on_item_drag_enter<T: Accepts>(
                 // Spawn item shadow.
                 let shadow = commands
                     .spawn((
-                        // Use item_view?
+                        // Use item_view? We're not using Viewing...
                         Node::default(),
                         ImageNode::new(icon.0.clone()),
                         ChildOf(v.entity), // target section view
@@ -258,7 +258,7 @@ pub fn on_item_drag_enter<T: Accepts>(
                 // Insert the drag slot and item shadow.
                 commands
                     .entity(target)
-                    .insert((DragSlot(None), DragShadow(shadow)));
+                    .insert((DragSlot::default(), DragShadow(shadow)));
 
                 event.propagate(false);
                 info!("drag enter: {item} -> {s}");
@@ -299,7 +299,7 @@ pub fn on_item_drag_over(
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
             let slot = pointer_slot(event.pointer.position, section, transform, node);
             let index = section_shape.index(slot);
-            let new_slot = DragSlot(section_shape.fits(&item.shape, index).then(|| Slot(slot)));
+            let new_slot = DragSlot(slot, section_shape.fits(&item.shape, index));
 
             if drag_slot.replace_if_neq(new_slot).is_some() {
                 info!("drag over: {i} -> {s} slot: {new_slot}");
@@ -354,9 +354,8 @@ pub fn on_item_drag_drop<T: Accepts>(
     };
 
     // We need to check if this is an item we're dropping onto or contents. Should this check just be moved to resolve_drag? We're fetching the contents twice?
-    if let Some(target) = if let Ok((id, DragSlot(slot))) = drag_slot.get(target) {
-        // If the slot is None the item won't fit.
-        slot.map(|slot| (id, slot))
+    if let Some(target) = if let Ok((id, &DragSlot(slot, fits))) = drag_slot.get(target) {
+        fits.then_some((id, Slot(slot)))
     } else {
         // Item. Find a target.
         contents.find_section_slot(target, item, flags)
@@ -471,9 +470,7 @@ pub fn on_item_drag_end(
         let target = sections
             .get(s)
             .ok()
-            .map(|slot| slot.0)
-            .flatten()
-            .map(|slot| (s, slot));
+            .and_then(|&DragSlot(slot, fits)| fits.then_some((s, Slot(slot))));
 
         commands
             .entity(i.entity)

@@ -228,17 +228,19 @@ pub fn on_item_drag_enter<T: Accepts>(
     mut event: On<PointerDragEnter>,
     mut commands: Commands,
     views: Query<(NameOrEntity, &Viewing)>,
-    items: Query<(NameOrEntity, &Icon, &T), With<Item>>,
+    items: Query<(NameOrEntity, &Icon, &T, Option<&Children>), With<Item>>,
     sections: Query<(NameOrEntity, &T), With<GridContents>>,
 ) {
     if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) =
         views.get_many([event.event_target(), event.dragged])
-        && let Ok((item, icon, item_flags)) = items.get(dragged)
+        && let Ok((item, icon, item_flags, _)) = items.get(dragged)
     {
-        if let Ok((target, ..)) = items.get(target) {
+        // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section. Unless it's not a container!
+        if let Ok((target, .., Some(xs))) = items.get(target)
+            && sections.iter_many(xs).matched().next().is_some()
+        {
             info!("drag enter item: {item} -> {target}");
-            // TODO hit check
-            // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section.
+            // TODO hit check for empty slots
             event.propagate(false);
         } else if let Ok((s, section_flags)) = sections.get(target) {
             // TODO: Visually indicate "no accepts". Gray/green/red?

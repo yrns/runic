@@ -169,7 +169,7 @@ pub fn on_item_drag_start(
         return;
     };
 
-    if let Ok((s, contents)) = sections.get(section) {
+    if let Ok((_s, contents)) = sections.get(section) {
         // info!("drag start: {i} from section: {s}");
         let item = item.clone().with_rotation(*rotation);
         let mut shape = contents.shape.clone();
@@ -343,10 +343,11 @@ pub fn on_item_drag_drop<T: Accepts>(
     mut contents: Contents<T>,
 ) -> Result {
     // We only care about the original target? What if someone spawns something (text/icon?) inside the item? Then they'd have to be unpickable.
-    let t = event.original_event_target();
-    if t != event.event_target() {
-        return Ok(());
-    }
+    let t = event.event_target();
+    // let t = event.original_event_target();
+    // if t != event.event_target() {
+    //     return Ok(());
+    // }
 
     // Fetch target section.
     let Ok(&Viewing(target)) = views.get(t) else {

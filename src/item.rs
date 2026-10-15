@@ -149,8 +149,15 @@ pub fn on_item_drag_start(
     event: On<PointerDragStart>,
     mut commands: Commands,
     views: Query<&Viewing>,
-    sections: Query<&GridContents>,
-    items: Query<(&Item, &ItemRotation, &Slot, &ViewedBy, &ChildOf)>,
+    sections: Query<(NameOrEntity, &GridContents)>,
+    items: Query<(
+        NameOrEntity,
+        &Item,
+        &ItemRotation,
+        &Slot,
+        &ViewedBy,
+        &ChildOf,
+    )>,
 ) {
     let view = event.event_target();
 
@@ -158,11 +165,12 @@ pub fn on_item_drag_start(
         return;
     };
 
-    let Ok((item, rotation, &slot, vs, &ChildOf(section))) = items.get(id) else {
+    let Ok((_i, item, rotation, &slot, vs, &ChildOf(section))) = items.get(id) else {
         return;
     };
 
-    if let Ok(contents) = sections.get(section) {
+    if let Ok((s, contents)) = sections.get(section) {
+        // info!("drag start: {i} from section: {s}");
         let item = item.clone().with_rotation(*rotation);
         let mut shape = contents.shape.clone();
         shape.unpaint(&item.shape, shape.index(slot.0));
@@ -378,6 +386,9 @@ pub fn on_item_drag_drop<T: Accepts>(
         }
     }
 
+    // Remove drag shape from the original section regardless if the move succeeds or not.
+    contents.commands.entity(section).remove::<DragShape>();
+
     Ok(())
 }
 
@@ -503,9 +514,7 @@ pub fn on_item_drag_leave(
         && let Ok((s, &DragShadow(shadow))) = sections.get(s)
     {
         info!("drag leave: {s}");
-        commands
-            .entity(s.entity)
-            .remove::<(DragShape, DragSlot, DragShadow)>();
+        commands.entity(s.entity).remove::<(DragSlot, DragShadow)>();
 
         // Despawn shadow entity.
         commands.entity(shadow).despawn();

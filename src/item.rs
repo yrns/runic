@@ -221,7 +221,7 @@ pub fn on_item_drag(
 
 fn pointer_slot(
     position: Vec2,
-    section: &GridContents,
+    size: &UVec2,
     transform: &UiGlobalTransform,
     node: &ComputedNode,
 ) -> UVec2 {
@@ -232,9 +232,7 @@ fn pointer_slot(
     let p = p / node.size + Vec2::splat(0.5);
 
     // Note the pointer can be just outside the node's contents (in the border, for example) and thus we clamp the maximum edge in order to not return a slot outside the shape. We saturate to zero in the negative case so we don't need to clamp it.
-    (section.size().as_vec2() * p)
-        .as_uvec2()
-        .min(section.shape.size - UVec2::ONE)
+    (size.as_vec2() * p).as_uvec2().min(size - UVec2::ONE)
 }
 
 /// Inserts `DragSlot` in a target container if it accepts the dragged item.
@@ -324,7 +322,7 @@ pub fn on_item_drag_over(
 
             // Use the cached shape with the item unpainted when moving within the same container.
             let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
-            let slot = pointer_slot(event.pointer.position, section, transform, node);
+            let slot = pointer_slot(event.pointer.position, &section.size(), transform, node);
             let index = section_shape.index(slot);
             let new_slot = DragSlot(slot, section_shape.fits(&item.shape, index));
 

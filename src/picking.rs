@@ -24,7 +24,12 @@ pub(crate) fn filter_item_hits(
             tracing::info!("picking {:?} {i}: {e} {n}", pointer_hits.order);
         }
 
+        // As we are not blocking on items, if the slot is filled we need to truncate the rest of the picks so we aren't double-dragging the item along with its section.
+        let mut truncate = false;
         picks.retain(|(entity, hit)| {
+            if truncate {
+                return false;
+            }
             if let Ok((_i, &Viewing(v))) = views.get(*entity)
                 && let Ok((_, item, rotation)) = items.get(v)
                 && let Some(p) = hit.position
@@ -39,8 +44,13 @@ pub(crate) fn filter_item_hits(
                     .as_uvec2()
                     .min(shape.size - UVec2::ONE);
 
-                // Retain if the slot is filled.
-                shape.fill[shape.index(slot)]
+                // Retain if the slot is filled and truncate the rest.
+                if shape.fill[shape.index(slot)] {
+                    truncate = true;
+                    true
+                } else {
+                    false
+                }
             } else {
                 true
             }

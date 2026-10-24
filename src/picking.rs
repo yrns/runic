@@ -8,21 +8,21 @@ use crate::{Item, ItemRotation, Viewing};
 
 pub(crate) fn filter_item_hits(
     mut hits: MessageMutator<PointerHits>,
-    names: Query<(Entity, Option<&Name>)>,
+    // names: Query<(Entity, Option<&Name>)>,
     views: Query<(NameOrEntity, &Viewing)>,
     items: Query<(NameOrEntity, &Item, &ItemRotation)>,
 ) {
     for pointer_hits in hits.read() {
         let picks = &mut pointer_hits.picks;
 
-        for (i, (e, n)) in names
-            .iter_many(picks.iter().map(|(e, _)| e))
-            .matched()
-            .enumerate()
-        {
-            let n = n.map(|n| n.as_str()).unwrap_or("-");
-            tracing::info!("picking {:?} {i}: {e} {n}", pointer_hits.order);
-        }
+        // for (i, (e, n)) in names
+        //     .iter_many(picks.iter().map(|(e, _)| e))
+        //     .matched()
+        //     .enumerate()
+        // {
+        //     let n = n.map(|n| n.as_str()).unwrap_or("-");
+        //     tracing::info!("picking {:?} {i}: {e} {n}", pointer_hits.order);
+        // }
 
         // As we are not blocking on items, if the slot is filled we need to truncate the rest of the picks so we aren't double-dragging the item along with its section.
         let mut truncate = false;

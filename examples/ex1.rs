@@ -600,6 +600,7 @@ fn spawn_contents(mut commands: Commands, mut next_state: ResMut<NextState<AppSt
             padding: px(8),
             // align_items: AlignItems::Center,
         }
+        Pickable::IGNORE
         // BorderColor::all(WHITE)
         Children [
             #PaperDollView

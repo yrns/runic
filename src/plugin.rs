@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use bevy_app::*;
 use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_picking::PickingSystems;
+
 #[cfg(feature = "reflect")]
 use bevy_reflect::*;
 
@@ -43,6 +45,12 @@ where
                     )
                         .chain(),
                 ),
+            )
+            .add_systems(
+                PreUpdate,
+                picking::filter_item_hits
+                    .after(PickingSystems::Backend)
+                    .before(PickingSystems::Hover),
             )
             .add_observer(item::on_item_drag_start)
             .add_observer(item::on_item_drag)

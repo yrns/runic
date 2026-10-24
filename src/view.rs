@@ -108,6 +108,11 @@ fn update_section_view(section: &GridContents, node: &mut Node) {
     node.justify_content = JustifyContent::Center;
 }
 
+pub const ITEM_PICKABLE: Pickable = Pickable {
+    should_block_lower: false,
+    is_hoverable: true,
+};
+
 /// Returns an item view scene.
 pub fn item_view(
     // How?
@@ -133,8 +138,7 @@ pub fn item_view(
         ChildOf(section_view)
         Viewing(item)
         ImageNode { image: icon }
-        // This is also default behavior and is only needed when dragging?
-        Pickable::default()
+        ITEM_PICKABLE
     }
 }
 

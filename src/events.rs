@@ -1,7 +1,10 @@
+//! Events.
+
 use crate::Slot;
 use bevy_ecs::prelude::{Entity, EntityEvent};
 
 // TODO: consider adding root container and section information
+// Should all these events include view information?
 
 /// Item `item` inserted into target container at `slot`.
 #[derive(EntityEvent, Debug)]

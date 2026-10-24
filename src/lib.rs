@@ -1,6 +1,7 @@
 mod contents;
 mod events;
 mod item;
+mod picking;
 mod plugin;
 mod shape;
 mod view;

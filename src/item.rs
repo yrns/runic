@@ -159,28 +159,28 @@ pub fn on_item_drag_start(
         &ChildOf,
     )>,
 ) {
-    let view = event.event_target();
-
-    let Ok(&Viewing(id)) = views.get(view) else {
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
         return;
-    };
+    }
 
-    let Ok((_i, item, rotation, &slot, vs, &ChildOf(section))) = items.get(id) else {
-        return;
-    };
-
-    if let Ok((_s, contents)) = sections.get(section) {
-        // info!("drag start: {i} from section: {s}");
+    if let Ok(&Viewing(v)) = views.get(t)
+        && let Ok((i, item, rotation, &slot, vs, &ChildOf(section))) = items.get(v)
+        && let Ok((s, contents)) = sections.get(section)
+    {
+        info!("drag start: {i} from section: {s}");
         let item = item.clone().with_rotation(*rotation);
         let mut shape = contents.shape.clone();
         shape.unpaint(&item.shape, shape.index(slot.0));
         commands.entity(section).insert(DragShape(shape));
 
         commands
-            .entity(view)
+            .entity(t)
             .insert((GlobalZIndex(2), Pickable::IGNORE, FixedNode));
+
         commands
-            .entity(id)
+            .entity(v)
             .insert(DragRotation(*rotation))
             .trigger(|entity| ItemDragStart {
                 entity,
@@ -190,7 +190,7 @@ pub fn on_item_drag_start(
 
         // Hide other item views.
         for &v in vs {
-            if v != view {
+            if v != t {
                 commands.entity(v).insert(Visibility::Hidden);
             }
         }
@@ -202,8 +202,14 @@ pub fn on_item_drag(
     mut views: Query<(&mut Node, &Viewing)>,
     items: Query<Entity, With<Item>>,
 ) {
-    if let Ok((mut node, &Viewing(id))) = views.get_mut(event.event_target())
-        && items.contains(id)
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
+    if let Ok((mut node, &Viewing(v))) = views.get_mut(t)
+        && items.contains(v)
     {
         // Update fixed node position.
         let d = event.pointer.position;
@@ -239,8 +245,13 @@ pub fn on_item_drag_enter<T: Accepts>(
     items: Query<(NameOrEntity, &Icon, &T, Option<&Children>), With<Item>>,
     sections: Query<(NameOrEntity, &T), With<GridContents>>,
 ) {
-    if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) =
-        views.get_many([event.event_target(), event.dragged])
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
+    if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) = views.get_many([t, event.dragged])
         && let Ok((item, icon, item_flags, _)) = items.get(dragged)
     {
         // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section. Unless it's not a container!
@@ -292,8 +303,14 @@ pub fn on_item_drag_over(
     views: Query<(&UiGlobalTransform, &ComputedNode, &Viewing)>,
     mut shadows: Query<(&mut Node, &mut UiTransform, &mut ImageNode, &mut Visibility)>,
 ) {
-    if let Ok([(.., &Viewing(dragged)), (transform, node, &Viewing(target))]) =
-        views.get_many([event.dragged, event.event_target()])
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
+    if let Ok([(transform, node, &Viewing(target)), (.., &Viewing(dragged))]) =
+        views.get_many([t, event.dragged])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
         if let Ok((i, item, rotation, drag_rotation)) = items.get(dragged)
@@ -343,21 +360,16 @@ pub fn on_item_drag_drop<T: Accepts>(
     mut contents: Contents<T>,
 ) -> Result {
     // We only care about the original target? What if someone spawns something (text/icon?) inside the item? Then they'd have to be unpickable.
-    let t = event.event_target();
-    // let t = event.original_event_target();
-    // if t != event.event_target() {
-    //     return Ok(());
-    // }
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return Ok(());
+    }
 
-    // Fetch target section.
-    let Ok(&Viewing(target)) = views.get(t) else {
+    // Fetch target section and dropped item views.
+    let Ok([&Viewing(target), &Viewing(v)]) = views.get_many([t, event.dropped]) else {
         return Ok(());
     };
 
-    // Fetch the dropped item.
-    let Ok(&Viewing(v)) = views.get(event.dropped) else {
-        return Ok(());
-    };
     let Ok((id, slot, item, item_rotation, drag_rotation, &ChildOf(section), flags)) =
         items.get_mut(v)
     else {
@@ -411,6 +423,7 @@ pub fn on_send_item<T: Accepts>(
     parents: Query<&ChildOf>,
     mut contents: Contents<T>,
 ) -> Result {
+    // Ignore propagations.
     let t = event.original_event_target();
     if t != event.event_target() {
         return Ok(());
@@ -467,20 +480,27 @@ pub fn on_item_drag_end(
     items: Query<(NameOrEntity, &ViewedBy, &ChildOf), With<Item>>,
     sections: Query<&DragSlot>,
 ) {
-    let t = event.event_target();
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
     if let Ok((v, &Viewing(i), mut node)) = views.get_mut(t)
         && let Ok((i, vs, &ChildOf(s))) = items.get(i)
     {
         info!("drag end: {i}");
         commands
             .entity(v.entity)
-            .remove::<(GlobalZIndex, Pickable, FixedNode)>();
+            .remove::<(GlobalZIndex, FixedNode)>()
+            .insert(ITEM_PICKABLE);
 
         // Restore relative grid position.
         node.position_type = PositionType::Relative;
         node.left = Val::Auto;
         node.top = Val::Auto;
 
+        // This is the destination (the drop has already happened). We know fits. What about a rejected event? The ItemDragOver event should have these, too.
         let target = sections
             .get(s)
             .ok()
@@ -504,23 +524,25 @@ pub fn on_item_drag_leave(
     event: On<PointerDragLeave>,
     mut commands: Commands,
     views: Query<&Viewing>,
-    // items: Query<NameOrEntity, With<Item>>,
+    items: Query<NameOrEntity, With<Item>>,
     sections: Query<(NameOrEntity, &DragShadow), With<DragSlot>>,
 ) {
-    // if let Ok(id) = items.get(event.event_target()) {
-    //     info!("drag leave item: {id}");
-    //     // event.propagate(false);
-    // } else
-    if let Ok(&Viewing(s)) = views.get(event.event_target())
+    // Ignore propagations.
+    let t = event.original_event_target();
+    if t != event.event_target() {
+        return;
+    }
+
+    // We don't use the item but we need to make sure it's an item since other things may be getting dragged around. We should verify it's the item we think is being dragged?
+    if let Ok([&Viewing(s), &Viewing(i)]) = views.get_many([t, event.dragged])
+        && let Ok(i) = items.get(i)
         && let Ok((s, &DragShadow(shadow))) = sections.get(s)
     {
-        info!("drag leave: {s}");
+        info!("drag leave: {i} <- {s}");
         commands.entity(s.entity).remove::<(DragSlot, DragShadow)>();
 
         // Despawn shadow entity.
         commands.entity(shadow).despawn();
-
-        // event.propagate(false);
     }
 }
 

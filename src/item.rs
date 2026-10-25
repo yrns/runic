@@ -4,7 +4,7 @@ use bevy_ecs::prelude::*;
 use bevy_image::Image;
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
-use bevy_picking::prelude::*;
+use bevy_picking::{Pickable, events::*, pointer::PointerButton};
 use bevy_ui::{widget::ImageNode, *};
 use tracing::*;
 

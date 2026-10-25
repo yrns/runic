@@ -1,14 +1,14 @@
 //! Picking filter for items with partially-filled grids.
 
 use bevy_ecs::prelude::*;
-use bevy_picking::backend::PointerHits;
+use bevy_picking::{Pickable, backend::PointerHits};
 
 use crate::{Item, ItemRotation, Viewing};
 
 pub(crate) fn filter_item_hits(
     mut hits: MessageMutator<PointerHits>,
     // names: Query<(Entity, Option<&Name>)>,
-    views: Query<(NameOrEntity, &Viewing)>,
+    views: Query<(NameOrEntity, &Viewing, &Pickable)>,
     items: Query<(NameOrEntity, &Item, &ItemRotation)>,
 ) {
     for pointer_hits in hits.read() {
@@ -29,7 +29,14 @@ pub(crate) fn filter_item_hits(
             if truncate {
                 return false;
             }
-            if let Ok((_i, &Viewing(v))) = views.get(*entity)
+            if let Ok((
+                _i,
+                &Viewing(v),
+                // Only filter hoverable items.
+                &Pickable {
+                    is_hoverable: true, ..
+                },
+            )) = views.get(*entity)
                 && let Ok((_, item, rotation)) = items.get(v)
                 && let Some(p) = hit.position
             {

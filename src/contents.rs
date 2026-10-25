@@ -114,6 +114,7 @@ impl std::fmt::Display for DragSlot {
 }
 
 /// An item shadow when dragged that corresponds to the final slot (`DragSlot`).
+// NOTE This does not show when hovering over items. It used to (when they weren't containers), but we removed all the propagation of events. It could be reinstated over items but I'm not sure it needs to.
 // TODO With sufficient information/events this could be considered styling.
 #[derive(Component, Clone, Debug)]
 #[component(storage = "SparseSet")]

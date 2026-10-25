@@ -230,7 +230,7 @@ pub(crate) fn pointer_slot(position: Vec2, size: &UVec2) -> UVec2 {
 
 /// Inserts `DragSlot` in a target container if it accepts the dragged item.
 pub fn on_item_drag_enter<T: Accepts>(
-    mut event: On<PointerDragEnter>,
+    event: On<PointerDragEnter>,
     mut commands: Commands,
     views: Query<(NameOrEntity, &Viewing)>,
     items: Query<(NameOrEntity, &Icon, &T, Option<&Children>), With<Item>>,
@@ -245,15 +245,13 @@ pub fn on_item_drag_enter<T: Accepts>(
     if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) = views.get_many([t, event.dragged])
         && let Ok((item, icon, item_flags, _)) = items.get(dragged)
     {
-        // All items overlap the section that they're in. And we don't want to be inserting a drag slot in the parent section. Unless it's not a container!
-        if let Ok((target, .., Some(xs))) = items.get(target)
-            && sections.iter_many(xs).matched().next().is_some()
-        {
-            info!("drag enter item: {item} -> {target}");
-            // TODO hit check for empty slots
-            event.propagate(false);
-        } else if let Ok((s, section_flags)) = sections.get(target) {
-            // TODO: Visually indicate "no accepts". Gray/green/red?
+        // if let Ok((target, .., Some(xs))) = items.get(target)
+        //     && sections.iter_many(xs).matched().next().is_some()
+        // {
+        //     // Ignore items for now.
+        // } else
+        if let Ok((s, section_flags)) = sections.get(target) {
+            // TODO: Visually indicate "no accepts". Gray shadow?
             if section_flags.accepts(item_flags) {
                 // Spawn item shadow.
                 let shadow = commands
@@ -272,7 +270,6 @@ pub fn on_item_drag_enter<T: Accepts>(
                     .entity(target)
                     .insert((DragSlot::default(), DragShadow(shadow)));
 
-                event.propagate(false);
                 info!("drag enter: {item} -> {s}");
             }
         }

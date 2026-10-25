@@ -129,16 +129,52 @@ pub fn item_view(
     //     None => bsn! [#ItemView],
     // });
 
+    // let x = 2u32;
+    // let y = 2u32;
+
+    // let cols: Vec<RepeatedGridTrack> = RepeatedGridTrack::px(2, 48.0);
+    // let rows: Vec<RepeatedGridTrack> = RepeatedGridTrack::px(2, 48.0);
+    // RepeatedGridTrack::percent(GridTrackRepetition::Count(2), 0.5);
+
+    fn _cell(x: i16, y: i16) -> impl Scene {
+        bsn! {
+            Node {
+                grid_row: GridPlacement::start(x),
+                grid_column: GridPlacement::start(y),
+                width: px(48.0),
+                height: px(48.0),
+            }
+            Outline
+        }
+    }
+
     bsn! {
         Node {
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
+            // display: Display::Grid,
+            // width: px(48.0 * 4.0),
+            // height: px(48.0 * 4.0),
+            // grid_template_columns: cols,
+            // grid_template_rows: rows,
+            // overflow: Overflow::clip(),
         }
         // The item view is a child of the section view.
         ChildOf(section_view)
         Viewing(item)
         ImageNode { image: icon }
         ITEM_PICKABLE
+        // Children [
+        //     @cell(1, 1)
+        //     --
+        //     @cell(1, 2)
+        //     --
+        //     @cell(2, 1)
+        //     --
+        //     @cell(2, 2)
+        //     Children [ Text("Nope") Pickable::IGNORE ]
+        //     Pickable::IGNORE
+        // ]
     }
 }
 

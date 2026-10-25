@@ -1,7 +1,6 @@
 //! Picking filter for items with partially-filled grids.
 
 use bevy_ecs::prelude::*;
-use bevy_math::*;
 use bevy_picking::backend::PointerHits;
 
 use crate::{Item, ItemRotation, Viewing};
@@ -38,11 +37,8 @@ pub(crate) fn filter_item_hits(
                 let item = item.clone().with_rotation(*rotation);
                 let shape = &item.shape;
 
-                // Find slot from pointer location. DRY?
-                let slot = ((p.truncate() + Vec2::splat(0.5)) * shape.size.as_vec2())
-                    .floor()
-                    .as_uvec2()
-                    .min(shape.size - UVec2::ONE);
+                // Hit position is already -0.5..0.5.
+                let slot = crate::pointer_slot(p.truncate(), &shape.size);
 
                 // Retain if the slot is filled and truncate the rest.
                 if shape.fill[shape.index(slot)] {

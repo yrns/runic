@@ -9,6 +9,9 @@ edition = "2024"
 name = "ex1"
 required-features = ["reflect"]
 
+[[example]]
+name = "ex2"
+
 [dependencies]
 bevy_app = "0.20"
 bevy_asset = "0.20"

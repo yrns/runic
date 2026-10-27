@@ -96,19 +96,19 @@ pub struct DragShape(pub Shape);
 #[component(storage = "SparseSet")]
 pub struct DragRotation(pub ItemRotation);
 
-/// Current target slot in section contents when an item is being dragged over it. If the item does not fit this will be `None`.
+/// Current target slot in section contents when an item is being dragged over it, and whether or not it fits.
 // TODO: Maybe this should be an enum and include "not accepts"?
 #[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[component(storage = "SparseSet")]
-pub struct DragSlot(pub UVec2, pub bool); // slot, fits
+pub struct DragSlot(pub Option<(UVec2, bool)>); // slot, fits
 
 impl std::fmt::Display for DragSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)?;
-        if self.1 {
-            f.write_str("✔")
-        } else {
-            f.write_str("✘")
+        match self.0 {
+            Some((slot, fits)) => {
+                write!(f, "{slot}{}", if fits { "✔" } else { "✘" })
+            }
+            None => f.write_str("❓"),
         }
     }
 }

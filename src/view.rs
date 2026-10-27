@@ -100,6 +100,11 @@ fn update_section_view(section: &GridContents, node: &mut Node) {
         node.height = px(y * 48);
         node.grid_template_columns = RepeatedGridTrack::px(x as u16, 48.0);
         node.grid_template_rows = RepeatedGridTrack::px(y as u16, 48.0);
+
+        // This seems like a bug in Bevy, but this specific configuration is required to have the item shadow (which can extend outside the container grid) not overflow the grid. This clips any extra columns and rows created by the span of the dragged item. TODO: Test with larger items.
+        node.grid_auto_columns = vec![GridTrack::px(0.0)];
+        node.grid_auto_rows = vec![];
+        node.overflow = Overflow::clip();
     }
     // TEMP styling remove
     node.margin = px(2.).all();

@@ -12,3 +12,6 @@ pub use item::*;
 pub use plugin::RunicPlugin;
 pub use shape::*;
 pub use view::*;
+
+/// Slot size.
+pub const SLOT_PX: f32 = 48.0;

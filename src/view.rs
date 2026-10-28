@@ -12,7 +12,7 @@ use bevy_picking::{Pickable, events::*, hover::Hovered};
 use bevy_reflect::std_traits::ReflectDefault;
 use bevy_scene::*;
 use bevy_ui::{
-    widget::{ImageNode, Text},
+    widget::{ImageNode, NodeImageMode, Text},
     *,
 };
 use bevy_ui_widgets::{Activate, Button};
@@ -86,8 +86,8 @@ fn update_section_view(section: &GridContents, node: &mut Node) {
     // If the section expands, we use 1x1 until an item is placed here, then it expands to the size of the item's node.
     if section.expands {
         node.display = Display::Flex;
-        node.min_width = px(48);
-        node.min_height = px(48);
+        node.min_width = px(SLOT_PX);
+        node.min_height = px(SLOT_PX);
         node.width = Val::Auto;
         node.height = Val::Auto;
         node.grid_template_columns = Vec::new();
@@ -96,23 +96,22 @@ fn update_section_view(section: &GridContents, node: &mut Node) {
         node.align_self = AlignSelf::FlexStart;
     } else {
         node.display = Display::Grid;
-        node.width = px(x * 48);
-        node.height = px(y * 48);
-        node.grid_template_columns = RepeatedGridTrack::px(x as u16, 48.0);
-        node.grid_template_rows = RepeatedGridTrack::px(y as u16, 48.0);
+        node.min_width = px(x as f32 * SLOT_PX);
+        node.min_height = px(y as f32 * SLOT_PX);
+        node.max_width = node.min_width;
+        node.max_height = node.min_height;
+        // We tried using fr and percent to reduce having to specify the pixel dimensions everywhere but there are too many edge cases. NOTE Gaps may mess up the pointer to slot calculations.
+        node.grid_template_columns = RepeatedGridTrack::px(x as u16, SLOT_PX);
+        node.grid_template_rows = RepeatedGridTrack::px(y as u16, SLOT_PX);
 
         // This seems like a bug in Bevy, but this specific configuration is required to have the item shadow (which can extend outside the container grid) not overflow the grid. This clips any extra columns and rows created by the span of the dragged item. TODO: Test with larger items.
         node.grid_auto_columns = vec![GridTrack::px(0.0)];
         node.grid_auto_rows = vec![];
         node.overflow = Overflow::clip();
     }
-    // TEMP styling remove
-    node.margin = px(2.).all();
-    node.padding = px(2.).all();
-    node.align_items = AlignItems::Center;
-    node.justify_content = JustifyContent::Center;
 }
 
+/// In order to allow drag events on empty item slots we set this on item views, then filter out empty slots in `picking::filter_item_hits`.
 pub const ITEM_PICKABLE: Pickable = Pickable {
     should_block_lower: false,
     is_hoverable: true,
@@ -134,52 +133,19 @@ pub fn item_view(
     //     None => bsn! [#ItemView],
     // });
 
-    // let x = 2u32;
-    // let y = 2u32;
-
-    // let cols: Vec<RepeatedGridTrack> = RepeatedGridTrack::px(2, 48.0);
-    // let rows: Vec<RepeatedGridTrack> = RepeatedGridTrack::px(2, 48.0);
-    // RepeatedGridTrack::percent(GridTrackRepetition::Count(2), 0.5);
-
-    fn _cell(x: i16, y: i16) -> impl Scene {
-        bsn! {
-            Node {
-                grid_row: GridPlacement::start(x),
-                grid_column: GridPlacement::start(y),
-                width: px(48.0),
-                height: px(48.0),
-            }
-            Outline
-        }
-    }
-
     bsn! {
         Node {
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
-            // display: Display::Grid,
-            // width: px(48.0 * 4.0),
-            // height: px(48.0 * 4.0),
-            // grid_template_columns: cols,
-            // grid_template_rows: rows,
-            // overflow: Overflow::clip(),
         }
         // The item view is a child of the section view.
         ChildOf(section_view)
         Viewing(item)
-        ImageNode { image: icon }
+        ImageNode {
+            image: icon,
+            image_mode: NodeImageMode::Auto, // Stretch,
+        }
         ITEM_PICKABLE
-        // Children [
-        //     @cell(1, 1)
-        //     --
-        //     @cell(1, 2)
-        //     --
-        //     @cell(2, 1)
-        //     --
-        //     @cell(2, 2)
-        //     Children [ Text("Nope") Pickable::IGNORE ]
-        //     Pickable::IGNORE
-        // ]
     }
 }
 

@@ -148,11 +148,18 @@ fn styling(
     for (n, border_color, v, mut node) in &mut nodes {
         if let Some(&Viewing(v)) = v {
             if let Ok((_s, _)) = sections.get(v) {
+                // SECTIONS
                 node.border = px(1.).all();
+                node.margin = px(2.).all();
+                node.padding = px(2.).all();
+                // node.align_items = AlignItems::Center;
+                // node.justify_content = JustifyContent::Center;
+
                 commands
                     .entity(n.entity)
                     .insert((BackgroundColor::from(BLACK), BorderColor::from(FUCHSIA)));
             } else if let Ok((_i, _)) = items.get(v) {
+                // ITEMS
                 node.border = px(1.).all();
                 commands
                     .entity(n.entity)

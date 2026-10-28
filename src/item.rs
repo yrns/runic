@@ -60,7 +60,7 @@ pub fn update_drag_rotation(
         let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
             t.rotation = r.rot2();
-            let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0);
+            let Vec2 { x, y } = r.offset(shape.size.as_vec2() * SLOT_PX);
             t.translation = Val2::px(x, y);
 
             commands.entity(i.entity).trigger(ItemDragRotate);
@@ -72,7 +72,7 @@ pub fn update_drag_rotation(
             let mut iter = views.iter_many_mut(vs).matched();
             while let Some(mut t) = iter.fetch_next() {
                 t.rotation = r.rot2();
-                let Vec2 { x, y } = r.offset(shape.size.as_vec2() * 48.0);
+                let Vec2 { x, y } = r.offset(shape.size.as_vec2() * SLOT_PX);
                 t.translation = Val2::px(x, y);
             }
         }
@@ -128,19 +128,17 @@ pub fn update_item_view(
     node.grid_column = GridPlacement::start_span((slot.x + 1) as i16, size.x as u16);
 
     // Grid tracks are fixed, is this needed?
-    let size = size.as_vec2() * 48.0;
+    let size_px = size.as_vec2() * SLOT_PX;
 
     // The icons don't stretch in Bevy by default. Specifying the fixed grid tracks isn't enough to get the border at the right size, the cells weirdly take up more room when the neighboring cells aren't filled...
-    node.width = px(size.x);
-    node.height = px(size.y);
-    // node.max_width = px(size.x as f32 * 48.0);
-    // node.max_height = px(size.y as f32 * 48.0);
-    // node.min_width = node.max_width;
-    // node.min_height = node.max_height;
+    node.min_width = px(size_px.x);
+    node.min_height = px(size_px.y);
+    node.max_width = node.min_width;
+    node.max_height = node.min_height;
 
     // Update transform. What about scale?
     transform.rotation = rotation.rot2();
-    let Vec2 { x, y } = rotation.offset(size);
+    let Vec2 { x, y } = rotation.offset(size_px);
     transform.translation = Val2::px(x, y);
 }
 
@@ -257,7 +255,13 @@ pub fn on_item_drag_enter<T: Accepts>(
                 let shadow = commands
                     .spawn((
                         // Use item_view? We're not using Viewing...
-                        Node::default(),
+                        // use update_item_view??
+                        Node {
+                            border: px(2.0).all(),
+                            // This only affects children?
+                            // overflow: Overflow::hidden(),
+                            ..Default::default()
+                        },
                         ImageNode::new(icon.0.clone()),
                         ChildOf(v.entity), // target section view
                         Pickable::IGNORE,

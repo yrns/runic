@@ -48,6 +48,12 @@ impl Item {
     }
 }
 
+fn update_transform(t: &mut UiTransform, r: &ItemRotation, size: Vec2) {
+    t.rotation = r.rot2();
+    let Vec2 { x, y } = r.offset(size);
+    t.translation = Val2::px(x, y);
+}
+
 /// Update the dragged item's transform when rotated or removed.
 pub fn update_drag_rotation(
     mut commands: Commands,
@@ -59,10 +65,7 @@ pub fn update_drag_rotation(
     for (i, Item { shape }, DragRotation(r), vs) in &items {
         let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
-            t.rotation = r.rot2();
-            let Vec2 { x, y } = r.offset(shape.size.as_vec2() * SLOT_PX);
-            t.translation = Val2::px(x, y);
-
+            update_transform(&mut t, r, shape.size.as_vec2() * SLOT_PX);
             commands.entity(i.entity).trigger(ItemDragRotate);
         }
     }
@@ -71,9 +74,7 @@ pub fn update_drag_rotation(
         if let Ok((Item { shape }, r, vs)) = item_rotations.get(e) {
             let mut iter = views.iter_many_mut(vs).matched();
             while let Some(mut t) = iter.fetch_next() {
-                t.rotation = r.rot2();
-                let Vec2 { x, y } = r.offset(shape.size.as_vec2() * SLOT_PX);
-                t.translation = Val2::px(x, y);
+                update_transform(&mut t, r, shape.size.as_vec2() * SLOT_PX);
             }
         }
     }
@@ -137,9 +138,7 @@ pub fn update_item_view(
     node.max_height = node.min_height;
 
     // Update transform. What about scale?
-    transform.rotation = rotation.rot2();
-    let Vec2 { x, y } = rotation.offset(size_px);
-    transform.translation = Val2::px(x, y);
+    update_transform(&mut transform, rotation, size_px);
 }
 
 /// Start dragging an item.

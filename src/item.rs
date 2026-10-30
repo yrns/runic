@@ -5,6 +5,7 @@ use bevy_image::Image;
 use bevy_input::{keyboard::KeyCode, *};
 use bevy_math::*;
 use bevy_picking::{Pickable, events::*, pointer::PointerButton};
+use bevy_scene::*;
 use bevy_ui::{widget::ImageNode, *};
 use tracing::*;
 
@@ -252,20 +253,12 @@ pub fn on_item_drag_enter<T: Accepts>(
             if section_flags.accepts(item_flags) {
                 // Spawn item shadow.
                 let shadow = commands
-                    .spawn((
-                        // Use item_view? We're not using Viewing...
-                        // use update_item_view??
-                        Node {
-                            border: px(2.0).all(),
-                            // This only affects children?
-                            // overflow: Overflow::hidden(),
-                            ..Default::default()
-                        },
-                        ImageNode::new(icon.0.clone()),
-                        ChildOf(v.entity), // target section view
-                        Pickable::IGNORE,
-                        Visibility::Hidden, // unhide later
-                    ))
+                    .spawn_scene(bsn! {
+                        #DragShadowView
+                        @item_view(icon.0.clone(), v.entity, item.entity)
+                        Pickable::IGNORE
+                        Visibility::Hidden
+                    })
                     .id();
 
                 // Insert the drag slot and item shadow.

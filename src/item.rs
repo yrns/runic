@@ -100,13 +100,19 @@ pub fn item_moved_or_rotated(
 
 /// Update the node and transform when an item view is added or changed.
 pub fn item_view_changed(
-    items: Query<(NameOrEntity, &Item, &ItemRotation, &Slot)>,
+    items: Query<(
+        NameOrEntity,
+        &Item,
+        &ItemRotation,
+        Option<&DragRotation>,
+        &Slot,
+    )>,
     mut views: Query<(&Viewing, &mut Node, &mut UiTransform), Changed<Viewing>>,
 ) {
     // We also need to update item views that are added (when opening containers). In theory there could be duplicates with the above system, but not in practice?
     for (&Viewing(v), node, transform) in &mut views {
-        if let Ok((i, Item { shape }, rotation, Slot(slot))) = items.get(v) {
-            info!("view changed: {i}");
+        if let Ok((_i, Item { shape }, rotation, drag_rotation, Slot(slot))) = items.get(v) {
+            let rotation = drag_rotation.map(|r| &r.0).unwrap_or(rotation);
             update_item_view(shape, rotation, slot, node, transform);
         }
     }
@@ -226,66 +232,28 @@ pub(crate) fn pointer_slot(position: Vec2, size: &UVec2) -> UVec2 {
     (size.as_vec2() * p).as_uvec2().min(size - UVec2::ONE)
 }
 
-/// Inserts `DragSlot` in a target container if it accepts the dragged item.
-pub fn on_item_drag_enter<T: Accepts>(
-    event: On<PointerDragEnter>,
-    mut commands: Commands,
-    views: Query<(NameOrEntity, &Viewing)>,
-    items: Query<(NameOrEntity, &Icon, &T, Option<&Children>), With<Item>>,
-    sections: Query<(NameOrEntity, &T), With<GridContents>>,
-) {
-    // Ignore propagations.
-    let t = event.original_event_target();
-    if t != event.event_target() {
-        return;
-    }
-
-    if let Ok([(v, &Viewing(target)), (_, &Viewing(dragged))]) = views.get_many([t, event.dragged])
-        && let Ok((item, icon, item_flags, _)) = items.get(dragged)
-    {
-        // if let Ok((target, .., Some(xs))) = items.get(target)
-        //     && sections.iter_many(xs).matched().next().is_some()
-        // {
-        //     // Ignore items for now.
-        // } else
-        if let Ok((s, section_flags)) = sections.get(target) {
-            // TODO: Visually indicate "no accepts". Gray shadow?
-            if section_flags.accepts(item_flags) {
-                // Spawn item shadow.
-                let shadow = commands
-                    .spawn_scene(bsn! {
-                        #DragShadowView
-                        @item_view(icon.0.clone(), v.entity, item.entity)
-                        Pickable::IGNORE
-                        Visibility::Hidden
-                    })
-                    .id();
-
-                // Insert the drag slot and item shadow.
-                commands
-                    .entity(target)
-                    .insert((DragSlot::default(), DragShadow(shadow)));
-
-                info!("drag enter: {item} -> {s}");
-            }
-        }
-    }
-}
-
 /// Sets the `DragSlot` for the currently hovered section.
-pub fn on_item_drag_over(
+pub fn on_item_drag_over<T: Accepts>(
     event: On<PointerDragOver>,
     mut commands: Commands,
-    items: Query<(NameOrEntity, &Item, &ItemRotation, Option<&DragRotation>)>,
+    items: Query<(
+        NameOrEntity,
+        &Item,
+        &ItemRotation,
+        Option<&DragRotation>,
+        &Icon,
+        &T,
+    )>,
     mut sections: Query<(
         NameOrEntity,
         &GridContents,
         Option<&DragShape>,
-        &mut DragSlot,
-        &DragShadow,
+        Option<&mut DragSlot>,
+        Option<&DragShadow>,
+        &T,
     )>,
     views: Query<(&UiGlobalTransform, &ComputedNode, &Viewing)>,
-    mut shadows: Query<(&mut Node, &mut UiTransform, &mut ImageNode, &mut Visibility)>,
+    mut shadows: Query<(&mut Node, &mut UiTransform, &mut ImageNode)>,
 ) {
     // Ignore propagations.
     let t = event.original_event_target();
@@ -297,10 +265,15 @@ pub fn on_item_drag_over(
         views.get_many([t, event.dragged])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
-        if let Ok((i, item, rotation, drag_rotation)) = items.get(dragged)
-            && let Ok((s, section, drag_shape, mut drag_slot, &DragShadow(shadow))) =
+        if let Ok((i, item, rotation, drag_rotation, Icon(icon), item_flags)) = items.get(dragged)
+            && let Ok((s, section, drag_shape, drag_slot, shadow, section_flags)) =
                 sections.get_mut(target)
         {
+            // TODO: Visually indicate "no accepts". Gray shadow?
+            if !section_flags.accepts(item_flags) {
+                return;
+            }
+
             // Apply (drag) rotation.
             let item = item
                 .clone()
@@ -319,7 +292,14 @@ pub fn on_item_drag_over(
             let index = section_shape.index(slot);
             let new_slot = DragSlot(Some((slot, section_shape.fits(&item.shape, index))));
 
-            if drag_slot.replace_if_neq(new_slot).is_some() {
+            let changed = if let Some(mut drag_slot) = drag_slot {
+                drag_slot.set_if_neq(new_slot)
+            } else {
+                commands.entity(target).insert(new_slot);
+                true
+            };
+
+            if changed {
                 info!("drag over: {i} -> {s} slot: {new_slot}");
 
                 commands.trigger(ItemDragOver {
@@ -328,16 +308,31 @@ pub fn on_item_drag_over(
                     slot: Slot(slot),
                 });
 
-                // Update the item shadow.
-                if let Ok((node, t, mut _image, mut vis)) = shadows.get_mut(shadow) {
-                    update_item_view(&item.shape, rotation, &slot, node, t);
-                    // FIX no color crate
-                    // image.color.set_alpha(0.65);
-                    vis.set_if_neq(Visibility::Inherited);
+                match shadow {
+                    Some(&DragShadow(shadow)) => {
+                        // Update the item shadow.
+                        // TODO This should be automatic if the DragSlot changes?
+                        if let Ok((node, t, mut _image)) = shadows.get_mut(shadow) {
+                            update_item_view(&item.shape, rotation, &slot, node, t);
+                            // FIX no color crate
+                            // image.color.set_alpha(0.65);
+                        }
+                    }
+                    None => {
+                        // Spawn a new item shadow.
+                        let shadow = commands
+                            .spawn_scene(bsn! {
+                                #DragShadowView
+                                @item_view(icon.clone(), t, i.entity)
+                                Pickable::IGNORE
+                            })
+                            .id();
+
+                        // Insert ihe shadow on the target section.
+                        commands.entity(target).insert(DragShadow(shadow));
+                    }
                 }
-            } //  else {
-            //     warn!("does not fit: {slot}\n{}", &drag_shape.unwrap().0);
-            // }
+            }
         }
     }
 }

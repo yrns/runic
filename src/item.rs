@@ -106,13 +106,20 @@ pub fn item_view_changed(
         &ItemRotation,
         Option<&DragRotation>,
         &Slot,
+        &ChildOf,
     )>,
     mut views: Query<(&Viewing, &mut Node, &mut UiTransform), Changed<Viewing>>,
+    drag_slots: Query<&DragSlot>,
 ) {
     // We also need to update item views that are added (when opening containers). In theory there could be duplicates with the above system, but not in practice?
     for (&Viewing(v), node, transform) in &mut views {
-        if let Ok((_i, Item { shape }, rotation, drag_rotation, Slot(slot))) = items.get(v) {
+        if let Ok((_i, Item { shape }, rotation, drag_rotation, Slot(slot), &ChildOf(section))) =
+            items.get(v)
+        {
+            // Use the drag slot and rotation if they exist. I expect this to be used only for item shadows.
+            // TODO: Should DragSlot be on the item like Slot?
             let rotation = drag_rotation.map(|r| &r.0).unwrap_or(rotation);
+            let slot = drag_slots.get(section).map(|s| &s.0).unwrap_or(slot);
             update_item_view(shape, rotation, slot, node, transform);
         }
     }
@@ -295,7 +302,7 @@ pub fn on_item_drag_over<T: Accepts>(
             let changed = if let Some(mut drag_slot) = drag_slot {
                 drag_slot.set_if_neq(new_slot)
             } else {
-                commands.entity(target).insert(new_slot);
+                commands.entity(s.entity).insert(new_slot);
                 true
             };
 

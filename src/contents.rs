@@ -100,16 +100,11 @@ pub struct DragRotation(pub ItemRotation);
 // TODO: Maybe this should be an enum and include "not accepts"?
 #[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[component(storage = "SparseSet")]
-pub struct DragSlot(pub Option<(UVec2, bool)>); // slot, fits
+pub struct DragSlot(pub UVec2, pub bool); // slot, fits
 
 impl std::fmt::Display for DragSlot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
-            Some((slot, fits)) => {
-                write!(f, "{slot}{}", if fits { "✔" } else { "✘" })
-            }
-            None => f.write_str("❓"),
-        }
+        write!(f, "{}{}", self.0, if self.1 { "✔" } else { "✘" })
     }
 }
 

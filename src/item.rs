@@ -290,7 +290,7 @@ pub fn on_item_drag_over<T: Accepts>(
                 &section.size(),
             );
             let index = section_shape.index(slot);
-            let new_slot = DragSlot(Some((slot, section_shape.fits(&item.shape, index))));
+            let new_slot = DragSlot(slot, section_shape.fits(&item.shape, index));
 
             let changed = if let Some(mut drag_slot) = drag_slot {
                 drag_slot.set_if_neq(new_slot)
@@ -363,7 +363,7 @@ pub fn on_item_drag_drop<T: Accepts>(
     };
 
     // We need to check if this is an item we're dropping onto or contents. Should this check just be moved to resolve_drag? We're fetching the contents twice?
-    if let Some(target) = if let Ok((id, &DragSlot(Some((slot, fits))))) = drag_slot.get(target) {
+    if let Some(target) = if let Ok((id, &DragSlot(slot, fits))) = drag_slot.get(target) {
         fits.then_some((id, Slot(slot)))
     } else {
         // Item. Find a target.
@@ -490,8 +490,7 @@ pub fn on_item_drag_end(
         let target = sections
             .get(s)
             .ok()
-            .and_then(|s| s.0)
-            .and_then(|(slot, fits)| fits.then_some((s, Slot(slot))));
+            .and_then(|DragSlot(slot, fits)| fits.then_some((s, Slot(*slot))));
 
         commands
             .entity(i.entity)

@@ -281,23 +281,25 @@ pub fn on_item_drag_over<T: Accepts>(
                 return;
             }
 
-            // Apply (drag) rotation.
-            let item = item
-                .clone()
-                .with_rotation(drag_rotation.map_or(*rotation, |r| r.0));
+            let new_slot = {
+                // Apply (drag) rotation for fit check.
+                let item = item
+                    .clone()
+                    .with_rotation(drag_rotation.map_or(*rotation, |r| r.0));
 
-            // Use the cached shape with the item unpainted when moving within the same container.
-            let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
-            let slot = pointer_slot(
-                transform
-                    .affine()
-                    .inverse()
-                    .transform_point2(event.pointer.position)
-                    / node.size,
-                &section.size(),
-            );
-            let index = section_shape.index(slot);
-            let new_slot = DragSlot(slot, section_shape.fits(&item.shape, index));
+                // Use the cached shape with the item unpainted when moving within the same container.
+                let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
+                let slot = pointer_slot(
+                    transform
+                        .affine()
+                        .inverse()
+                        .transform_point2(event.pointer.position)
+                        / node.size,
+                    &section.size(),
+                );
+                let index = section_shape.index(slot);
+                DragSlot(slot, section_shape.fits(&item.shape, index))
+            };
 
             let changed = if let Some(mut drag_slot) = drag_slot {
                 drag_slot.set_if_neq(new_slot)
@@ -312,7 +314,7 @@ pub fn on_item_drag_over<T: Accepts>(
                 commands.trigger(ItemDragOver {
                     entity: i.entity,
                     section: s.entity,
-                    slot: Slot(slot),
+                    slot: Slot(new_slot.0),
                 });
 
                 match shadow {
@@ -320,12 +322,17 @@ pub fn on_item_drag_over<T: Accepts>(
                         // Update the item shadow.
                         // TODO This should be automatic if the DragSlot changes?
                         if let Ok((node, t, mut _image)) = shadows.get_mut(shadow) {
-                            update_item_view(&item.shape, rotation, &slot, node, t);
+                            // Is DragRotation ever None here?
+                            let rotation = drag_rotation.map(|r| &r.0).unwrap_or(rotation);
+                            // This needs to be the unrotated shape.
+                            update_item_view(&item.shape, rotation, &new_slot.0, node, t);
                             // FIX no color crate
                             // image.color.set_alpha(0.65);
                         }
                     }
                     None => {
+                        // TODO: We actually want to spawn the drag shadow in drag start because there can be many frames (at least one) between the start and the over, which means we'll get a flicker or there will be at least one frame where there's no shadow.
+
                         // Spawn a new item shadow.
                         let shadow = commands
                             .spawn_scene(bsn! {

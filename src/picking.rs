@@ -3,13 +3,13 @@
 use bevy_ecs::prelude::*;
 use bevy_picking::{Pickable, backend::PointerHits};
 
-use crate::{Item, ItemRotation, Viewing};
+use crate::{Item, Viewing};
 
 pub(crate) fn filter_item_hits(
     mut hits: MessageMutator<PointerHits>,
     // names: Query<(Entity, Option<&Name>)>,
     views: Query<(NameOrEntity, &Viewing, &Pickable)>,
-    items: Query<(NameOrEntity, &Item, &ItemRotation)>,
+    items: Query<(NameOrEntity, &Item)>,
 ) {
     for pointer_hits in hits.read() {
         let picks = &mut pointer_hits.picks;
@@ -37,23 +37,16 @@ pub(crate) fn filter_item_hits(
                     is_hoverable: true, ..
                 },
             )) = views.get(*entity)
-                && let Ok((_, item, rotation)) = items.get(v)
+                && let Ok((_, Item { shape, .. })) = items.get(v)
                 && let Some(p) = hit.position
             {
-                // Apply rotation to item. We can't just use the view's computed node since it doesn't have the fill.
-                let item = item.clone().with_rotation(*rotation);
-                let shape = &item.shape;
-
-                // Hit position is already -0.5..0.5.
+                // We don't need to apply the rotation because the position is already in then node's local space. We can't just use the view's computed node since it doesn't have the fill. Hit position is already -0.5..0.5.
                 let slot = crate::pointer_slot(p.truncate(), &shape.size);
+                let fill = shape.fill[shape.index(slot)];
 
                 // Retain if the slot is filled and truncate the rest.
-                if shape.fill[shape.index(slot)] {
-                    truncate = true;
-                    true
-                } else {
-                    false
-                }
+                truncate |= fill;
+                fill
             } else {
                 true
             }

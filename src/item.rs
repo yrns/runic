@@ -63,7 +63,7 @@ pub fn update_drag_rotation(
     mut rm: RemovedComponents<DragRotation>,
     item_rotations: Query<(&Item, &ItemRotation, &ViewedBy)>,
 ) {
-    for (i, Item { shape }, DragRotation(r), vs) in &items {
+    for (i, Item { shape }, DragRotation(r, _), vs) in &items {
         let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
             update_transform(&mut t, r, shape.size.as_vec2() * SLOT_PX);
@@ -159,7 +159,7 @@ pub fn update_item_view(
 pub fn on_item_drag_start(
     event: On<PointerDragStart>,
     mut commands: Commands,
-    views: Query<&Viewing>,
+    views: Query<(&Viewing, &UiGlobalTransform, &ComputedNode)>,
     sections: Query<(NameOrEntity, &GridContents)>,
     items: Query<(
         NameOrEntity,
@@ -176,7 +176,7 @@ pub fn on_item_drag_start(
         return;
     }
 
-    if let Ok(&Viewing(v)) = views.get(t)
+    if let Ok((&Viewing(v), transform, node)) = views.get(t)
         && let Ok((i, item, rotation, &slot, vs, &ChildOf(section))) = items.get(v)
         && let Ok((s, contents)) = sections.get(section)
     {
@@ -190,9 +190,13 @@ pub fn on_item_drag_start(
             .entity(t)
             .insert((GlobalZIndex(2), Pickable::IGNORE, FixedNode));
 
+        // Find the relative offset from the upper left corner where the pointer is. The translation is the center point so we subtract half the node size.
+        let size = (transform.matrix2 * node.size).abs();
+        let offset = event.pointer.position - (transform.translation - size * 0.5);
+
         commands
             .entity(v)
-            .insert(DragRotation(*rotation))
+            .insert(DragRotation(*rotation, offset))
             .trigger(|entity| ItemDragStart {
                 entity,
                 section,
@@ -211,7 +215,7 @@ pub fn on_item_drag_start(
 pub fn on_item_drag(
     event: On<PointerDrag>,
     mut views: Query<(&mut Node, &Viewing)>,
-    items: Query<Entity, With<Item>>,
+    items: Query<&DragRotation, With<Item>>,
 ) {
     // Ignore propagations.
     let t = event.original_event_target();
@@ -220,13 +224,13 @@ pub fn on_item_drag(
     }
 
     if let Ok((mut node, &Viewing(v))) = views.get_mut(t)
-        && items.contains(v)
+        && let Ok(DragRotation(_, offset)) = items.get(v)
     {
         // Update fixed node position.
         let d = event.pointer.position;
         node.position_type = PositionType::Absolute;
-        node.left = px(d.x);
-        node.top = px(d.y);
+        node.left = px(d.x - offset.x);
+        node.top = px(d.y - offset.y);
     }
 }
 
@@ -284,7 +288,7 @@ pub fn on_item_drag_over<T: Accepts>(
                     transform
                         .affine()
                         .inverse()
-                        .transform_point2(event.pointer.position)
+                        .transform_point2(event.pointer.position - rotation.1)
                         / node.size,
                     &section.size(),
                 );

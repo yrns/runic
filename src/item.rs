@@ -243,14 +243,7 @@ pub(crate) fn pointer_slot(position: Vec2, size: &UVec2) -> UVec2 {
 pub fn on_item_drag_over<T: Accepts>(
     event: On<PointerDragOver>,
     mut commands: Commands,
-    items: Query<(
-        NameOrEntity,
-        &Item,
-        &ItemRotation,
-        Option<&DragRotation>,
-        &Icon,
-        &T,
-    )>,
+    items: Query<(NameOrEntity, &Item, &DragRotation, &Icon, &T)>,
     mut sections: Query<(
         NameOrEntity,
         &GridContents,
@@ -272,7 +265,7 @@ pub fn on_item_drag_over<T: Accepts>(
         views.get_many([t, event.dragged])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
-        if let Ok((i, item, rotation, drag_rotation, Icon(icon), item_flags)) = items.get(dragged)
+        if let Ok((i, item, rotation, Icon(icon), item_flags)) = items.get(dragged)
             && let Ok((s, section, drag_shape, drag_slot, shadow, section_flags)) =
                 sections.get_mut(target)
         {
@@ -283,9 +276,7 @@ pub fn on_item_drag_over<T: Accepts>(
 
             let new_slot = {
                 // Apply (drag) rotation for fit check.
-                let item = item
-                    .clone()
-                    .with_rotation(drag_rotation.map_or(*rotation, |r| r.0));
+                let item = item.clone().with_rotation(rotation.0);
 
                 // Use the cached shape with the item unpainted when moving within the same container.
                 let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
@@ -322,10 +313,8 @@ pub fn on_item_drag_over<T: Accepts>(
                         // Update the item shadow.
                         // TODO This should be automatic if the DragSlot changes?
                         if let Ok((node, t, mut _image)) = shadows.get_mut(shadow) {
-                            // Is DragRotation ever None here?
-                            let rotation = drag_rotation.map(|r| &r.0).unwrap_or(rotation);
                             // This needs to be the unrotated shape.
-                            update_item_view(&item.shape, rotation, &new_slot.0, node, t);
+                            update_item_view(&item.shape, &rotation.0, &new_slot.0, node, t);
                             // FIX no color crate
                             // image.color.set_alpha(0.65);
                         }

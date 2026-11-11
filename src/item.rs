@@ -63,7 +63,7 @@ pub fn update_drag_rotation(
     mut rm: RemovedComponents<DragRotation>,
     item_rotations: Query<(&Item, &ItemRotation, &ViewedBy)>,
 ) {
-    for (i, Item { shape }, DragRotation(r, _), vs) in &items {
+    for (i, Item { shape }, DragRotation(r, _offset), vs) in &items {
         let mut iter = views.iter_many_mut(vs).matched();
         while let Some(mut t) = iter.fetch_next() {
             update_transform(&mut t, r, shape.size.as_vec2() * SLOT_PX);
@@ -176,7 +176,7 @@ pub fn on_item_drag_start(
         return;
     }
 
-    if let Ok((&Viewing(v), transform, node)) = views.get(t)
+    if let Ok((&Viewing(v), _transform, _node)) = views.get(t)
         && let Ok((i, item, rotation, &slot, vs, &ChildOf(section))) = items.get(v)
         && let Ok((s, contents)) = sections.get(section)
     {
@@ -191,8 +191,11 @@ pub fn on_item_drag_start(
             .insert((GlobalZIndex(2), Pickable::IGNORE, FixedNode));
 
         // Find the relative offset from the upper left corner where the pointer is. The translation is the center point so we subtract half the node size.
-        let size = (transform.matrix2 * node.size).abs();
-        let offset = event.pointer.position - (transform.translation - size * 0.5);
+        // let size = (transform.matrix2 * node.size).abs();
+        // let offset = event.pointer.position - (transform.translation - size * 0.5);
+
+        // We need the pointer to always be the destination for slot 0 so pointer events work, so this has to be less than the slot size. We could think about using window.set_cursor_position (warping) but Wayland does not support it.
+        let offset = Vec2::splat(24.0);
 
         commands
             .entity(v)
@@ -227,10 +230,10 @@ pub fn on_item_drag(
         && let Ok(DragRotation(_, offset)) = items.get(v)
     {
         // Update fixed node position.
-        let d = event.pointer.position;
+        let d = event.pointer.position - offset;
         node.position_type = PositionType::Absolute;
-        node.left = px(d.x - offset.x);
-        node.top = px(d.y - offset.y);
+        node.left = px(d.x);
+        node.top = px(d.y);
     }
 }
 
@@ -288,7 +291,8 @@ pub fn on_item_drag_over<T: Accepts>(
                     transform
                         .affine()
                         .inverse()
-                        .transform_point2(event.pointer.position - rotation.1)
+                        // Just use the raw pointer location.
+                        .transform_point2(event.pointer.position) // - rotation.1)
                         / node.size,
                     &section.size(),
                 );

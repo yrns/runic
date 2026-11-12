@@ -377,8 +377,8 @@ pub fn on_item_drag_drop<T: Accepts>(
     if let Some(target) = if let Ok((id, &DragSlot(slot, fits))) = drag_slot.get(target) {
         fits.then_some((id, Slot(slot)))
     } else {
-        // Item. Find a target.
-        contents.find_section_slot(target, item, flags)
+        // Item. Find a target. Apply the rotation first.
+        contents.find_section_slot(target, &item.clone().with_rotation(drag_rotation.0), flags)
     } {
         if contents
             .resolve_drag(

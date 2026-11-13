@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use bevy_asset::Handle;
 use bevy_camera::visibility::Visibility;
 use bevy_ecs::prelude::*;
@@ -38,14 +40,19 @@ impl Default for Item {
 impl Item {
     /// Apply `rotation` to shape.
     // This should really only be used for temporary items. The actual item entities are stored unrotated and the rotation is applied when we need to check to see if it'll fit somewhere, or other operations where the rotation is pertinent.
-    pub fn with_rotation(mut self, rotation: ItemRotation) -> Self {
+    pub fn with_rotation<'a>(&'a self, rotation: ItemRotation) -> Cow<'a, Self> {
         match rotation {
-            ItemRotation::None => (),
-            ItemRotation::R90 => self.shape = self.shape.rotate90(),
-            ItemRotation::R180 => self.shape = self.shape.rotate180(),
-            ItemRotation::R270 => self.shape = self.shape.rotate270(),
+            ItemRotation::None => Cow::Borrowed(self),
+            ItemRotation::R90 => Cow::Owned(Self {
+                shape: self.shape.rotate90(),
+            }),
+            ItemRotation::R180 => Cow::Owned(Self {
+                shape: self.shape.rotate180(),
+            }),
+            ItemRotation::R270 => Cow::Owned(Self {
+                shape: self.shape.rotate270(),
+            }),
         }
-        self
     }
 }
 
@@ -181,7 +188,7 @@ pub fn on_item_drag_start(
         && let Ok((s, contents)) = sections.get(section)
     {
         info!("drag start: {i} from section: {s}");
-        let item = item.clone().with_rotation(*rotation);
+        let item = item.with_rotation(*rotation);
         let mut shape = contents.shape.clone();
         shape.unpaint(&item.shape, shape.index(slot.0));
         commands.entity(section).insert(DragShape(shape));
@@ -283,7 +290,7 @@ pub fn on_item_drag_over<T: Accepts>(
 
             let new_slot = {
                 // Apply (drag) rotation for fit check.
-                let item = item.clone().with_rotation(rotation.0);
+                let item = item.with_rotation(rotation.0);
 
                 // Use the cached shape with the item unpainted when moving within the same container.
                 let section_shape = drag_shape.map_or(&section.shape, |DragShape(s)| &s);
@@ -378,7 +385,7 @@ pub fn on_item_drag_drop<T: Accepts>(
         fits.then_some((id, Slot(slot)))
     } else {
         // Item. Find a target. Apply the rotation first.
-        contents.find_section_slot(target, &item.clone().with_rotation(drag_rotation.0), flags)
+        contents.find_section_slot(target, &item.with_rotation(drag_rotation.0), flags)
     } {
         if contents
             .resolve_drag(
@@ -445,7 +452,7 @@ pub fn on_send_item<T: Accepts>(
                     if let Some(target) = contents.find_section_slot(
                         target,
                         // Apply the rotation when checking.
-                        &item.clone().with_rotation(*item_rotation),
+                        &item.with_rotation(*item_rotation),
                         flags,
                     ) {
                         contents.resolve_drag(

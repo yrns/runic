@@ -39,7 +39,7 @@ pub fn insert_item(
 ) {
     for (item, rotation, slot, parent) in &items {
         if let Ok(mut contents) = contents.get_mut(parent.0) {
-            contents.insert(*slot, &item.clone().with_rotation(*rotation));
+            contents.insert(*slot, &item.with_rotation(*rotation));
         }
     }
 }
@@ -238,7 +238,7 @@ impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
         };
 
         // Remove from source container with the original rotation applied.
-        contents.remove(*slot, &item.clone().with_rotation(*rotation));
+        contents.remove(*slot, &item.with_rotation(*rotation));
 
         // Copy rotation from the dragged item.
         if let Some(r) = drag_rotation {
@@ -256,7 +256,7 @@ impl<'w, 's, T: Accepts> Contents<'w, 's, T> {
                 None => contents,
             };
             self.commands.entity(target_id).add_child(id.entity);
-            contents.insert(target_slot, &item.clone().with_rotation(*rotation));
+            contents.insert(target_slot, &item.with_rotation(*rotation));
         }
 
         // Fire events.

@@ -113,20 +113,18 @@ pub fn item_view_changed(
         &ItemRotation,
         Option<&DragRotation>,
         &Slot,
-        &ChildOf,
+        Option<&DragSlot>,
     )>,
     mut views: Query<(&Viewing, &mut Node, &mut UiTransform), Changed<Viewing>>,
-    drag_slots: Query<&DragSlot>,
 ) {
     // We also need to update item views that are added (when opening containers). In theory there could be duplicates with the above system, but not in practice?
-    for (&Viewing(v), node, transform) in &mut views {
-        if let Ok((_i, Item { shape }, rotation, drag_rotation, Slot(slot), &ChildOf(section))) =
-            items.get(v)
+    for (&Viewing(i), node, transform) in &mut views {
+        if let Ok((_i, Item { shape }, rotation, drag_rotation, Slot(slot), drag_slot)) =
+            items.get(i)
         {
             // Use the drag slot and rotation if they exist. I expect this to be used only for item shadows.
-            // TODO: Should DragSlot be on the item like Slot?
             let rotation = drag_rotation.map(|r| &r.0).unwrap_or(rotation);
-            let slot = drag_slots.get(section).map(|s| &s.0).unwrap_or(slot);
+            let slot = drag_slot.map(|s| &s.0).unwrap_or(slot);
             update_item_view(shape, rotation, slot, node, transform);
         }
     }
@@ -206,6 +204,7 @@ pub fn on_item_drag_start(
 
         commands
             .entity(v)
+            // Copy current rotation.
             .insert(DragRotation(*rotation, offset))
             .trigger(|entity| ItemDragStart {
                 entity,
@@ -257,12 +256,18 @@ pub(crate) fn pointer_slot(position: Vec2, size: &UVec2) -> UVec2 {
 pub fn on_item_drag_over<T: Accepts>(
     event: On<PointerDragOver>,
     mut commands: Commands,
-    items: Query<(NameOrEntity, &Item, &DragRotation, &Icon, &T)>,
-    mut sections: Query<(
+    mut items: Query<(
+        NameOrEntity,
+        &Item,
+        &DragRotation,
+        Option<&mut DragSlot>,
+        &Icon,
+        &T,
+    )>,
+    sections: Query<(
         NameOrEntity,
         &GridContents,
         Option<&DragShape>,
-        Option<&mut DragSlot>,
         Option<&DragShadow>,
         &T,
     )>,
@@ -279,9 +284,8 @@ pub fn on_item_drag_over<T: Accepts>(
         views.get_many([t, event.dragged])
     {
         // Fetch the item we are dragging, and the target section we are hovering.
-        if let Ok((i, item, rotation, Icon(icon), item_flags)) = items.get(dragged)
-            && let Ok((s, section, drag_shape, drag_slot, shadow, section_flags)) =
-                sections.get_mut(target)
+        if let Ok((i, item, rotation, drag_slot, Icon(icon), item_flags)) = items.get_mut(dragged)
+            && let Ok((s, section, drag_shape, shadow, section_flags)) = sections.get(target)
         {
             // TODO: Visually indicate "no accepts". Gray shadow?
             if !section_flags.accepts(item_flags) {
@@ -310,7 +314,7 @@ pub fn on_item_drag_over<T: Accepts>(
             let changed = if let Some(mut drag_slot) = drag_slot {
                 drag_slot.set_if_neq(new_slot)
             } else {
-                commands.entity(s.entity).insert(new_slot);
+                commands.entity(i.entity).insert(new_slot);
                 true
             };
 
@@ -360,7 +364,6 @@ pub fn on_item_drag_drop<T: Accepts>(
     event: On<PointerDragDrop>,
     views: Query<&Viewing>,
     mut items: Items<T>,
-    drag_slot: Query<(Entity, &DragSlot)>,
     mut contents: Contents<T>,
 ) -> Result {
     // We only care about the original target? What if someone spawns something (text/icon?) inside the item? Then they'd have to be unpickable.
@@ -370,19 +373,20 @@ pub fn on_item_drag_drop<T: Accepts>(
     }
 
     // Fetch target section and dropped item views.
-    let Ok([&Viewing(target), &Viewing(v)]) = views.get_many([t, event.dropped]) else {
+    let Ok([&Viewing(target), &Viewing(i)]) = views.get_many([t, event.dropped]) else {
         return Ok(());
     };
 
-    let Ok((id, slot, item, item_rotation, drag_rotation, &ChildOf(section), flags)) =
-        items.get_mut(v)
+    let Ok((id, slot, drag_slot, item, item_rotation, drag_rotation, &ChildOf(section), flags)) =
+        items.get_mut(i)
     else {
         return Ok(());
     };
 
     // We need to check if this is an item we're dropping onto or contents. Should this check just be moved to resolve_drag? We're fetching the contents twice?
-    if let Some(target) = if let Ok((id, &DragSlot(slot, fits))) = drag_slot.get(target) {
-        fits.then_some((id, Slot(slot)))
+    if let Some(target) = if let Some(&DragSlot(slot, fits)) = drag_slot {
+        // If the drag slot exists we assume the target is the target. Dicy?
+        fits.then_some((target, Slot(slot)))
     } else {
         // Item. Find a target. Apply the rotation first.
         contents.find_section_slot(target, &item.with_rotation(drag_rotation.0), flags)
@@ -481,8 +485,7 @@ pub fn on_item_drag_end(
     event: On<PointerDragEnd>,
     mut commands: Commands,
     mut views: Query<(NameOrEntity, &Viewing, &mut Node)>,
-    items: Query<(NameOrEntity, &ViewedBy, &ChildOf), With<Item>>,
-    sections: Query<&DragSlot>,
+    items: Query<(NameOrEntity, &ViewedBy, Option<&DragSlot>, &ChildOf), With<Item>>,
 ) {
     // Ignore propagations.
     let t = event.original_event_target();
@@ -491,7 +494,7 @@ pub fn on_item_drag_end(
     }
 
     if let Ok((v, &Viewing(i), mut node)) = views.get_mut(t)
-        && let Ok((i, vs, &ChildOf(s))) = items.get(i)
+        && let Ok((i, vs, drag_slot, &ChildOf(s))) = items.get(i)
     {
         info!("drag end: {i}");
         commands
@@ -505,10 +508,7 @@ pub fn on_item_drag_end(
         node.top = Val::Auto;
 
         // This is the destination (the drop has already happened). We know fits. What about a rejected event? The ItemDragOver event should have these, too.
-        let target = sections
-            .get(s)
-            .ok()
-            .and_then(|DragSlot(slot, fits)| fits.then_some((s, Slot(*slot))));
+        let target = drag_slot.and_then(|&DragSlot(slot, fits)| fits.then_some((s, Slot(slot))));
 
         commands
             .entity(i.entity)
@@ -529,7 +529,7 @@ pub fn on_item_drag_leave(
     mut commands: Commands,
     views: Query<&Viewing>,
     items: Query<NameOrEntity, With<Item>>,
-    sections: Query<(NameOrEntity, &DragShadow), With<DragSlot>>,
+    sections: Query<(NameOrEntity, &DragShadow)>,
 ) {
     // Ignore propagations.
     let t = event.original_event_target();
@@ -543,7 +543,8 @@ pub fn on_item_drag_leave(
         && let Ok((s, &DragShadow(shadow))) = sections.get(s)
     {
         info!("drag leave: {i} <- {s}");
-        commands.entity(s.entity).remove::<(DragSlot, DragShadow)>();
+        commands.entity(i.entity).remove::<DragSlot>();
+        commands.entity(s.entity).remove::<DragShadow>();
 
         // Despawn shadow entity.
         commands.entity(shadow).despawn();

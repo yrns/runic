@@ -125,6 +125,7 @@ pub type Items<'w, 's, T> = Query<
     (
         NameOrEntity,
         &'static mut Slot,
+        Option<&'static DragSlot>,
         &'static Item,
         &'static mut ItemRotation,
         // This is only used from on drag drop?
